@@ -3,14 +3,6 @@ import { cn } from "@/lib/cn";
 
 export type Theme = "light" | "system" | "dark";
 
-declare global {
-  interface Window {
-    /** Defined inline in index.html so the theme paints before first paint.
-     * Single writer for the root class + localStorage — React only calls it. */
-    _setTheme: (theme: Theme | null) => void;
-  }
-}
-
 const read = (): Theme => {
   const c = document.documentElement.classList;
   return c.contains("dark") ? "dark" : c.contains("light") ? "light" : "system";
@@ -31,7 +23,7 @@ const OPTIONS: { value: Theme; label: string; path: string }[] = [
 ];
 
 /** Three-way light / system / dark toggle. */
-export function ThemeToggle({ className }: { className?: string }) {
+export const ThemeToggle = ({ className }: { className?: string }) => {
   const [theme, setTheme] = useState<Theme>(read);
 
   return (
@@ -79,4 +71,4 @@ export function ThemeToggle({ className }: { className?: string }) {
       })}
     </fieldset>
   );
-}
+};

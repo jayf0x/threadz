@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { ArrowLeft, CloudOff, Mic, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Composer } from "@/features/composer";
 import { MarkdownEditor, type MarkdownEditorHandle } from "@/features/editor";
 import { getThreadLocal } from "@/lib/db";
@@ -76,12 +77,12 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
 
           {scratch && (
             <div className="mt-4 border border-dashed border-border p-4">
-              <p className="flex items-center justify-between font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              <Eyebrow className="flex items-center justify-between">
                 Scratch — not saved
                 <button type="button" aria-label="Dismiss scratch answer" onClick={() => setScratch(null)}>
                   <X className="size-3.5" />
                 </button>
-              </p>
+              </Eyebrow>
               <MarkdownEditor readOnly value={scratch} className="[--md-padding:0.5rem_0_0]" />
             </div>
           )}

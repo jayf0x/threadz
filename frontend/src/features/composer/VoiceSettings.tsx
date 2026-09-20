@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { getSnapshot, setLanguage, setModel, subscribe } from "@/lib/voice/engine";
@@ -21,9 +22,7 @@ export const VoiceSettings = () => {
 
   return (
     <div className="rise mt-2.5 border border-border bg-background p-3">
-      <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        Speech model · runs on this device
-      </p>
+      <Eyebrow>Speech model · runs on this device</Eyebrow>
       <fieldset className="mt-2 grid gap-0.5">
         <legend className="sr-only">Speech model</legend>
         {MODELS.map((m) => {

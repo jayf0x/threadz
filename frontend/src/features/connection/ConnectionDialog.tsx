@@ -1,6 +1,7 @@
 import { HardDriveDownload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { errorMessage } from "@/lib/errors";
 import { enterLocal, goLive } from "@/lib/handoff";
 import { latestBackup } from "@/lib/local";
@@ -79,9 +80,7 @@ export const ConnectionDialog = () => {
       >
         <div className="flex flex-col gap-5 px-6 py-6">
           <header>
-            <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              {local ? "Local · this device" : mainOk ? "Live · main" : "Live · offline"}
-            </p>
+            <Eyebrow>{local ? "Local · this device" : mainOk ? "Live · main" : "Live · offline"}</Eyebrow>
             <h2 id="conn-title" className="mt-1 font-serif text-3xl leading-tight tracking-tight">
               {local ? (up ? "Main is back." : "Working locally.") : mainOk ? "Live on main." : "Can't reach main."}
             </h2>

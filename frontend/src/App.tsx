@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { ConnectionDialog } from "@/features/connection";
 import { ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
@@ -51,8 +52,8 @@ const Shell = ({ selected, setSelected }: { selected: string | null; setSelected
 const Blank = () => (
   <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
     <p className="font-serif text-3xl italic text-muted-foreground">Pick a thread, or start one.</p>
-    <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+    <Eyebrow>
       <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send
-    </p>
+    </Eyebrow>
   </div>
 );

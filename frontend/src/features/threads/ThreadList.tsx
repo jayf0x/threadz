@@ -1,6 +1,7 @@
 import { Plus, RefreshCw, X } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -47,9 +48,9 @@ export const ThreadList = ({
         <div className="flex items-end justify-between">
           <div>
             <h1 className="font-serif text-4xl leading-none tracking-tight">Threadz</h1>
-            <p className="mt-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            <Eyebrow className="mt-2">
               Index · {threads.length} thread{threads.length === 1 ? "" : "s"}
-            </p>
+            </Eyebrow>
           </div>
           <Button size="sm" onClick={() => setCreating((c) => !c)} aria-expanded={creating}>
             {creating ? <X className="size-3.5" /> : <Plus className="size-3.5" />}

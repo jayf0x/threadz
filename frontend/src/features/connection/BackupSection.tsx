@@ -2,6 +2,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { Download, Upload } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { download, exportBackup, importBackup, lastExport } from "@/lib/handoff";
 import { latestBackup } from "@/lib/local";
 import { plural } from "./connectionCopy";
@@ -35,7 +36,7 @@ export const BackupSection = ({ busy, run, setNote, backupAt, persisted }: Props
 
   return (
     <section className="flex flex-col gap-2 border-t border-rule pt-4">
-      <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Backup</p>
+      <Eyebrow>Backup</Eyebrow>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => run(exportBackup)}>
           <Download className="size-3.5" /> Export
