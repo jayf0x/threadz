@@ -10,15 +10,22 @@ export type Sort = (typeof SORTS)[number]["value"];
 
 export const isSort = (v: string): v is Sort => SORTS.some((s) => s.value === v);
 
-// The index as the user sees it: filtered by the search box, then ordered.
-export const visibleThreads = (threads: Thread[], query: string, sort: Sort): Thread[] => {
+// The index as the user sees it: filtered by the search box, then ordered. `contentHits` are the ids
+// whose notes contain the query (only the API can tell: the mirror holds no notes until a thread is opened).
+export const visibleThreads = (
+  threads: Thread[],
+  query: string,
+  sort: Sort,
+  contentHits: ReadonlySet<string> = new Set(),
+): Thread[] => {
   const q = query.trim().toLowerCase();
   const filtered = q
     ? threads.filter(
         (t) =>
+          contentHits.has(t.id) ||
           t.title.toLowerCase().includes(q) ||
           t.description?.toLowerCase().includes(q) ||
-          t.tags.some((tag) => tag.includes(q)),
+          t.tags.some((tag) => tag.toLowerCase().includes(q)),
       )
     : threads;
   const sorted = [...filtered];

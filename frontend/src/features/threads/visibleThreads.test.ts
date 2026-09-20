@@ -38,3 +38,17 @@ test("isSort accepts only known sorts", () => {
   expect(isSort("title")).toBe(true);
   expect(isSort("nope")).toBe(false);
 });
+
+test("a thread found only by the text of a note (content hit from the API) is shown, in the chosen order", () => {
+  const rows = [t("b", { updatedAt: 1 }), t("a", { updatedAt: 2 }), t("c", { updatedAt: 3 })];
+  const hits = new Set(["b"]);
+  expect(ids(visibleThreads(rows, "needle", "updated", hits))).toEqual(["b"]);
+  expect(ids(visibleThreads([...rows, t("needle-title", { updatedAt: 0 })], "needle", "updated", hits))).toEqual([
+    "b",
+    "needle-title",
+  ]);
+});
+
+test("tags match whatever their case", () => {
+  expect(ids(visibleThreads([t("x", { tags: ["Bread"] })], "bread", "title"))).toEqual(["x"]);
+});
