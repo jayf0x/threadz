@@ -119,3 +119,6 @@ Reported by a read-only audit; none reproduced in a running app. Each is small; 
 - **Plain `http://<lan-ip>`** has no `crypto.subtle` / `randomUUID`, which breaks more than voice (see the HTTPS note in the README).
 - **`voice/text.ts`** strips real speech that sits in parentheses or asterisks.
 - **`useThread`** `load` has no staleness guard (out-of-order results can overwrite newer data).
+- **`ThreadView` header** shows "…" forever if the open thread is deleted elsewhere (a "not found" state would have to
+  tell "still loading the mirror" from "gone"). `useDraft` reads its storage key once, so it is only safe because
+  `App` keys `ThreadView` by thread id.

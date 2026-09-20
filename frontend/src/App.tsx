@@ -3,7 +3,7 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { ConnectionDialog } from "@/features/connection";
 import { ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
-import { isTypingTarget } from "@/lib/dom";
+import { shortcutBlocked } from "@/lib/dom";
 import { useStatus } from "@/lib/status";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
@@ -27,7 +27,7 @@ export const App = () => {
 const Shell = ({ selected, setSelected }: { selected: string | null; setSelected: (id: string | null) => void }) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isTypingTarget(e)) setSelected(null);
+      if (e.key === "Escape" && !shortcutBlocked(e)) setSelected(null);
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);

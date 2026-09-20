@@ -1,6 +1,6 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { Download, Upload } from "lucide-react";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { download, exportBackup, importBackup, lastExport } from "@/lib/handoff";
@@ -17,7 +17,7 @@ type Props = {
 
 export const BackupSection = ({ busy, run, setNote, backupAt, persisted }: Props) => {
   const file = useRef<HTMLInputElement>(null);
-  const exportedAt = lastExport();
+  const [exportedAt, setExportedAt] = useState(lastExport);
 
   const onImport = (f: File | undefined) =>
     f &&
@@ -38,7 +38,17 @@ export const BackupSection = ({ busy, run, setNote, backupAt, persisted }: Props
     <section className="flex flex-col gap-2 border-t border-rule pt-4">
       <Eyebrow>Backup</Eyebrow>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => run(exportBackup)}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() =>
+            run(async () => {
+              await exportBackup();
+              setExportedAt(lastExport());
+            })
+          }
+        >
           <Download className="size-3.5" /> Export
         </Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => file.current?.click()}>

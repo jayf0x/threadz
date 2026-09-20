@@ -7,7 +7,7 @@ import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusPill } from "@/features/connection";
 import { cn } from "@/lib/cn";
-import { isTypingTarget } from "@/lib/dom";
+import { shortcutBlocked } from "@/lib/dom";
 import { getMode } from "@/lib/mode";
 import { NewThread } from "./NewThread";
 import { ThreadRow } from "./ThreadRow";
@@ -30,7 +30,7 @@ export const ThreadList = ({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || shortcutBlocked(e)) return;
       if (e.key === "/") {
         e.preventDefault();
         search.current?.focus();

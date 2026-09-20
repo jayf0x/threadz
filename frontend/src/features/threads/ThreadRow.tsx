@@ -1,6 +1,6 @@
 import { format, isThisYear } from "date-fns";
 import { Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -23,8 +23,12 @@ export const ThreadRow = ({
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(thread.title);
   const [error, setError] = useState<string | null>(null);
+  // The input's blur fires as it unmounts (after Enter or Esc): one rename per edit, and none after Esc.
+  const settled = useRef(false);
 
   const rename = async () => {
+    if (settled.current) return;
+    settled.current = true;
     const next = title.trim();
     setRenaming(false);
     if (!next || next === thread.title) return;
@@ -80,6 +84,7 @@ export const ThreadRow = ({
             onKeyDown={(e) => {
               if (e.key !== "Escape") return;
               e.stopPropagation();
+              settled.current = true;
               setTitle(thread.title);
               setRenaming(false);
             }}
@@ -122,6 +127,7 @@ export const ThreadRow = ({
               title="Rename"
               className={act}
               onClick={() => {
+                settled.current = false;
                 setTitle(thread.title);
                 setError(null);
                 setRenaming(true);

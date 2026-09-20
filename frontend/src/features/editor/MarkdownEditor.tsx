@@ -100,7 +100,10 @@ export const MarkdownEditor = ({
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
   // Mount-time inputs, read inside the async effect without becoming deps.
-  const initial = useRef({ value, placeholder, readOnly });
+  const initial = useRef({ value, placeholder });
+  // What the props say right now, so an update that lands while Crepe is still loading isn't lost.
+  const latest = useRef({ value, readOnly });
+  latest.current = { value, readOnly };
   // Has the user ever put a caret in here? Until then a programmatic insert goes to the end
   // (ProseMirror's untouched selection sits at the very start, i.e. *before* a restored draft).
   const touchedRef = useRef(false);
@@ -124,7 +127,7 @@ export const MarkdownEditor = ({
         ]);
       if (destroyed || !containerRef.current) return;
 
-      const { value: v, placeholder: text, readOnly: ro } = initial.current;
+      const { value: v, placeholder: text } = initial.current;
       const crepe = new CrepeBuilder({ root: containerRef.current, defaultValue: v })
         .addFeature(listItem)
         // "doc": show the placeholder only when the whole field is empty —
@@ -167,7 +170,12 @@ export const MarkdownEditor = ({
           }),
       };
       await crepe.create();
-      crepe.setReadonly(ro);
+      const now = latest.current;
+      crepe.setReadonly(now.readOnly);
+      if (now.value !== v) {
+        lastEmittedRef.current = now.value;
+        crepe.editor.action(utils.replaceAll(now.value));
+      }
       crepeRef.current = crepe;
       destroy = () => crepe.destroy();
       if (destroyed) destroy();
