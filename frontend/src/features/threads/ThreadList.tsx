@@ -11,7 +11,8 @@ import { isTypingTarget } from "@/lib/dom";
 import { getMode } from "@/lib/mode";
 import { NewThread } from "./NewThread";
 import { ThreadRow } from "./ThreadRow";
-import { type Sort, useThreads } from "./useThreads";
+import { useThreads } from "./useThreads";
+import { isSort, SORTS } from "./visibleThreads";
 
 // The index: every thread as a row in a ledger. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({
@@ -73,7 +74,13 @@ export const ThreadList = ({
               e.currentTarget.blur();
             }}
           />
-          <Select aria-label="Sort threads" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+          <Select
+            aria-label="Sort threads"
+            value={sort}
+            onChange={(e) => {
+              if (isSort(e.target.value)) setSort(e.target.value);
+            }}
+          >
             {SORTS.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
@@ -121,9 +128,3 @@ export const ThreadList = ({
     </div>
   );
 };
-
-const SORTS: { value: Sort; label: string }[] = [
-  { value: "updated", label: "Recent" },
-  { value: "created", label: "Newest" },
-  { value: "title", label: "A–Z" },
-];
