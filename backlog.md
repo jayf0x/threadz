@@ -44,7 +44,7 @@ AudioWorklet) cuts utterances → one whisper decode per utterance in a worker �
 inserted and also appended to an IndexedDB segment log (crash recovery banner).
 
 Layout: engine `frontend/src/lib/voice/engine.ts` (plain module + external store, no React
-in the audio path), hook `hooks/useVoiceCapture.ts` (`useSyncExternalStore`), models/languages
+in the audio path), hook `features/composer/useVoiceCapture.ts` (`useSyncExternalStore`), models/languages
 `lib/voice/models.ts` (one row = one new model/language), caret/spacing rules `lib/voice/text.ts`
 (tested), segment log `lib/voice/recordings.ts`. UI: `Composer` + `MarkdownEditor.insertAtCaret` (dictation inserts at the ProseMirror caret; no caret yet → end),
 `VoiceMeter` (5-bar level meter, direct DOM writes), `VoiceSettings` (model + language).

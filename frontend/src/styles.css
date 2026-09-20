@@ -103,7 +103,7 @@ body {
   }
 }
 
-/* Dictation level meter (components/VoiceMeter.tsx). The engine writes a transform per
+/* Dictation level meter (features/composer/VoiceMeter.tsx). The engine writes a transform per
    bar straight into the DOM at ~16 Hz — compositor-only, no React renders, no canvas,
    no rAF loop. Bars dim while the VAD hears silence and light up on speech. */
 .vu {

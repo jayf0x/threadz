@@ -1,13 +1,12 @@
 import { format, isThisYear } from "date-fns";
 import { Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { StatusPill } from "@/components/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { type Sort, useThreads } from "@/hooks/useThreads";
+import { StatusPill } from "@/features/connection";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { isTypingTarget } from "@/lib/dom";
@@ -15,6 +14,7 @@ import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
 import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
+import { type Sort, useThreads } from "./useThreads";
 
 const SORTS: { value: Sort; label: string }[] = [
   { value: "updated", label: "Recent" },

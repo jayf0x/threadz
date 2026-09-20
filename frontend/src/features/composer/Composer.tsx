@@ -1,15 +1,15 @@
 import { CornerDownLeft, ImagePlus, Mic, Settings2, Square } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
-import { VoiceMeter } from "@/components/VoiceMeter";
-import { VoiceSettings } from "@/components/VoiceSettings";
-import { useDraft } from "@/hooks/useDraft";
-import { useVoiceCapture } from "@/hooks/useVoiceCapture";
+import { MarkdownEditor, type MarkdownEditorHandle } from "@/features/editor";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { addImage } from "@/lib/imageSync";
 import type { VoiceState } from "@/lib/voice/engine";
+import { useDraft } from "./useDraft";
+import { useVoiceCapture } from "./useVoiceCapture";
+import { VoiceMeter } from "./VoiceMeter";
+import { VoiceSettings } from "./VoiceSettings";
 
 type Mode = "note" | "ask";
 const MODES: { value: Mode; label: string }[] = [

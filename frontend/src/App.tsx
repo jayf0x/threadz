@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { ConnectionDialog } from "@/components/ConnectionDialog";
-import { ThreadList } from "@/components/ThreadList";
-import { ThreadView } from "@/components/ThreadView";
+import { ConnectionDialog } from "@/features/connection";
+import { ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
 import { isTypingTarget } from "@/lib/dom";
 import { useStatus } from "@/lib/status";

@@ -1,14 +1,14 @@
 import { format } from "date-fns";
 import { ArrowLeft, CloudOff, Mic, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Composer } from "@/components/Composer";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
-import { useThread } from "@/hooks/useThread";
+import { Composer } from "@/features/composer";
+import { MarkdownEditor, type MarkdownEditorHandle } from "@/features/editor";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange } from "@/lib/sync";
 import type { Message, Thread } from "@/lib/types";
+import { useThread } from "./useThread";
 
 export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () => void }) => {
   const { messages, unsynced, busy, error, addMessage, editMessage, ask } = useThread(threadId);

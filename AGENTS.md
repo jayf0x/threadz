@@ -28,7 +28,7 @@ Typecheck passing says nothing about whether the UI renders.
 
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Semantic color tokens only in components — never a hardcoded color.
-- `frontend/src/lib/**` and `frontend/src/hooks/**` hold the invariant-critical logic and
+- `frontend/src/lib/**` and the feature hooks (`frontend/src/features/*/use*.ts`) hold the invariant-critical logic and
   are tested — change with care, keep the hook contracts stable.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else.

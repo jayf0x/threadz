@@ -131,7 +131,7 @@ export const MarkdownEditor = ({
         // "block" re-shows it on every empty line, which reads as "my text
         // disappeared".
         .addFeature(placeholderFeature, { text, mode: "doc" });
-      // Photos: `img:` refs render as lazy grey boxes (components/imageView.ts).
+      // Photos: `img:` refs render as lazy grey boxes (./imageView.ts).
       crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
