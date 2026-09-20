@@ -1,0 +1,27 @@
+#!/bin/bash
+# Threadz launcher: build, serve, open a tab in the default browser, quit when the last tab closes
+# (the backend exits when its last /api/presence stream drops, see backend/server.ts).
+export PATH="$HOME/.bun/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+ROOT="$(cd "$(dirname "$(realpath "$0")")/../../.." && pwd)"   # realpath: works through the ~/Applications symlink
+LOG="$HOME/Library/Logs/threadz.log"
+PORT=4173
+URL="http://localhost:$PORT"
+cd "$ROOT" || exit 1
+
+# already running: just open another tab
+if curl -sf "$URL" >/dev/null && curl -sf localhost:8787/api/health >/dev/null; then open "$URL"; exit 0; fi
+
+exec >"$LOG" 2>&1
+fail() { osascript -e "display alert \"Threadz\" message \"$1 — see $LOG\""; exit 1; }
+
+bun install --frozen-lockfile || fail "bun install failed"
+bun run --cwd frontend build || fail "Build failed"
+
+(cd frontend && exec bun run preview --port $PORT --strictPort) & PREVIEW=$!
+trap 'kill $PREVIEW 2>/dev/null' EXIT
+(cd backend && THREADZ_QUIT_ON_CLOSE=1 exec bun server.ts) & BACKEND=$!
+
+for _ in $(seq 50); do curl -sf "$URL" >/dev/null && break; sleep 0.2; done
+curl -sf "$URL" >/dev/null || fail "Preview server did not start"
+open "$URL"
+wait $BACKEND

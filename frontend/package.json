@@ -1,0 +1,38 @@
+{
+  "name": "@threadz/frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint:tokens": "bun scripts/lint-tokens.ts"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.3.3",
+    "@ricky0123/vad-web": "^0.0.30",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "idb": "^8.0.0",
+    "lucide-react": "^0.475.0",
+    "onnxruntime-web": "1.29.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/react": "^16.2.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^17.1.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.1.0",
+    "vite-plugin-pwa": "^0.21.1",
+    "vite-plugin-static-copy": "^4.1.1",
+    "workbox-window": "^7.3.0"
+  }
+}

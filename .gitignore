@@ -1,0 +1,30 @@
+# deps / build
+node_modules/
+dist/
+dev-dist/
+.vite/
+*.tsbuildinfo
+coverage/
+
+# db (local data, incl. WAL/SHM)
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# tooling / local state
+.claude/
+.research
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+.DS_Store
+*.log

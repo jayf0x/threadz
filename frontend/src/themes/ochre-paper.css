@@ -1,0 +1,92 @@
+/*
+ * ochre-paper — light-first instrument-sheet aesthetic: warm paper, hairline
+ * rules, serif titles, one warm-ochre accent reserved for live/selected/named
+ * things. Token values carried over verbatim from weighted-grid/demo and
+ * dyslexia-logger, which had already converged on the same oklch accent
+ * (oklch(0.66 0.14 68)) independently.
+ *
+ * --rule and --hatch are extras beyond the shared token set in base.css —
+ * decorative-only, for showcase chrome. Registry components never read them,
+ * so this theme stays a drop-in for the same Button/Card/Field as
+ * periwinkle-system.
+ *
+ * Scoped under [data-palette="ochre-paper"] so a project running both themes
+ * (this repo's own gallery) can switch at runtime. A project that only ever
+ * imports this file can ignore data-palette — set it once on <html> if you
+ * also ship periwinkle-system.css alongside it (see README).
+ */
+
+:root[data-palette="ochre-paper"] {
+  --twinz-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --twinz-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --twinz-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.973 0.008 85);
+  --foreground: oklch(0.235 0.014 60);
+  --card: oklch(0.995 0.004 85);
+  --card-foreground: oklch(0.235 0.014 60);
+  --secondary: oklch(0.945 0.011 82);
+  --secondary-foreground: oklch(0.235 0.014 60);
+  --muted: oklch(0.945 0.011 82);
+  --muted-foreground: oklch(0.46 0.012 62);
+  --accent: color-mix(in oklab, oklch(0.66 0.14 68) 12%, transparent);
+  --accent-foreground: oklch(0.235 0.014 60);
+  --border: color-mix(in oklab, oklch(0.235 0.014 60) 14%, transparent);
+  --input: oklch(0.995 0.004 85);
+  --ring: oklch(0.66 0.14 68);
+  --primary: oklch(0.66 0.14 68);
+  --primary-foreground: oklch(0.995 0.004 85);
+  --destructive: oklch(0.6 0.17 27);
+  --destructive-foreground: oklch(0.995 0.004 85);
+
+  --rule: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+:root[data-palette="ochre-paper"].dark {
+  --background: oklch(0.165 0.008 70);
+  --foreground: oklch(0.935 0.008 85);
+  --card: oklch(0.205 0.009 70);
+  --card-foreground: oklch(0.935 0.008 85);
+  --secondary: oklch(0.135 0.008 70);
+  --secondary-foreground: oklch(0.935 0.008 85);
+  --muted: oklch(0.135 0.008 70);
+  --muted-foreground: oklch(0.72 0.008 80);
+  --accent: color-mix(in oklab, oklch(0.74 0.13 72) 16%, transparent);
+  --accent-foreground: oklch(0.935 0.008 85);
+  --border: color-mix(in oklab, oklch(0.935 0.008 85) 15%, transparent);
+  --input: oklch(0.205 0.009 70);
+  --ring: oklch(0.74 0.13 72);
+  --primary: oklch(0.74 0.13 72);
+  --primary-foreground: oklch(0.165 0.008 70);
+  --destructive: oklch(0.7 0.16 27);
+  --destructive-foreground: oklch(0.165 0.008 70);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="ochre-paper"].system {
+    --background: oklch(0.165 0.008 70);
+    --foreground: oklch(0.935 0.008 85);
+    --card: oklch(0.205 0.009 70);
+    --card-foreground: oklch(0.935 0.008 85);
+    --secondary: oklch(0.135 0.008 70);
+    --secondary-foreground: oklch(0.935 0.008 85);
+    --muted: oklch(0.135 0.008 70);
+    --muted-foreground: oklch(0.72 0.008 80);
+    --accent: color-mix(in oklab, oklch(0.74 0.13 72) 16%, transparent);
+    --accent-foreground: oklch(0.935 0.008 85);
+    --border: color-mix(in oklab, oklch(0.935 0.008 85) 15%, transparent);
+    --input: oklch(0.205 0.009 70);
+    --ring: oklch(0.74 0.13 72);
+    --primary: oklch(0.74 0.13 72);
+    --primary-foreground: oklch(0.165 0.008 70);
+    --destructive: oklch(0.7 0.16 27);
+    --destructive-foreground: oklch(0.165 0.008 70);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

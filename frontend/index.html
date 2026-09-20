@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-palette="ochre-paper">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f5ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)" />
+    <title>Threadz</title>
+    <script>
+      // Pre-paint theme (twinz): single writer for the root class, so no flash.
+      // React only ever calls window._setTheme.
+      (function () {
+        var root = document.documentElement;
+        var theme = localStorage.getItem("twinz-theme") || "system";
+        root.classList.remove("light", "dark", "system");
+        root.classList.add(theme);
+        window._setTheme = function (t) {
+          if (!t) { localStorage.removeItem("twinz-theme"); t = "system"; }
+          else { localStorage.setItem("twinz-theme", t); }
+          root.classList.remove("light", "dark", "system");
+          root.classList.add(t);
+        };
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
