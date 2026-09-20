@@ -80,7 +80,8 @@ addColumn("messages", "edits", "TEXT");
 export const now = () => Date.now();
 
 // Client-supplied timestamps (offline captures) are honoured but never from the future.
-export const clampTs = (t?: number) => (Number.isFinite(t) && t! > 0 ? Math.min(t!, now()) : now());
+export const clampTs = (t?: number) =>
+  typeof t === "number" && Number.isFinite(t) && t > 0 ? Math.min(t, now()) : now();
 
 // --- threads ---
 
@@ -204,7 +205,7 @@ const versionsOf = (m: MessageRow): Version[] => [
 export const editMessage = (id: string, incoming: Version[]) => {
   const m = db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id);
   if (!m) return null;
-  if (incoming.length === 1 && incoming[0].content === m.content) return m; // nothing changed
+  if (incoming.length === 1 && incoming[0]?.content === m.content) return m; // nothing changed
   const { current, edits } = mergeVersions(versionsOf(m), incoming);
   const at = m.edited_at ?? m.created_at;
   if (current.at === at && current.content === m.content && edits.length === versionsOf(m).length - 1) return m;

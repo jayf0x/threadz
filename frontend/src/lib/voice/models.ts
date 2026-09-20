@@ -3,7 +3,7 @@
 
 export type VoiceModel = { id: string; label: string; note: string; mb: number; multilingual: boolean };
 
-export const MODELS: VoiceModel[] = [
+export const MODELS: [VoiceModel, ...VoiceModel[]] = [
   { id: "Xenova/whisper-tiny.en", label: "Tiny", note: "English · fastest", mb: 40, multilingual: false },
   { id: "Xenova/whisper-base.en", label: "Base", note: "English · more accurate", mb: 80, multilingual: false },
   { id: "Xenova/whisper-tiny", label: "Tiny", note: "Multilingual · fastest", mb: 40, multilingual: true },

@@ -61,7 +61,7 @@ describe("idempotent append (invariant: threads append-only, dedupe on client UU
     expect(a.inserted).toBe(true);
     expect(b.inserted).toBe(false);
     expect(getMessages("t1")).toHaveLength(1);
-    expect(getMessages("t1")[0].content).toBe("hello"); // committed message never edited
+    expect(getMessages("t1")[0]?.content).toBe("hello"); // committed message never edited
   });
 
   test("seq increases in append order", () => {
@@ -467,7 +467,7 @@ describe("local mode (invariant: no data lost across sync)", () => {
   });
 
   test("a photo taken offline reaches main before its note, is then clean on the device, and a replay sends nothing", async () => {
-    const bytes = Uint8Array.from({ length: 3000 }, (_, i) => (i < 3 ? [0xff, 0xd8, 0xff][i] : (i * 13) % 253));
+    const bytes = Uint8Array.from({ length: 3000 }, (_, i) => [0xff, 0xd8, 0xff][i] ?? (i * 13) % 253);
     const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
     const t = await local.localApi.createThread({ title: "__local__ photo", seed: `![](img:${hash}#40x30)` });
     await images.putImage(hash, new Blob([bytes], { type: "image/jpeg" }), 1);
@@ -538,23 +538,23 @@ describe("local mode (invariant: no data lost across sync)", () => {
   test("an edit and a rename made offline reach main; previous text is kept", async () => {
     const t = await local.localApi.createThread({ title: "__local__ edit", seed: "first draft" });
     await handoff.syncNow();
-    const [m] = (await local.localApi.getThread(t.id)).messages;
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
     await local.localApi.editMessage(t.id, m.id, "second draft");
     await local.localApi.renameThread(t.id, "__local__ renamed");
 
     await handoff.syncNow();
     const main = await mainGet(t.id).then((r) => r.json());
     expect(main.thread.title).toBe("__local__ renamed");
-    expect(main.messages[0].content).toBe("second draft");
+    expect(main.messages[0]?.content).toBe("second draft");
     expect(main.messages[0].edits.map((v: { content: string }) => v.content)).toEqual(["first draft"]);
-    expect((await local.localApi.getThread(t.id)).messages[0].edits).toHaveLength(1);
+    expect((await local.localApi.getThread(t.id)).messages[0]?.edits).toHaveLength(1);
     await cleanUp(t.id);
   });
 
   test("the same note edited on main and on the device: newest text wins, the other stays in history", async () => {
     const t = await local.localApi.createThread({ title: "__local__ both-edit", seed: "base" });
     await handoff.syncNow();
-    const [m] = (await local.localApi.getThread(t.id)).messages;
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
     await mainPatch(`${t.id}/messages/${m.id}`, { content: "main edit" });
     await new Promise((r) => setTimeout(r, 5));
     await local.localApi.editMessage(t.id, m.id, "device edit");

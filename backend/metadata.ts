@@ -67,6 +67,7 @@ export const generateMetadata = async (threadId: string) => {
 
   const summaryText = `${thread.title}\n${description}\n${tags.join(", ")}\n${transcript.slice(0, 2000)}`;
   const [vec] = await embed([summaryText], "document");
+  if (!vec) throw new Error("embed returned no vector");
   setMetadata(threadId, description, tags, vec);
 };
 

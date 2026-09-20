@@ -1,3 +1,4 @@
+import type { BunRequest } from "bun";
 import {
   allMessages,
   appendMessage,
@@ -33,11 +34,12 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS } });
 
 const wrap =
-  (fn: (req: Request, params: Record<string, string>) => Promise<Response> | Response) =>
-  // biome-ignore lint/suspicious/noExplicitAny: Bun's BunRequest carries matched route params
-  async (req: any) => {
+  <Path extends string>(
+    fn: (req: BunRequest<Path>, params: BunRequest<Path>["params"]) => Promise<Response> | Response,
+  ) =>
+  async (req: BunRequest<Path>) => {
     try {
-      return await fn(req, req.params ?? {});
+      return await fn(req, req.params);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message }, err.status);
       console.error("[threadz]", err);
@@ -50,9 +52,11 @@ const cosine = (a: ArrayLike<number>, b: ArrayLike<number>) => {
   let na = 0;
   let nb = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    dot += x * y;
+    na += x * x;
+    nb += y * y;
   }
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 };
@@ -299,8 +303,8 @@ const server = Bun.serve({
         const thread = requireThread(p.id);
         const all = threadEmbeddings();
         // No stored embedding yet — embed the title on the fly so the result isn't empty.
-        const self: ArrayLike<number> =
-          all.find((t) => t.id === p.id)?.vec ?? (await embed([thread.title], "query"))[0];
+        const self = all.find((t) => t.id === p.id)?.vec ?? (await embed([thread.title], "query"))[0];
+        if (!self) throw new HttpError(502, "embed returned no vector");
         // ponytail: brute-force cosine over every thread. Personal scale = thousands max;
         // swap in sqlite-vec / an ANN index only if this ever gets slow.
         const scored = all

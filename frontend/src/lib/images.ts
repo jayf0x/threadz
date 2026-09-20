@@ -14,8 +14,8 @@ export const formatRef = ({ hash, w, h }: ImageRef) => `img:${hash}#${w}x${h}`;
 
 // The #WxH part is optional (a hand-written ref still resolves, it just gets a default box).
 export const parseRef = (src: string): (Omit<ImageRef, "w" | "h"> & Partial<ImageRef>) | null => {
-  const m = /^img:([0-9a-f]{64})(?:#(\d+)x(\d+))?$/.exec(src);
-  return m ? { hash: m[1], ...(m[2] ? { w: +m[2], h: +m[3] } : {}) } : null;
+  const [, hash, w, h] = /^img:([0-9a-f]{64})(?:#(\d+)x(\d+))?$/.exec(src) ?? [];
+  return hash ? { hash, ...(w && h ? { w: +w, h: +h } : {}) } : null;
 };
 
 export const MAX_EDGE = 1600;

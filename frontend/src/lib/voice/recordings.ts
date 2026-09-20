@@ -113,14 +113,15 @@ export const findUnfinished = async (): Promise<{ recordingId: string; lineCount
   const recs = (await (await getDB()).getAll("recordings"))
     .filter((r) => r.status === "recording")
     .sort((a, b) => b.startedAt - a.startedAt);
-  if (!recs.length) return null;
-  const segs = await orderedSegments(recs[0].id);
+  const newest = recs[0];
+  if (!newest) return null;
+  const segs = await orderedSegments(newest.id);
   if (!segs.length) {
-    await discard(recs[0].id); // nothing captured — don't nag about it
+    await discard(newest.id); // nothing captured — don't nag about it
     return null;
   }
   const text = join(segs);
-  return { recordingId: recs[0].id, lineCount: segs.length, preview: text.slice(0, 140) };
+  return { recordingId: newest.id, lineCount: segs.length, preview: text.slice(0, 140) };
 };
 
 const pruneOld = async (): Promise<void> => {

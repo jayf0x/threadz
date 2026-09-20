@@ -19,7 +19,7 @@ export const imageView = (node: Node) => {
   let gone = false;
   const seen = new IntersectionObserver(
     ([e]) => {
-      if (!e.isIntersecting) return;
+      if (!e?.isIntersecting) return;
       seen.disconnect();
       resolveImage(ref.hash).then((u) => {
         if (!u) return; // not on this device (and main is out of reach): stays a grey box

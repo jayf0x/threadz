@@ -401,7 +401,7 @@ const boot = async (threadId: string, token: number) => {
         // every other frame (~16 Hz) is plenty for a meter
         if (levelSink && (frameCount++ & 1) === 0) {
           let sum = 0;
-          for (let i = 0; i < frame.length; i++) sum += frame[i] * frame[i];
+          for (const s of frame) sum += s * s;
           levelSink(Math.min(1, Math.sqrt(Math.sqrt(sum / frame.length) * 12)), probs.isSpeech > 0.5);
         }
       },

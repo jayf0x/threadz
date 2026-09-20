@@ -17,8 +17,10 @@ export const VoiceMeter = () => {
     setLevelSink((level, speaking) => {
       history.pop();
       history.unshift(level);
-      for (let i = 0; i < history.length; i++)
-        bars[CENTER_OUT[i]].style.transform = `scaleY(${0.18 + history[i] * 0.82})`;
+      for (const [i, v] of history.entries()) {
+        const bar = bars[CENTER_OUT[i] ?? -1];
+        if (bar) bar.style.transform = `scaleY(${0.18 + v * 0.82})`;
+      }
       root.dataset.speaking = String(speaking);
     });
     return () => setLevelSink(null);

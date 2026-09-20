@@ -21,9 +21,10 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
  * plumbing here. If it fails with an auth error, run `claude login` once.
  */
 export const askModel = async (opts: { system?: string; messages: ChatMessage[] }): Promise<{ text: string }> => {
+  const [only] = opts.messages;
   const prompt =
-    opts.messages.length === 1
-      ? opts.messages[0].content
+    only && opts.messages.length === 1
+      ? only.content
       : `${opts.messages
           .map((m) => `${m.role === "assistant" ? "Claude" : "User"}: ${m.content}`)
           .join("\n\n")}\n\n---\nReply as Claude to the final User message above.`;

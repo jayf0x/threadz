@@ -59,7 +59,10 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
     const batch = await unsyncedBatch();
     const base = await getBase();
     // A thread that was never on main (no base) needs no delete there.
-    const deletes = batch.trash.filter((x) => base[x.id]).map((x) => ({ id: x.id, baseHash: base[x.id] }));
+    const deletes = batch.trash.flatMap((x) => {
+      const baseHash = base[x.id];
+      return baseHash ? [{ id: x.id, baseHash }] : [];
+    });
     const pending = batch.threads.length + batch.messages.length + batch.trash.length;
 
     await pushImages(); // photos first: a note must never reach main ahead of its image
