@@ -1,10 +1,13 @@
-import { CornerDownLeft, Mic, Square } from "lucide-react";
-import { useRef, useState } from "react";
+import { CornerDownLeft, Mic, Settings2, Square } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
+import { VoiceMeter } from "@/components/VoiceMeter";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { useDraft } from "@/hooks/useDraft";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { cn } from "@/lib/cn";
+import type { VoiceState } from "@/lib/voice/engine";
 
 type Mode = "note" | "ask";
 const MODES: { value: Mode; label: string }[] = [
@@ -12,7 +15,21 @@ const MODES: { value: Mode; label: string }[] = [
   { value: "ask", label: "Ask Claude" },
 ];
 
-const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+// One quiet line under the box. Priority: what's wrong > what's blocking > what's being decoded > mic state.
+const voiceStatus = (v: VoiceState): { text: string; tone: "error" | "ghost" | "quiet" } | null => {
+  if (v.error) return { text: v.error, tone: "error" };
+  const m = v.model;
+  if (m.status === "loading" && (v.phase !== "idle" || v.pending))
+    return {
+      text: v.downloaded.includes(m.id) ? "Loading speech model…" : `Downloading speech model… ${m.pct}%`,
+      tone: "quiet",
+    };
+  if (v.partial) return { text: v.partial, tone: "ghost" };
+  if (v.phase === "starting") return { text: "Starting microphone…", tone: "quiet" };
+  if (v.phase === "listening") return { text: "Listening…", tone: "quiet" };
+  if (v.pending) return { text: "Transcribing…", tone: "quiet" };
+  return null;
+};
 
 // The capture line. Owns the draft + voice; the parent only hears "add this" / "ask this".
 export const Composer = ({
@@ -29,26 +46,31 @@ export const Composer = ({
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
 }) => {
   const [draft, setDraft] = useDraft(threadId);
-  const [fromVoice, setFromVoice] = useState(false);
+  const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
   const mode = canAsk ? picked : "note";
   const sending = useRef(false);
   const [commit, setCommit] = useState(true);
-  const voice = useVoiceCapture();
+  const [showVoice, setShowVoice] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
 
-  const live = voice.state === "recording" || voice.state === "transcribing";
-  const loading = voice.state === "loading-model" || voice.state === "transcribing";
+  // Finished dictation lands at the editor's caret (after any selection), wherever the user
+  // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,
+  // so it works with the keyboard closed. The editor's own onChange then feeds the draft, so
+  // persistence sees dictation exactly like typing.
+  const insert = useCallback(
+    (text: string) => {
+      fromVoice.current = true;
+      // editor not loaded yet: keep the text in the draft rather than lose it
+      if (!editor.current?.insertAtCaret(text)) setDraft((d) => (d ? `${d} ${text}` : text));
+    },
+    [setDraft],
+  );
 
-  const edit = (v: string) => {
-    setDraft(v);
-    setFromVoice(false);
-  };
-  const appendVoice = (text: string | null | undefined) => {
-    if (!text) return;
-    setDraft((d) => (d ? `${d} ${text}` : text));
-    setFromVoice(true);
-  };
+  const voice = useVoiceCapture(threadId, insert);
+  const listening = voice.phase === "listening";
+  const active = voice.phase !== "idle";
+  const status = voiceStatus(voice);
 
   // The draft is only cleared once the text is stored (or answered). A failure
   // leaves it in the box — and in localStorage — exactly as typed.
@@ -57,20 +79,20 @@ export const Composer = ({
     if (!text || busy || sending.current) return;
     sending.current = true; // ⌘↵ twice before `busy` renders must not send twice
     try {
-      const ok = mode === "note" ? await onNote(text, fromVoice ? { voice: true } : null) : await onAsk(text, commit);
+      const ok =
+        mode === "note" ? await onNote(text, fromVoice.current ? { voice: true } : null) : await onAsk(text, commit);
       if (ok) {
-        editor.current?.setMarkdown("");
-        setDraft("");
-        setFromVoice(false);
+        // Speech can land while the send is in flight — remove only what was sent, keep the rest.
+        const raw = (editor.current?.getMarkdown() ?? "").trim();
+        const at = raw.indexOf(text);
+        const rest = at < 0 ? raw : (raw.slice(0, at) + raw.slice(at + text.length)).trim();
+        editor.current?.setMarkdown(rest);
+        setDraft(rest);
+        fromVoice.current = rest !== "";
       }
     } finally {
       sending.current = false;
     }
-  };
-
-  const onMic = async () => {
-    if (live) appendVoice(await voice.stop());
-    else voice.start(threadId);
   };
 
   return (
@@ -81,33 +103,18 @@ export const Composer = ({
             Unfinished recording — {voice.recovery.lineCount} line{voice.recovery.lineCount === 1 ? "" : "s"} recovered
           </span>
           <div className="flex gap-1.5">
-            <Button size="sm" onClick={async () => appendVoice(await voice.recoverText())}>
+            <Button
+              size="sm"
+              onClick={async () => {
+                const text = await voice.recover();
+                if (text) insert(text);
+              }}
+            >
               Recover
             </Button>
-            <Button size="sm" variant="ghost" onClick={voice.discardRecovery}>
+            <Button size="sm" variant="ghost" onClick={voice.dismissRecovery}>
               Discard
             </Button>
-          </div>
-        </div>
-      )}
-
-      {live && (
-        <div className="border-b border-border px-6 py-2.5 md:px-10">
-          <div className="mx-auto max-w-3xl">
-            <p className="flex items-center justify-between font-mono text-[11px] uppercase tracking-widest text-destructive">
-              <span>
-                <span className="blink">●</span> {voice.state === "transcribing" ? "finishing" : "recording"}
-              </span>
-              <span className="text-muted-foreground">
-                {clock(voice.elapsedMs)} · {voice.segmentCount} line{voice.segmentCount === 1 ? "" : "s"}
-              </span>
-            </p>
-            <p className="mt-1 max-h-20 overflow-y-auto font-serif text-[15px] leading-relaxed">
-              {voice.tail.join(" ")} <span className="text-muted-foreground">{voice.partial}</span>
-              {!voice.tail.length && !voice.partial && (
-                <span className="text-muted-foreground">Listening — keep this screen on.</span>
-              )}
-            </p>
           </div>
         </div>
       )}
@@ -117,10 +124,10 @@ export const Composer = ({
           <MarkdownEditor
             handleRef={editor}
             value={draft}
-            onChange={edit}
+            onChange={setDraft}
             readOnly={busy}
             placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
-            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_48px_12px_14px]"
+            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px]"
             onKeyDownCapture={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -131,22 +138,41 @@ export const Composer = ({
           />
           <Button
             size="icon"
-            variant={live ? "danger" : "ghost"}
-            disabled={loading && !live}
-            aria-label={live ? "Stop recording" : "Record voice"}
-            className="absolute right-2 top-2"
-            onClick={onMic}
+            variant={active ? "danger" : "ghost"}
+            aria-label={active ? "Stop dictation" : "Dictate"}
+            aria-pressed={active}
+            className={cn("absolute right-2 top-2 gap-2 transition-[width]", listening && "w-[3.25rem]")}
+            onClick={voice.toggle}
+            // keep the caret where the user left it: don't let the tap blur/refocus the editor
+            onPointerDown={(e) => e.preventDefault()}
           >
-            {live ? <Square className="size-3.5 fill-current" /> : <Mic className={cn("size-4", loading && "blink")} />}
+            {listening ? (
+              <>
+                <VoiceMeter />
+                <Square className="size-3 fill-current" />
+              </>
+            ) : (
+              <Mic className={cn("size-4", active && "blink")} />
+            )}
           </Button>
         </div>
 
-        {voice.state === "loading-model" && (
-          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-            downloading speech model… {voice.progress}%
-          </p>
-        )}
-        {voice.error && <p className="mt-1 font-mono text-[11px] text-destructive">{voice.error}</p>}
+        <div className="mt-1 h-4" aria-live="polite">
+          {status && (
+            <p
+              className={cn(
+                "truncate font-mono text-[11px]",
+                status.tone === "error" && "text-destructive",
+                status.tone === "ghost" && "italic text-foreground/70",
+                status.tone === "quiet" && "text-muted-foreground",
+              )}
+            >
+              {status.text}
+            </p>
+          )}
+        </div>
+
+        {showVoice && <VoiceSettings />}
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           <fieldset className="flex gap-px border border-border p-px">
@@ -187,7 +213,18 @@ export const Composer = ({
             </label>
           )}
 
-          <Button className="ml-auto" disabled={busy || !draft.trim()} onClick={submit}>
+          <Button
+            className="ml-auto"
+            size="icon"
+            variant="ghost"
+            aria-label="Voice settings"
+            aria-expanded={showVoice}
+            onClick={() => setShowVoice((v) => !v)}
+          >
+            <Settings2 className="size-4" />
+          </Button>
+
+          <Button disabled={busy || !draft.trim()} onClick={submit}>
             {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
             {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
           </Button>

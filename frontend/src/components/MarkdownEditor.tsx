@@ -16,6 +16,7 @@ import type { Ctx } from "@milkdown/kit/ctx";
 import type { Node } from "@milkdown/kit/prose/model";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/cn";
+import { padForInsert } from "@/lib/voice/text";
 import "./markdown-editor.css";
 
 export type MarkdownEditorHandle = {
@@ -27,12 +28,18 @@ export type MarkdownEditorHandle = {
   /** Replace the content now. Needed after a submit: the debounced `onChange` may not have
    * caught up, so `value` can already equal the new text and never re-sync on its own. */
   setMarkdown: (markdown: string) => void;
+  /** Insert `text` at the caret (after any selection) with just the spaces it needs, leaving
+   * the caret after it and focus alone — so dictation works with the keyboard closed. If the
+   * user never put a caret in the editor, it goes at the end. False if the editor isn't
+   * loaded yet (caller should keep the text elsewhere). */
+  insertAtCaret: (text: string) => boolean;
 };
 
 type Loaded = {
   editor: { action: (fn: (ctx: Ctx) => void) => void };
   replaceAll: (markdown: string) => (ctx: Ctx) => void;
   focusEnd: () => void;
+  insertAtCaret: (text: string, touched: boolean) => void;
 };
 
 export const MarkdownEditor = ({
@@ -71,6 +78,9 @@ export const MarkdownEditor = ({
   const lastEmittedRef = useRef(value);
   // Mount-time inputs, read inside the async effect without becoming deps.
   const initial = useRef({ value, placeholder, formatOnType, readOnly });
+  // Has the user ever put a caret in here? Until then a programmatic insert goes to the end
+  // (ProseMirror's untouched selection sits at the very start, i.e. *before* a restored draft).
+  const touchedRef = useRef(false);
   const crepeRef = useRef<{ setReadonly: (v: boolean) => unknown; getMarkdown: () => string } | null>(null);
 
   useEffect(() => {
@@ -124,6 +134,18 @@ export const MarkdownEditor = ({
             view.dispatch(view.state.tr.setSelection(state.Selection.atEnd(view.state.doc)));
             view.focus();
           }),
+        insertAtCaret: (text, touched) =>
+          crepe.editor.action((ctx: Ctx) => {
+            const view = ctx.get(core.editorViewCtx) as EditorViewLike;
+            const { doc } = view.state;
+            const at = touched ? view.state.selection.to : state.Selection.atEnd(doc).to;
+            const around = (from: number, to: number) =>
+              doc.textBetween(Math.max(0, from), Math.min(doc.content.size, to), " ");
+            const pad = padForInsert(around(at - 1, at), around(at, at + 1), text);
+            const tr = view.state.tr.insertText(pad.text, at);
+            tr.setSelection(state.Selection.near(tr.doc.resolve(at + pad.caretOffset) as never));
+            view.dispatch(tr);
+          }),
       };
       await crepe.create();
       crepe.setReadonly(ro);
@@ -161,16 +183,46 @@ export const MarkdownEditor = ({
       lastEmittedRef.current = md;
       loaded.editor.action(loaded.replaceAll(md));
     },
+    insertAtCaret: (text) => {
+      const loaded = loadedRef.current;
+      if (!loaded) return false;
+      try {
+        loaded.insertAtCaret(text, touchedRef.current);
+        return true;
+      } catch {
+        return false; // handle is published just before crepe.create() finishes
+      }
+    },
     getMarkdown: () => crepeRef.current?.getMarkdown() ?? lastEmittedRef.current,
   }));
 
-  return <div ref={containerRef} className={cn("threadz-md", className)} onKeyDownCapture={onKeyDownCapture} />;
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: focus bubbling only records "the user has been here"; the div isn't a control
+    <div
+      ref={containerRef}
+      className={cn("threadz-md", className)}
+      onKeyDownCapture={onKeyDownCapture}
+      onFocus={() => {
+        touchedRef.current = true;
+      }}
+    />
+  );
+};
+
+type EditorTrLike = {
+  doc: { resolve: (pos: number) => unknown };
+  setSelection: (s: unknown) => unknown;
+  insertText: (t: string, from: number) => EditorTrLike;
 };
 
 // Minimal shape of the ProseMirror EditorView bits focusEnd touches — keeps
 // prose types (and their document-touching modules) out of the static graph.
 type EditorViewLike = {
-  state: { tr: { setSelection: (s: unknown) => unknown }; doc: Node; selection: unknown };
+  state: {
+    tr: { setSelection: (s: unknown) => unknown; insertText: (t: string, from: number) => EditorTrLike };
+    doc: Node;
+    selection: { to: number };
+  };
   dispatch: (tr: unknown) => void;
   focus: () => void;
 };

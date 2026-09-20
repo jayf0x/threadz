@@ -11,26 +11,41 @@ are in `README.md`.
 
 ## Streaming voice — shipped, residual device testing
 
-Implemented: VAD-segmented streaming (`@ricky0123/vad-web` Silero v5 → per-utterance
-whisper-tiny decode with streamed tokens → append-only IndexedDB segment log). One
-hook: `frontend/src/hooks/useVoiceCapture.ts`; storage: `frontend/src/lib/voice/
-recordings.ts`. Design + research: `.research/streaming-voice-plan.md`.
+Dictation, not "recording": tap the mic, speak, text lands **at the caret** in the composer
+(type "hello", speak "world", type "!" all compose). VAD (`@ricky0123/vad-web`, Silero v5,
+AudioWorklet) cuts utterances → one whisper decode per utterance in a worker → text is
+inserted and also appended to an IndexedDB segment log (crash recovery banner).
 
-- **iOS background limit (won't fix in the PWA).** WebKit suspends the mic +
-  AudioContext seconds after screen-lock / backgrounding. The hook holds a Screen
-  Wake Lock and flushes on `visibilitychange`, and the UI says "keep this screen on".
-  True screen-off recording would need a Capacitor/native shell.
-- **Needs HTTPS on the phone.** `getUserMedia` is blocked on `http://<lan-ip>` in iOS
-  WebKit — serve the frontend over TLS (or a tunnel / `localhost`) for on-device tests.
-- **Whisper model size.** Still `Xenova/whisper-tiny.en` (`DEFAULT_MODEL`, one constant).
-  Test tiny vs base on a real phone at hour-scale.
-- **Tuning constants** in the hook: `redemptionMs` (900), `INTERIM_MS` (2500),
-  `MAX_UTTER_S` (25). Adjust on-device if segments chop mid-sentence or the phone
-  runs hot.
-- **First-run model download** (~40MB whisper weights + onnxruntime wasm) is
-  runtime-cached — offline voice-to-text works only after one online use. VAD assets
-  (~2MB) are precached so capture works offline immediately after install.
-- Run the manual checklist in `.research/streaming-voice-plan.md` §9.
+Layout: engine `frontend/src/lib/voice/engine.ts` (plain module + external store, no React
+in the audio path), hook `hooks/useVoiceCapture.ts` (`useSyncExternalStore`), models/languages
+`lib/voice/models.ts` (one row = one new model/language), caret/spacing rules `lib/voice/text.ts`
+(tested), segment log `lib/voice/recordings.ts`. UI: `Composer` + `MarkdownEditor.insertAtCaret` (dictation inserts at the ProseMirror caret; no caret yet → end),
+`VoiceMeter` (5-bar level meter, direct DOM writes), `VoiceSettings` (model + language).
+
+Verified headless in Chrome with a fake mic (real VAD + real whisper): typed+dictated
+compose, Stop mid-utterance still flushes that speech, mid-text caret insert, model
+switch/download, blocked-download error path. **Still needs a real phone:**
+
+- **iOS background limit (won't fix in the PWA).** WebKit suspends the mic + AudioContext
+  seconds after screen-lock / backgrounding. We hold a Screen Wake Lock, release the mic when
+  the page is hidden and re-acquire on return. True screen-off needs a Capacitor/native shell.
+- **Needs HTTPS on the phone.** `getUserMedia` is blocked on `http://<lan-ip>` in iOS WebKit —
+  serve over TLS (or tunnel / `localhost`). The UI says so when it's blocked.
+- **Model choice.** Default is `whisper-tiny.en`. Test tiny vs base (and `small` on desktop) at
+  hour-scale on the phone; the gear next to *Add* switches models (selecting downloads it).
+- **Tuning constants** in `engine.ts`: `REDEMPTION_MS` (800, silence that ends an utterance),
+  `MAX_UTTER_S` (25), `IDLE_UNLOAD_MS` (3 min, worker terminated to free RAM). Adjust if
+  segments chop mid-sentence or the phone runs warm.
+- **First-run download** (~40MB for tiny + onnxruntime wasm) is runtime-cached; the model only
+  downloads when you first tap the mic or pick it in the panel (not on app open). Offline
+  dictation works only after one online use. VAD assets (~2MB) are precached.
+- **Multilingual quality.** `tiny` is weak outside English; try `base`/`small` for Dutch etc.
+
+Deferred:
+- A real central settings page (voice panel is a stopgap inline in the composer).
+- WebGPU decode where available (much cheaper per utterance; not on iOS).
+- Selecting a model while another is still downloading waits for the first to finish.
+- Downloaded-badge is a localStorage hint, not a Cache Storage check.
 
 ## Local mode — investigate after real-world testing
 

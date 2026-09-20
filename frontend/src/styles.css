@@ -104,3 +104,32 @@ body {
     animation: blink 1.4s ease-in-out infinite;
   }
 }
+
+/* Dictation level meter (components/VoiceMeter.tsx). The engine writes a transform per
+   bar straight into the DOM at ~16 Hz — compositor-only, no React renders, no canvas,
+   no rAF loop. Bars dim while the VAD hears silence and light up on speech. */
+.vu {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 1rem;
+}
+.vu > i {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.4;
+  transform: scaleY(0.18);
+  transition:
+    transform 90ms linear,
+    opacity 160ms;
+}
+.vu[data-speaking="true"] > i {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vu > i {
+    transition: none;
+  }
+}

@@ -15,6 +15,9 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // listen on 0.0.0.0 so the phone can load the app too; `.ts.net` lets `tailscale serve` (HTTPS) proxy in
   server: { host: true, allowedHosts: [".ts.net"] },
+  // vad-web and transformers.js are only reached on first mic tap; prebundle them so dev doesn't
+  // discover them late and reload the page mid-dictation
+  optimizeDeps: { include: ["@ricky0123/vad-web", "@huggingface/transformers"] },
   plugins: [
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
