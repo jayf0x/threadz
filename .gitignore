@@ -11,6 +11,7 @@ coverage/
 *.sqlite-*
 *.db
 *.db-*
+backend/images/*
 
 # secrets
 .env
