@@ -76,7 +76,11 @@ export const ThreadList = ({
             placeholder="Search  ( / )"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              setQuery("");
+              e.currentTarget.blur();
+            }}
           />
           <Select aria-label="Sort threads" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
             {SORTS.map((s) => (

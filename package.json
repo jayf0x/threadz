@@ -9,6 +9,8 @@
     "dev:frontend": "bun run --cwd frontend dev",
     "test": "bun test",
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
+    "lint": "biome check && bun run --cwd frontend lint:tokens",
+    "check": "bun run typecheck && bun run lint && bun test",
     "smoke": "bash scripts/smoke.sh"
   },
   "devDependencies": {

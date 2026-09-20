@@ -8,13 +8,19 @@ const shared =
   "placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => <input ref={ref} className={cn(shared, "h-9 px-3 text-sm", className)} {...props} />,
+  ({ className, ...props }, ref) => (
+    <input ref={ref} className={cn(shared, "h-9 px-3 text-sm", className)} {...props} />
+  ),
 );
 Input.displayName = "Input";
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   ({ className, ...props }, ref) => (
-    <textarea ref={ref} className={cn(shared, "resize-none px-3 py-2 text-[15px] leading-relaxed", className)} {...props} />
+    <textarea
+      ref={ref}
+      className={cn(shared, "resize-none px-3 py-2 text-[15px] leading-relaxed", className)}
+      {...props}
+    />
   ),
 );
 Textarea.displayName = "Textarea";

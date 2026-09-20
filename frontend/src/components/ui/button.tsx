@@ -31,12 +31,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", type = "button", ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(base, variants[variant], sizes[size], className)}
-      {...props}
-    />
+    <button ref={ref} type={type} className={cn(base, variants[variant], sizes[size], className)} {...props} />
   ),
 );
 Button.displayName = "Button";
