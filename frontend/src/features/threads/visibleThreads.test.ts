@@ -8,7 +8,6 @@ const t = (id: string, o: Partial<Thread> = {}): Thread => ({
   createdAt: 1,
   updatedAt: 1,
   renamedAt: null,
-  source: "pwa",
   description: null,
   tags: [],
   hasEmbedding: false,

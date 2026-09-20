@@ -4,7 +4,6 @@ export type Thread = {
   createdAt: number;
   updatedAt: number;
   renamedAt?: number | null; // last rename; newest wins on sync
-  source: string;
   description: string | null;
   tags: string[];
   hasEmbedding: boolean;
@@ -20,7 +19,6 @@ export type Message = {
   content: string;
   createdAt: number;
   seq: number;
-  source: string;
   meta: Record<string, unknown> | null;
   editedAt?: number | null; // null/absent = never edited
   edits?: Version[]; // previous texts, oldest first

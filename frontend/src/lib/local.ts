@@ -85,7 +85,6 @@ export const localApi: Api = {
       createdAt: ts,
       updatedAt: ts,
       renamedAt: null,
-      source: "pwa",
       description: null,
       tags: [],
       hasEmbedding: false,
@@ -100,7 +99,6 @@ export const localApi: Api = {
         content: seed.trim(),
         createdAt: ts,
         seq: 1,
-        source: "pwa",
         meta: null,
         dirty: 1,
       };
@@ -177,7 +175,6 @@ export const localApi: Api = {
       content: text,
       createdAt: ts,
       seq,
-      source: "pwa",
       meta: (meta as Record<string, unknown> | null | undefined) ?? null,
       dirty: 1,
     };
