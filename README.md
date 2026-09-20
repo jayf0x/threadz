@@ -99,6 +99,9 @@ frontend/src/
 
 ## API (JSON, except the image bytes)
 
+Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type or a bad `role` is a 400 `{ error }`.
+`GET /api/threads?q=` matches titles, descriptions, tags and note text; `%` and `_` in `q` are literal.
+
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ ok, model }` |
