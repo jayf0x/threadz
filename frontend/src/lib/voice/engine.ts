@@ -32,6 +32,7 @@ const MAX_UTTER_S = 25; // force-cut a monologue here so ≤ this much audio is 
 const SAMPLE_RATE = 16000;
 const REDEMPTION_MS = 800; // silence that ends an utterance — lower = snappier, higher = fewer mid-sentence cuts
 const IDLE_UNLOAD_MS = 3 * 60_000; // free the model's RAM after this long unused
+const VAD_BASE = `${import.meta.env.BASE_URL}vad/`; // self-hosted VAD assets (vite.config.ts copies them); base-aware for sub-path hosting
 const PREFS_KEY = "threadz.voice.prefs";
 const DOWNLOADED_KEY = "threadz.voice.downloaded";
 // ponytail: worker is terminated, not paused — reload from HTTP cache costs a few seconds. Raise
@@ -368,8 +369,8 @@ const boot = async (threadId: string, token: number) => {
 
     mic = await MicVAD.new({
       model: "v5",
-      baseAssetPath: "/vad/",
-      onnxWASMBasePath: "/vad/",
+      baseAssetPath: VAD_BASE,
+      onnxWASMBasePath: VAD_BASE,
       submitUserSpeechOnPause: true, // pause()/destroy() flush the in-progress utterance
       redemptionMs: REDEMPTION_MS,
       minSpeechMs: 250,

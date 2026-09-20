@@ -91,8 +91,6 @@ reported afterwards, never asked. Revisit once this has run against real use:
   insertion; no data is lost. A `createdAt` tiebreak in `getThreadMessages` would tidy it.
 - **Seed note dedupe.** If a live create-with-seed reaches main but its reply is lost, the
   device's retry creates its own seed note (different id) → one duplicate line at sync.
-- **Static hosting (GitHub Pages).** `VITE_LOCAL=1` works without a backend, but Pages serves
-  under `/<repo>/`: `/vad/…`, the icons/`favicon.ico` and the manifest `start_url`/`scope` need Vite `base`.
 - **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or
   paste an API key (billed, key lives on the phone).
 - **No in-app restore** of `trash` / safety copies / main's backups; they're plain JSON or

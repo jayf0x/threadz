@@ -11,7 +11,12 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 const vadAssets = "node_modules/@ricky0123/vad-web/dist";
 const ortAssets = "node_modules/onnxruntime-web/dist";
 
+// Served from "/" by default; the GitHub Pages build sets VITE_BASE=/threadz/ (see `bun run pages:build`).
+// Vite normalises the trailing slash and exposes it to app code as import.meta.env.BASE_URL.
+const base = process.env.VITE_BASE || "/";
+
 export default defineConfig({
+  base,
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // listen on 0.0.0.0 so the phone can load the app too; `.ts.net` lets `tailscale serve` (HTTPS) proxy in
   server: { host: true, allowedHosts: [".ts.net"] },
@@ -41,10 +46,11 @@ export default defineConfig({
         // are small so voice *capture* is usable offline right after that.
         runtimeCaching: [
           {
+            // Runs inside the service worker, so it cannot close over `base`: the SW scope *is* the base.
             urlPattern: ({ url }) =>
               url.pathname.endsWith(".wasm") ||
               url.pathname.endsWith(".onnx") ||
-              url.pathname.startsWith("/vad/") ||
+              url.pathname.startsWith(new URL("vad/", self.registration.scope).pathname) ||
               url.host === "huggingface.co",
             handler: "CacheFirst",
             options: { cacheName: "threadz-models", expiration: { maxEntries: 30 } },
@@ -58,9 +64,9 @@ export default defineConfig({
         background_color: "#f8f5ee",
         display: "standalone",
         icons: [
-          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-          { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: `${base}icon-192.png`, sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: `${base}icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: `${base}icon-maskable-512.png`, sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
     }),

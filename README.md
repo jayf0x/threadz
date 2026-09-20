@@ -10,7 +10,7 @@ on its own copy and syncs when you say so. See `backlog.md` for open questions a
 backend/    Bun + bun:sqlite service. HTTP API, model seam, metadata + embeddings.
 frontend/   React 19 + Vite + Tailwind v4 PWA. IndexedDB mirror + local copy, on-device whisper.
 tests/      bun test — invariant + HTTP e2e tests.
-scripts/    smoke.sh — curl-based end-to-end check against a running backend.
+scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-pages.sh (triggers the Pages workflow).
 ```
 
 ## Prerequisites
@@ -64,6 +64,32 @@ launchctl setenv OLLAMA_HOST "0.0.0.0:11434"   # then quit & reopen Ollama.app
 
 (Only needed because metadata/embeddings run backend→Ollama; the phone talks only to the
 backend.)
+
+## Publish to GitHub Pages
+
+Publishes a static, local-only build of the app to <https://jayf0x.github.io/threadz/>.
+
+One-time, in the GitHub repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+Then, from `main` (pushed; the workflow builds what is on GitHub), publish explicitly:
+
+```bash
+bun run pages:deploy        # = gh workflow run pages.yml --ref main
+gh run watch                # optional: follow it
+```
+
+The workflow (`.github/workflows/pages.yml`) only runs when triggered this way (or from the Actions tab); a push
+never publishes. It runs `bun run pages:build` (`VITE_LOCAL=1 VITE_BASE=/threadz/`, output `frontend/dist`). Run the
+same command locally to inspect the build. `VITE_BASE` (default `/`) is the only thing that moves the app under a
+sub-path; the normal dev/prod build is unchanged.
+
+What gets published: the same PWA in **local mode only**. There is no backend, no Claude/Ask, and no sync. Notes,
+photos and dictation settings live in that browser's storage for the `jayf0x.github.io` origin, so each browser or
+device has its own separate copy. Move data between them with **Export / Import** (JSON; photos are not in it).
+Voice dictation works: the voice-activity files are served from the app itself (`/threadz/vad/`), the whisper model is downloaded from Hugging Face on first use.
+
+Install: on iOS open the URL in Safari, Share → **Add to Home Screen** (use the installed app, not a Safari tab, so
+storage is not evicted after 7 days). On Chrome/Edge use the install icon in the address bar, or menu → Install Threadz.
 
 ## Test
 
@@ -149,7 +175,7 @@ the pill for the connection dialog.
   database (`THREADZ_BACKUPS` to relocate, `THREADZ_KEEP_BACKUPS`, default 20). To revert main,
   stop the backend and copy one over `threadz.sqlite`.
 - **Photos** are sent first, one idempotent `PUT` each, before the atomic sync (see below).
-- `VITE_LOCAL=1` builds default to local mode and skip the backend presence stream (static hosting).
+- `VITE_LOCAL=1` builds default to local mode and skip the backend presence stream (static hosting, see "Publish to GitHub Pages").
 
 ### Photos in notes
 

@@ -11,7 +11,9 @@
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
     "lint": "biome check --error-on-warnings && bun run --cwd frontend lint:tokens",
     "check": "bun run typecheck && bun run lint && bun test",
-    "smoke": "bash scripts/smoke.sh"
+    "smoke": "bash scripts/smoke.sh",
+    "pages:build": "VITE_LOCAL=1 VITE_BASE=/threadz/ bun run --cwd frontend build",
+    "pages:deploy": "bash scripts/deploy-pages.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
