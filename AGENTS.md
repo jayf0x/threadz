@@ -32,6 +32,14 @@ Typecheck passing says nothing about whether the UI renders.
   are tested — change with care, keep the hook contracts stable.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else.
+- **Local mode** (`lib/local.ts`, `replica.ts`, `handoff.ts`, `mode.ts`, `status.ts`): `threadz-local`
+  is the device's authoritative copy of main. While live it is kept warm by `pullMain()` (hash
+  compare vs `base`, fetch changed threads, union); `api.ts` `via()` auto-detaches to it when main is
+  truly unreachable. Never clear it wholesale, never auto-switch back to live, and move data only
+  through `handoff.syncNow()` (pull → one `/api/sync` push → verify → compare hashes). Merges are
+  unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable.
+  Keep `remoteApi` and `localApi` signature-identical. The old outbox is gone (drained once by
+  `replica.ts`); hooks no longer expose `outbox`/`send`.
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint — do not wire it into the UI.
 - Metadata generation is fire-and-forget on commit. No queues, no tiers.
 - Tests: a handful around the §3 invariants + one HTTP round-trip that cleans up after

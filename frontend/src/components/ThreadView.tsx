@@ -1,5 +1,5 @@
 import { format, isToday, isYesterday } from "date-fns";
-import { ArrowLeft, Mic, Send, X } from "lucide-react";
+import { ArrowLeft, Mic, X } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Composer } from "@/components/Composer";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { useThread } from "@/hooks/useThread";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
+import { useStatus } from "@/lib/status";
+import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
 
 type Entry = {
@@ -15,7 +17,7 @@ type Entry = {
   content: string;
   at: number;
   voice: boolean;
-  pending: boolean;
+  pending: boolean; // only this device has it so far
 };
 
 const dayLabel = (t: number) => {
@@ -32,7 +34,8 @@ export const ThreadView = ({
   onBack: () => void;
   onDeleted: () => void;
 }) => {
-  const { messages, outbox, busy, error, addMessage, ask, send } = useThread(threadId);
+  const { messages, unsynced, busy, error, addMessage, ask } = useThread(threadId);
+  const local = useStatus().mode === "local";
   const [thread, setThread] = useState<Thread | null>(null);
   const [scratch, setScratch] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -49,8 +52,12 @@ export const ThreadView = ({
   };
 
   const del = async () => {
-    if (!confirm("Delete this thread? This cannot be undone.")) return;
+    const warn = local
+      ? "Delete this thread? It leaves this device now and main on the next sync. A copy stays in your backups."
+      : "Delete this thread? This cannot be undone.";
+    if (!confirm(warn)) return;
     await api.deleteThread(threadId);
+    await pullThreads().catch(() => {}); // drop it from the index
     onDeleted();
   };
 
@@ -63,7 +70,7 @@ export const ThreadView = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the entry count changes
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, outbox.length, scratch]);
+  }, [messages.length, scratch]);
 
   const entries: Entry[] = [
     ...messages.map((m) => ({
@@ -72,15 +79,7 @@ export const ThreadView = ({
       content: m.content,
       at: m.createdAt,
       voice: !!m.meta?.voice,
-      pending: false,
-    })),
-    ...outbox.map((o) => ({
-      id: o.id,
-      who: "user" as const,
-      content: o.content,
-      at: o.createdAt,
-      voice: !!o.meta?.voice,
-      pending: true,
+      pending: unsynced.has(m.id),
     })),
   ];
 
@@ -113,6 +112,7 @@ export const ThreadView = ({
               <span>
                 {messages.length} entr{messages.length === 1 ? "y" : "ies"}
               </span>
+              {local && <span className="text-primary">Local copy</span>}
               {thread.tags.map((t) => (
                 <span key={t} className="normal-case tracking-normal">
                   #{t}
@@ -123,21 +123,16 @@ export const ThreadView = ({
         </div>
       </header>
 
-      {outbox.length > 0 && (
-        <div className="hatch rise flex items-center justify-between gap-3 border-b border-border px-6 py-2 md:px-10">
-          <span className="font-mono text-[11px] uppercase tracking-widest">{outbox.length} unsent</span>
-          <Button size="sm" disabled={busy} onClick={send}>
-            <Send className="size-3.5" /> {busy ? "Sending…" : "Send now"}
-          </Button>
-        </div>
+      {error && (
+        <p className="border-b border-destructive px-6 py-2 font-mono text-[11px] text-destructive md:px-10">{error}</p>
       )}
-
-      {error && <p className="border-b border-destructive px-6 py-2 font-mono text-[11px] text-destructive md:px-10">{error}</p>}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 md:px-10">
         <div className="mx-auto max-w-3xl pb-6">
           {days.length === 0 && !scratch && (
-            <p className="py-16 font-serif text-lg italic text-muted-foreground">Blank page. Write the first line below.</p>
+            <p className="py-16 font-serif text-lg italic text-muted-foreground">
+              Blank page. Write the first line below.
+            </p>
           )}
 
           {days.map((day) => (
@@ -168,7 +163,7 @@ export const ThreadView = ({
         </div>
       </div>
 
-      <Composer threadId={threadId} busy={busy} onNote={addMessage} onAsk={onAsk} />
+      <Composer threadId={threadId} busy={busy} canAsk={!local} onNote={addMessage} onAsk={onAsk} />
     </div>
   );
 };
@@ -195,7 +190,7 @@ const EntryRow = ({ entry: e, index }: { entry: Entry; index: number }) => {
                 <Mic className="size-2.5" /> voice
               </span>
             )}
-            {e.pending && <span className="blink">queued</span>}
+            {e.pending && <span>on device</span>}
           </p>
         )}
         <p className={cn("whitespace-pre-wrap", claude ? "font-serif text-base leading-relaxed" : "text-[15px]")}>

@@ -1,6 +1,8 @@
 import { api } from "./api";
-import { addToOutbox, getOutbox, putThread, putThreads, removeFromOutbox, replaceThreadMessages } from "./db";
-import type { OutboxItem } from "./types";
+import { putThread, putThreads, replaceThreadMessages } from "./db";
+import { updateMeta } from "./local";
+import { getMode } from "./mode";
+import { pullMain } from "./replica";
 
 // Cross-tab + in-app change signal. Any device/tab that mutates state broadcasts;
 // listeners re-pull from the mirror.
@@ -17,15 +19,23 @@ export const onChange = (fn: () => void) => {
   };
 };
 
-const emitChange = () => {
+export const emitChange = () => {
   local.dispatchEvent(new Event("change"));
   channel?.postMessage("change");
 };
+
+// Live: after refreshing the view, keep the device copy current too (best effort — going
+// offline later must find it warm). Local: the device store IS the source, nothing to copy.
+const keepReplicaWarm = () => (getMode() === "live" ? pullMain().catch(() => {}) : undefined);
 
 export const pullThreads = async () => {
   const threads = await api.listThreads();
   await putThreads(threads);
   emitChange();
+  if (getMode() === "live") {
+    await updateMeta(threads).catch(() => {});
+    await keepReplicaWarm();
+  }
   return threads;
 };
 
@@ -34,38 +44,6 @@ export const pullThread = async (id: string) => {
   await putThread(thread);
   await replaceThreadMessages(id, messages);
   emitChange();
+  await keepReplicaWarm();
   return { thread, messages };
-};
-
-// Queue an unsent draft. Never auto-sends — the user flushes explicitly.
-export const queueMessage = async (item: Omit<OutboxItem, "createdAt">) => {
-  await addToOutbox({ ...item, createdAt: Date.now() });
-  emitChange();
-};
-
-export const isOnline = () => navigator.onLine;
-
-// Explicit "send pending items". Pushes in creation order; stops at the first
-// failure and leaves the rest queued. Idempotency keys make a retry safe.
-export const flushOutbox = async (): Promise<{ sent: number; failed: number }> => {
-  const items = (await getOutbox()).sort((a, b) => a.createdAt - b.createdAt);
-  let sent = 0;
-  const touched = new Set<string>();
-  for (const item of items) {
-    try {
-      await api.appendMessage(item.threadId, { id: item.id, role: "user", content: item.content, meta: item.meta });
-      await removeFromOutbox(item.id);
-      touched.add(item.threadId);
-      sent++;
-    } catch (err) {
-      console.warn("[threadz] flush stopped:", err);
-      emitChange();
-      for (const id of touched) await pullThread(id).catch(() => {});
-      return { sent, failed: items.length - sent };
-    }
-  }
-  for (const id of touched) await pullThread(id).catch(() => {});
-  await pullThreads().catch(() => {});
-  emitChange();
-  return { sent, failed: 0 };
 };

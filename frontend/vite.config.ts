@@ -13,9 +13,10 @@ const ortAssets = "node_modules/onnxruntime-web/dist";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  server: { host: true }, // listen on 0.0.0.0 so the phone can load the app too
+  // listen on 0.0.0.0 so the phone can load the app too; `.ts.net` lets `tailscale serve` (HTTPS) proxy in
+  server: { host: true, allowedHosts: [".ts.net"] },
   plugins: [
-    react(),
+    react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     viteStaticCopy({
       targets: [
@@ -28,7 +29,7 @@ export default defineConfig({
     VitePWA({
       registerType: "prompt",
       workbox: {
-        globPatterns: ["**/*.{js,css,html}"],
+        globPatterns: ["**/*.{js,css,html,png}"],
         // Model assets (VAD onnx/wasm + the ~40MB whisper weights & onnxruntime
         // wasm) are fetched on first use and runtime-cached, not precached.
         // Voice-to-text works offline only after one online use; the VAD assets
@@ -51,7 +52,12 @@ export default defineConfig({
         theme_color: "#f8f5ee",
         background_color: "#f8f5ee",
         display: "standalone",
-        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
+        icons: [
+          { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
       },
     }),
   ],

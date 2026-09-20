@@ -1,12 +1,18 @@
 import {
+  allMessages,
   appendMessage,
+  applySync,
+  backupDb,
   createThread,
   deleteThread,
   getMessages,
   getThread,
+  heads,
   listThreads,
   messageJson,
+  type SyncPayload,
   threadEmbeddings,
+  threadHash,
   threadJson,
 } from "./db";
 import { generateMetadata, refreshMetadata } from "./metadata";
@@ -85,6 +91,35 @@ const server = Bun.serve({
     "/api/health": () => json({ ok: true, model: CLAUDE_MODEL }),
     "/api/presence": presence,
 
+    // Whole store in one consistent read: a device going local copies this, and verifies against it.
+    "/api/snapshot": () =>
+      json({
+        version: 1,
+        exportedAt: Date.now(),
+        threads: listThreads().map(threadJson),
+        messages: allMessages().map(messageJson),
+      }),
+
+    // Cheap "did main move?" check: one hash per thread + one for the whole store.
+    "/api/head": () => json(heads()),
+
+    // A device's offline work, applied atomically after a backup of main.
+    "/api/sync": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      POST: wrap(async (req) => {
+        const body = (await req.json()) as Partial<SyncPayload>;
+        const payload: SyncPayload = {
+          threads: body.threads ?? [],
+          messages: body.messages ?? [],
+          deletes: body.deletes ?? [],
+        };
+        if (payload.threads.length + payload.messages.length + payload.deletes.length > 0) backupDb();
+        const { touched, ...result } = applySync(payload);
+        for (const id of touched) refreshMetadata(id);
+        return json({ ...result, ...heads() });
+      }),
+    },
+
     "/api/threads": {
       OPTIONS: () => new Response(null, { headers: CORS }),
       GET: wrap((req) => {
@@ -93,10 +128,19 @@ const server = Bun.serve({
         return json(rows.map(threadJson));
       }),
       POST: wrap(async (req) => {
-        const body = (await req.json()) as { id?: string; title?: string; seed?: string; source?: string };
+        const body = (await req.json()) as {
+          id?: string;
+          title?: string;
+          seed?: string;
+          source?: string;
+          createdAt?: number;
+        };
         const id = body.id || crypto.randomUUID();
+        // Idempotent like appends: a device replaying a local thread may hit an id we already have.
+        const existing = getThread(id);
+        if (existing) return json(threadJson(existing));
         const title = (body.title || "Untitled thread").slice(0, 200);
-        const thread = createThread(id, title, body.source || "pwa");
+        const thread = createThread(id, title, body.source || "pwa", body.createdAt);
         if (body.seed?.trim()) {
           appendMessage({ id: crypto.randomUUID(), threadId: id, role: "user", content: body.seed.trim() });
           refreshMetadata(id);
@@ -109,7 +153,11 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       GET: wrap((_req, p) => {
         const thread = requireThread(p.id);
-        return json({ thread: threadJson(thread), messages: getMessages(p.id).map(messageJson) });
+        return json({
+          thread: threadJson(thread),
+          messages: getMessages(p.id).map(messageJson),
+          hash: threadHash(thread),
+        });
       }),
       DELETE: wrap((_req, p) => {
         requireThread(p.id);
@@ -128,6 +176,7 @@ const server = Bun.serve({
           content: string;
           meta?: unknown;
           source?: string;
+          createdAt?: number;
         };
         if (!body.id || !body.content?.trim()) throw new HttpError(400, "id and content are required");
         const { message, inserted } = appendMessage({
@@ -137,6 +186,7 @@ const server = Bun.serve({
           content: body.content.trim(),
           meta: body.meta,
           source: body.source,
+          createdAt: body.createdAt,
         });
         if (inserted) refreshMetadata(p.id);
         return json({ message: messageJson(message), inserted });

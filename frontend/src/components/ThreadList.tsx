@@ -1,6 +1,7 @@
 import { format, isThisYear } from "date-fns";
 import { Plus, RefreshCw, X } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { StatusPill } from "@/components/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { type Sort, useThreads } from "@/hooks/useThreads";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { getMode } from "@/lib/mode";
 import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
 
@@ -18,27 +20,11 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: "title", label: "A–Z" },
 ];
 
-const useOnline = () => {
-  const [online, setOnline] = useState(navigator.onLine);
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    addEventListener("online", on);
-    addEventListener("offline", off);
-    return () => {
-      removeEventListener("online", on);
-      removeEventListener("offline", off);
-    };
-  }, []);
-  return online;
-};
-
 // The index: every thread as a row in a ledger. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({ onOpen, selectedId }: { onOpen: (id: string) => void; selectedId?: string | null }) => {
   const { threads, query, setQuery, sort, setSort, syncing, error, refresh } = useThreads();
   const [creating, setCreating] = useState(false);
   const search = useRef<HTMLInputElement>(null);
-  const online = useOnline();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -111,17 +97,21 @@ export const ThreadList = ({ onOpen, selectedId }: { onOpen: (id: string) => voi
       </ul>
 
       <footer className="flex items-center justify-between border-t border-border px-5 py-3">
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={syncing}
-          title={online ? "Sync now" : "Offline — captures queue on this device"}
-          className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <span className={cn("size-2 rounded-full border", online ? "border-primary bg-primary" : "border-muted-foreground")} />
-          {online ? "Live" : "Offline"}
-          <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-3">
+          <StatusPill />
+          {getMode() === "live" && (
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={syncing}
+              aria-label="Sync now"
+              title="Sync now"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
+            </button>
+          )}
+        </div>
         <ThemeToggle />
       </footer>
     </div>
@@ -193,7 +183,13 @@ const NewThread = ({ onClose, onCreated }: { onClose: () => void; onCreated: (id
       }}
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
-      <Field label="Title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} error={error ?? undefined} />
+      <Field
+        label="Title"
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        error={error ?? undefined}
+      />
       <div className="flex flex-col gap-1.5">
         <label htmlFor="seed" className="text-sm font-medium">
           Seed <span className="font-normal text-muted-foreground">— optional notes to start from</span>

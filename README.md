@@ -41,6 +41,20 @@ Open `http://localhost:5173` on the Mac. On your phone, open
 `http://<mac-lan-ip>:5173` (same Wi-Fi). The backend URL is static — same host as the
 page on `:8787`, or `VITE_BACKEND_URL` at build time if it lives elsewhere.
 
+### HTTPS on the phone (needed for mic, offline, install)
+
+Browsers only enable the mic, the service worker and "Add to Home Screen" on a secure origin —
+`http://<lan-ip>:5173` on the phone gets none of them (`localhost` is exempt). Easiest fix is
+Tailscale on both devices; `tailscale serve` gives each port a real cert:
+
+```bash
+tailscale serve --bg --https=443 http://localhost:5173    # frontend
+tailscale serve --bg --https=8787 http://localhost:8787   # backend (page on https can't call http)
+```
+
+Then open `https://<mac>.<tailnet>.ts.net` on the phone. The default backend URL
+(`<page host>:8787`) already matches. For a production build, serve `frontend/dist` the same way.
+
 ### Reach the backend + Ollama from the phone
 
 The backend already binds `0.0.0.0`. Ollama does not by default:
@@ -65,14 +79,46 @@ bun run typecheck
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ ok, model }` |
+| GET | `/api/snapshot` | every thread + message in one read |
+| GET | `/api/head` | `{ head, threads: { id: hash } }` — cheap "did main move?" (hash = title + message ids) |
+| POST | `/api/sync` | a device's offline work `{ threads, messages, deletes:[{id,baseHash}] }`, applied atomically after a backup; a delete is refused if the thread changed since `baseHash` |
 | GET | `/api/threads?q=&sort=updated\|created\|title` | list / search |
-| POST | `/api/threads` | create `{ title, seed?, id? }` |
+| POST | `/api/threads` | create `{ title, seed?, id?, createdAt? }` — idempotent on `id` |
 | GET | `/api/threads/:id` | `{ thread, messages }` |
 | DELETE | `/api/threads/:id` | delete thread + messages |
-| POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta? }` |
+| POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
 | POST | `/api/threads/:id/metadata` | force regen tags/description/embedding |
 | GET | `/api/threads/:id/related` | top-5 cosine-similar threads — **v2, not used by the UI** |
+
+### Local mode (work with no backend)
+
+The footer pill shows where you are: **Live** (● reading/writing main) or **Local** (■ this device
+is the source of truth; a hatched bar runs across the top; a ping means main is reachable). Open
+the pill for the connection dialog.
+
+- **Auto-detach.** While live, the app keeps a full copy of main on the device (`threadz-local`,
+  plus per-thread hashes of what it last agreed on with main). If main becomes unreachable, the
+  app switches to that copy by itself — a failed write is retried on the device, never dropped —
+  and says so once. **Work locally** does the same on purpose. Claude ("Ask") needs main and is
+  disabled while local; local threads carry no tags/description until they reach main.
+- **Coming back is never automatic.** A "Main is reachable" banner offers Review; going live is a
+  button. It runs: pull main's changes into the device copy → send everything pending in one
+  request → re-read what was sent and prove every local note is on main → compare hashes. Only
+  when both sides agree does the mode flip. Every step is idempotent, so a crash or retry resumes.
+- **Conflicts** are resolved without asking; whichever side has content wins, so a delete never
+  destroys the other side's edits. Deleted on main + untouched here → removed here (copy kept).
+  Deleted on main + edited here → kept and re-sent. Deleted here + edited on main → brought back.
+  Notes merge by id (append-only), so they never conflict. The dialog reports what happened.
+- **Data safety.** The device store is never cleared wholesale; pending rows are flagged `dirty`
+  until main acknowledged them; a delete keeps a copy in `trash`; a rolling safety copy is taken
+  before every sync; drafts persist per thread. **Export/Import** writes/reads a JSON backup
+  (union merge). The app asks the browser for persistent storage; on iOS use the installed
+  home-screen app so Safari's 7-day eviction doesn't apply.
+- **Main backs itself up** before applying a sync: `backups/threadz-<time>.sqlite` next to the
+  database (`THREADZ_BACKUPS` to relocate, `THREADZ_KEEP_BACKUPS`, default 20). To revert main,
+  stop the backend and copy one over `threadz.sqlite`.
+- `VITE_LOCAL=1` builds default to local mode and skip the backend presence stream (static hosting).
 
 ### Load-bearing decisions
 

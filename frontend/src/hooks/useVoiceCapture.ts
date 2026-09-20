@@ -1,4 +1,4 @@
-import { MicVAD } from "@ricky0123/vad-web";
+import type { MicVAD } from "@ricky0123/vad-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   appendSegment,
@@ -34,8 +34,8 @@ const SAMPLE_RATE = 16000;
 const MAX_UTTER_S = 25; // force-cut a monologue this long so ≤ this much is ever unpersisted
 const MAX_UTTER_SAMPLES = MAX_UTTER_S * SAMPLE_RATE;
 const INTERIM_MS = 2500; // re-decode the in-progress utterance at most this often
-// ponytail: if a device runs hot, raise INTERIM_MS or gate interims behind a
-// "show live text" toggle — the confirmed-segment path doesn't depend on them.
+// Interims re-run whisper on CPU every INTERIM_MS while you talk — the biggest battery drain.
+// Off by default (`live`); the confirmed-segment path doesn't depend on them.
 
 // One long-lived worker for the whole app — the model loads once, not per recording.
 let worker: Worker | null = null;
@@ -47,7 +47,7 @@ const getWorker = () => {
 type State = "idle" | "recording" | "loading-model" | "transcribing";
 type Job = { audio: Float32Array; seq: number; final: boolean };
 
-export const useVoiceCapture = (model = DEFAULT_MODEL) => {
+export const useVoiceCapture = (model = DEFAULT_MODEL, { live = false } = {}) => {
   const [state, setState] = useState<State>("idle");
   const [progress, setProgress] = useState(0); // 0–100, model download only
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +249,9 @@ export const useVoiceCapture = (model = DEFAULT_MODEL) => {
         } catch {}
         await acquireWakeLock();
 
-        micRef.current = await MicVAD.new({
+        // Lazy: keeps vad-web + onnxruntime glue out of the startup bundle.
+        const { MicVAD: Vad } = await import("@ricky0123/vad-web");
+        micRef.current = await Vad.new({
           model: "v5",
           baseAssetPath: "/vad/",
           onnxWASMBasePath: "/vad/",
@@ -284,7 +286,7 @@ export const useVoiceCapture = (model = DEFAULT_MODEL) => {
               })();
               return;
             }
-            if (Date.now() - lastInterimRef.current >= INTERIM_MS) {
+            if (live && Date.now() - lastInterimRef.current >= INTERIM_MS) {
               lastInterimRef.current = Date.now();
               enqueue({ audio: snapshotUtterance(), seq: seqRef.current, final: false });
             }
@@ -315,7 +317,7 @@ export const useVoiceCapture = (model = DEFAULT_MODEL) => {
         setState("idle");
       }
     },
-    [state, acquireWakeLock, enqueue, snapshotUtterance],
+    [state, live, acquireWakeLock, enqueue, snapshotUtterance],
   );
 
   const stop = useCallback(async (): Promise<string> => {

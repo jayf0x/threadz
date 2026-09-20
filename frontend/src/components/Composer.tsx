@@ -1,7 +1,8 @@
 import { CornerDownLeft, Mic, Square } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import { useDraft } from "@/hooks/useDraft";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { cn } from "@/lib/cn";
 
@@ -17,17 +18,21 @@ const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms
 export const Composer = ({
   threadId,
   busy,
+  canAsk,
   onNote,
   onAsk,
 }: {
   threadId: string;
   busy: boolean;
-  onNote: (text: string, meta: { voice: true } | null) => void;
+  canAsk: boolean; // Claude runs on the backend; not available in local mode
+  onNote: (text: string, meta: { voice: true } | null) => Promise<boolean>;
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
 }) => {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useDraft(threadId);
   const [fromVoice, setFromVoice] = useState(false);
-  const [mode, setMode] = useState<Mode>("note");
+  const [picked, setMode] = useState<Mode>("note");
+  const mode = canAsk ? picked : "note";
+  const sending = useRef(false);
   const [commit, setCommit] = useState(true);
   const voice = useVoiceCapture();
 
@@ -44,14 +49,21 @@ export const Composer = ({
     setFromVoice(true);
   };
 
+  // The draft is only cleared once the text is stored (or answered). A failure
+  // leaves it in the box — and in localStorage — exactly as typed.
   const submit = async () => {
     const text = draft.trim();
-    if (!text || busy) return;
-    setDraft("");
-    setFromVoice(false);
-    if (mode === "note") return onNote(text, fromVoice ? { voice: true } : null);
-    // A failed ask must not eat what was typed.
-    if (!(await onAsk(text, commit))) setDraft((d) => d || text);
+    if (!text || busy || sending.current) return;
+    sending.current = true; // ⌘↵ twice before `busy` renders must not send twice
+    try {
+      const ok = mode === "note" ? await onNote(text, fromVoice ? { voice: true } : null) : await onAsk(text, commit);
+      if (ok) {
+        setDraft("");
+        setFromVoice(false);
+      }
+    } finally {
+      sending.current = false;
+    }
   };
 
   const onMic = async () => {
@@ -105,6 +117,7 @@ export const Composer = ({
             className="h-24 pr-12"
             placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
             value={draft}
+            readOnly={busy}
             onChange={(e) => edit(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -126,7 +139,9 @@ export const Composer = ({
         </div>
 
         {voice.state === "loading-model" && (
-          <p className="mt-1 font-mono text-[11px] text-muted-foreground">downloading speech model… {voice.progress}%</p>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+            downloading speech model… {voice.progress}%
+          </p>
         )}
         {voice.error && <p className="mt-1 font-mono text-[11px] text-destructive">{voice.error}</p>}
 
@@ -136,8 +151,10 @@ export const Composer = ({
             {MODES.map(({ value, label }) => (
               <label
                 key={value}
+                title={value === "ask" && !canAsk ? "Claude runs on the main backend — go live to ask." : undefined}
                 className={cn(
                   "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
+                  value === "ask" && !canAsk && "cursor-not-allowed opacity-45",
                   mode === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -146,6 +163,7 @@ export const Composer = ({
                   name="mode"
                   value={value}
                   checked={mode === value}
+                  disabled={value === "ask" && !canAsk}
                   onChange={() => setMode(value)}
                   className="sr-only"
                 />
@@ -156,7 +174,12 @@ export const Composer = ({
 
           {mode === "ask" && (
             <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-              <input type="checkbox" className="accent-primary" checked={commit} onChange={(e) => setCommit(e.target.checked)} />
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={commit}
+                onChange={(e) => setCommit(e.target.checked)}
+              />
               Keep exchange in thread
             </label>
           )}

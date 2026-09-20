@@ -28,3 +28,6 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+
+# main-side backups taken before each device sync
+backups/

@@ -1,9 +1,9 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Message, OutboxItem, Thread } from "./types";
 
-// Local mirror + outbox. The mirror is disposable: it gets wholesale-replaced
-// from the backend on fetch (no diffing, no merging). The outbox is the only
-// thing that holds unsynced user intent.
+// Local mirror: what the screens render. Disposable — wholesale-replaced from whichever
+// store is active (main when live, the device copy when local) on every pull. Nothing
+// user-authored lives here; that is lib/local.ts.
 interface ThreadzDB extends DBSchema {
   threads: { key: string; value: Thread };
   messages: { key: string; value: Message; indexes: { byThread: string } };
@@ -50,16 +50,14 @@ export const replaceThreadMessages = async (threadId: string, messages: Message[
   await tx.done;
 };
 
+export const getAllMessages = async () => (await getDB()).getAll("messages");
+
 export const getThreadMessages = async (threadId: string) => {
   const rows = await (await getDB()).getAllFromIndex("messages", "byThread", threadId);
   return rows.sort((a, b) => a.seq - b.seq);
 };
 
-// --- outbox ---
+// --- legacy outbox (drained into the device store by lib/replica.ts; nothing writes it any more) ---
 
-export const addToOutbox = async (item: OutboxItem) => (await getDB()).put("outbox", item);
 export const getOutbox = async () => (await getDB()).getAll("outbox");
-export const getThreadOutbox = async (threadId: string) =>
-  (await getDB()).getAllFromIndex("outbox", "byThread", threadId);
 export const removeFromOutbox = async (id: string) => (await getDB()).delete("outbox", id);
-export const updateOutboxItem = async (item: OutboxItem) => (await getDB()).put("outbox", item);

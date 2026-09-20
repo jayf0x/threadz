@@ -1,17 +1,38 @@
 import { useEffect, useState } from "react";
+import { ConnectionDialog } from "@/components/ConnectionDialog";
 import { ThreadList } from "@/components/ThreadList";
 import { ThreadView } from "@/components/ThreadView";
 import { cn } from "@/lib/cn";
+import { useStatus } from "@/lib/status";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
+// The shell is keyed by mode: switching stores remounts every view so nothing
+// keeps rendering the other store's data. Drafts survive (useDraft); the dialog
+// lives outside the key so a sync's result stays on screen across the switch.
 export const App = () => {
-  const [selected, setSelected] = useState<string | null>(null);
+  const { mode } = useStatus();
+  const [selected, setSelected] = useState<string | null>(null); // survives a mode switch: same thread, other store
+  return (
+    <>
+      {mode === "local" && (
+        <div
+          aria-hidden
+          className="hatch pointer-events-none fixed inset-x-0 top-0 z-40 h-1.5 border-b border-primary"
+        />
+      )}
+      <Shell key={mode} selected={selected} setSelected={setSelected} />
+      <ConnectionDialog />
+    </>
+  );
+};
 
+const Shell = ({ selected, setSelected }: { selected: string | null; setSelected: (id: string | null) => void }) => {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target as HTMLElement).closest("input,textarea,select") && setSelected(null);
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && !(e.target as HTMLElement).closest("input,textarea,select") && setSelected(null);
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, []);
+  }, [setSelected]);
 
   return (
     <div className="grid h-dvh lg:grid-cols-[23rem_1fr]">
@@ -20,7 +41,12 @@ export const App = () => {
       </aside>
       <main className={cn("min-h-0", !selected && "hidden lg:block")}>
         {selected ? (
-          <ThreadView key={selected} threadId={selected} onBack={() => setSelected(null)} onDeleted={() => setSelected(null)} />
+          <ThreadView
+            key={selected}
+            threadId={selected}
+            onBack={() => setSelected(null)}
+            onDeleted={() => setSelected(null)}
+          />
         ) : (
           <Blank />
         )}
