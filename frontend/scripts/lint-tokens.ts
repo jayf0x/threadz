@@ -18,8 +18,10 @@ const SCAN_EXTENSIONS = [".ts", ".tsx", ".css"];
 const ALLOW_MARKER = "twinz-allow-raw-color";
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/;
-const FUNC_COLOR_RE = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/;
-const ARBITRARY_CLASS_RE = /\b(?:bg|text|border|ring|fill|stroke)-\[(#|rgb|hsl|oklch)/;
+// `hsl(var(--x))` and friends read a token, which is the point; only literal channels are drift.
+const FUNC_COLOR_RE = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\((?!\s*(?:from\s+)?var\()/;
+const ARBITRARY_CLASS_RE =
+  /\b(?:bg|text|border|ring|fill|stroke|from|via|to|shadow|outline|decoration|accent|caret|divide)-\[(#|rgb|hsl|oklch)/;
 
 function walk(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -41,7 +43,7 @@ for (const file of walk(SRC)) {
     // `var(--foo)` and CSS variable *declarations* (`--foo: ...`) are fine —
     // only flag a color literal used directly as a value.
     const withoutVarRefs = line.replace(/var\(--[\w-]+\)/g, "");
-    if (HEX_RE.test(withoutVarRefs) || FUNC_COLOR_RE.test(withoutVarRefs) || ARBITRARY_CLASS_RE.test(line)) {
+    if (HEX_RE.test(withoutVarRefs) || FUNC_COLOR_RE.test(line) || ARBITRARY_CLASS_RE.test(line)) {
       offenders.push({ file: relative(ROOT, file), line: i + 1, text: line.trim() });
     }
   });
@@ -50,9 +52,7 @@ for (const file of walk(SRC)) {
 if (offenders.length > 0) {
   console.error(`lint:tokens — ${offenders.length} raw color literal(s) outside src/themes/:\n`);
   for (const o of offenders) console.error(`  ${o.file}:${o.line}  ${o.text}`);
-  console.error(
-    `\nUse a token (var(--primary), bg-primary, ...) or add "// ${ALLOW_MARKER}" if intentional.`,
-  );
+  console.error(`\nUse a token (var(--primary), bg-primary, ...) or add "// ${ALLOW_MARKER}" if intentional.`);
   process.exit(1);
 }
 

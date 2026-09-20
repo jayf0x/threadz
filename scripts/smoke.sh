@@ -24,12 +24,13 @@ COUNT=$(j "$BASE/api/threads/$TID" | grep -o '"role":' | wc -l | tr -d ' ')
 echo "  message count = $COUNT (expect 2: seed + 1 append)"
 [ "$COUNT" = "2" ] || { echo "FAIL: idempotency"; exit 1; }
 
-echo "force metadata (local Ollama gen + embed models):"
-j -XPOST "$BASE/api/threads/$TID/metadata" | grep -o '"tags":\[[^]]*\]'
+echo "force metadata (needs Ollama with the gen + embed models):"
+j -XPOST "$BASE/api/threads/$TID/metadata" | grep -o '"tags":\[[^]]*\]' || echo "  skipped: Ollama not reachable"
 echo
 
-echo "related (v2 endpoint, not used by the UI):"
-j "$BASE/api/threads/$TID/related"; echo
+echo "related (v2 endpoint, not used by the UI; needs Ollama):"
+j "$BASE/api/threads/$TID/related" || echo "  skipped: Ollama not reachable"
+echo
 
 echo "ask Claude (scratch, no commit) — needs a logged-in \`claude\` CLI:"
 curl -s -H 'content-type: application/json' -XPOST "$BASE/api/threads/$TID/ask" \

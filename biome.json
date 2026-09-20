@@ -27,5 +27,13 @@
     }
   },
   "overrides": [{ "includes": ["tests/**"], "linter": { "rules": { "style": { "noRestrictedImports": "off" } } } }],
-  "files": { "includes": ["backend/**/*.ts", "frontend/src/**/*.{ts,tsx}", "tests/**/*.ts"] }
+  "files": {
+    "includes": [
+      "backend/**/*.ts",
+      "frontend/src/**/*.{ts,tsx}",
+      "frontend/scripts/*.ts",
+      "frontend/vite.config.ts",
+      "tests/**/*.ts"
+    ]
+  }
 }

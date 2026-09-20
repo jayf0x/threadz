@@ -22,11 +22,7 @@ beforeEach(async () => {
 
 test("segments reassemble in seq order regardless of write order", async () => {
   const rec = await startRecording("thread-1");
-  const order = Array.from({ length: 200 }, (_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
+  const order = Array.from({ length: 200 }, (_, i) => (i * 73) % 200); // 73 is coprime with 200: a fixed scramble of 0..199
   for (const seq of order) await appendSegment(rec, seq, `w${seq}`);
 
   const expected = Array.from({ length: 200 }, (_, i) => `w${i}`).join(" ");
