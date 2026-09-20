@@ -658,3 +658,19 @@ describe("local mode (invariant: no data lost across sync)", () => {
     expect((await local.exportSnapshot()).threads).toHaveLength(before.threads.length);
   });
 });
+
+describe("version merge parity", () => {
+  test("frontend and backend mergeVersions agree (they must, or devices and main never converge)", async () => {
+    const { mergeVersions: back } = await import("../backend/db.ts");
+    const { mergeVersions: front } = await import("../frontend/src/lib/versions.ts");
+    const a = [
+      { content: "a", at: 1 },
+      { content: "c", at: 3 },
+    ];
+    const b = [
+      { content: "b", at: 2 },
+      { content: "c2", at: 3 },
+    ];
+    expect(front(a, b)).toEqual(back(a, b));
+  });
+});

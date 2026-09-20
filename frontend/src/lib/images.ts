@@ -18,7 +18,7 @@ export const parseRef = (src: string): (Omit<ImageRef, "w" | "h"> & Partial<Imag
   return hash ? { hash, ...(w && h ? { w: +w, h: +h } : {}) } : null;
 };
 
-export const MAX_EDGE = 1600;
+const MAX_EDGE = 1600;
 const QUALITY = 0.8;
 
 // Fit inside MAX_EDGE on the long side; never upscale.

@@ -244,8 +244,6 @@ export const unsyncedBatch = async () => {
   };
 };
 
-export const getLocalThread = async (id: string) => (await (await getDB()).get("threads", id)) ?? null;
-
 export const localMessageIds = async (threadId: string) =>
   new Set((await (await getDB()).getAllFromIndex("messages", "byThread", threadId)).map((m) => m.id));
 

@@ -26,9 +26,6 @@ export type Message = {
   edits?: Version[]; // previous texts, oldest first
 };
 
-// v2 — backend endpoint only, not surfaced in the UI (see api.ts note).
-export type Related = { id: string; title: string; score: number };
-
 // LEGACY: the old offline queue. Nothing writes it any more; leftovers are drained
 // into the local store on the first successful pull (see lib/replica.ts).
 export type OutboxItem = {

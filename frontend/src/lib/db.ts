@@ -50,8 +50,6 @@ export const replaceThreadMessages = async (threadId: string, messages: Message[
   await tx.done;
 };
 
-export const getAllMessages = async () => (await getDB()).getAll("messages");
-
 export const getThreadMessages = async (threadId: string) => {
   const rows = await (await getDB()).getAllFromIndex("messages", "byThread", threadId);
   return rows.sort((a, b) => a.seq - b.seq);
