@@ -20,13 +20,16 @@ Threadz — personal-brain POC. Read `brain-poc-handover.md` (vision + MUST inva
 | `bun test` | invariant + e2e tests |
 | `bun run smoke <url>` | curl e2e against a live backend |
 | `bun run typecheck` | both packages |
+| `bun run check` | typecheck + Biome (warnings fail) + token lint + tests = "green" |
 
-Verify before claiming done: `bun run typecheck`, then `bun run --cwd frontend build`.
+Verify before claiming done: `bun run check`, then `bun run --cwd frontend build`.
 Typecheck passing says nothing about whether the UI renders.
 
 ## Conventions
 
 - `export const` arrow functions. PascalCase component files, camelCase modules.
+- Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
+  `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
 - `frontend/src/lib/**` and the feature hooks (`frontend/src/features/*/use*.ts`) hold the invariant-critical logic and
   are tested — change with care, keep the hook contracts stable.

@@ -69,10 +69,34 @@ backend.)
 ## Test
 
 ```bash
+bun run check               # typecheck + Biome + token lint + tests: the definition of "green"
 bun test                    # invariants + HTTP e2e (stubbed model)
 bun run smoke http://localhost:8787   # real end-to-end against Ollama (+ Claude if logged in)
 bun run typecheck
 ```
+
+## Structure & conventions
+
+```
+backend/                 one Bun server, one SQLite file (server, db, model, metadata, images)
+tests/                   invariant + HTTP round-trip tests
+frontend/src/
+  components/ui/         generic primitives (Button, Field, Input, Select, Eyebrow…): no app imports
+  features/<name>/       one feature: components, its hooks, pure helpers, tests
+    index.ts             the feature's public surface, the only thing other features import
+  lib/                   device store, sync, api, voice engine: invariant-critical, tested
+  themes/                the only place raw colours live
+```
+
+- Import across folders with `@/…`; use `./` only inside the same folder. A feature never reaches into
+  another feature's files, only its `index.ts`.
+- Feature-specific hooks and helpers live in the feature; `lib/` has no React components.
+- File order: imports, types, the exported component, the pieces it calls (in call order), then constants.
+  In a component: state and derived values, handlers, effects last.
+- `strict` + `noUncheckedIndexedAccess`; `any` only behind a `biome-ignore` with a reason; narrow `unknown` at trust boundaries. Variants are
+  `Record<Variant, string>` maps or `as const` lists that types derive from.
+- Colours come from tokens only (`bun run --cwd frontend lint:tokens`); opt out of a genuine one-off with a
+  trailing `// twinz-allow-raw-color`.
 
 ## API (JSON, except the image bytes)
 
