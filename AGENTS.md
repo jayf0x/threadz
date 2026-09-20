@@ -27,6 +27,18 @@ Typecheck passing says nothing about whether the UI renders.
 
 ## Conventions
 
+**Enforced by `bun run check`** (don't work around these; fix the code): no `any` (a `biome-ignore` with a
+reason is the only exit), no `../` imports, no reaching into `features/<x>/*` except its `index.ts`, unused
+imports/vars, formatting + import order, raw colours (`// twinz-allow-raw-color` for a real one-off), and
+`noUncheckedIndexedAccess`.
+
+**By hand** (no tool catches these, so review for them): file order (imports, types, exported component,
+its helpers in call order, constants; in a component state, handlers, effects last); effects only for
+external sync, never derived state; a component that fetches or transforms data moves that into a hook or
+pure function; two copies is a note, three is an extraction; split a file past ~250 lines or 3 jobs;
+delete dead code and comments that restate the code.
+
+
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".

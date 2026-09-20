@@ -8,10 +8,24 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "suspicious": { "noExplicitAny": "warn" },
+      "suspicious": { "noExplicitAny": "error" },
       "correctness": { "noUnusedVariables": "warn", "noUnusedImports": "warn" },
-      "style": { "noNonNullAssertion": "off", "useImportType": "warn", "useExportType": "warn" }
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "warn",
+        "useExportType": "warn",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              { "group": ["../**"], "message": "Use the @/ alias across folders; ./ only within the same folder." },
+              { "group": ["@/features/*/*"], "message": "Import a feature through its index.ts, never its internals." }
+            ]
+          }
+        }
+      }
     }
   },
+  "overrides": [{ "includes": ["tests/**"], "linter": { "rules": { "style": { "noRestrictedImports": "off" } } } }],
   "files": { "includes": ["backend/**/*.ts", "frontend/src/**/*.{ts,tsx}", "tests/**/*.ts"] }
 }
