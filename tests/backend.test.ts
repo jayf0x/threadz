@@ -1,10 +1,11 @@
 import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives under frontend/
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // Isolated DB + stubbed model seam BEFORE importing anything that touches them.
 // Only the model seam is mocked — real db + real metadata logic run against it.
-const DB_PATH = `/tmp/threadz-test-${crypto.randomUUID()}.sqlite`;
+const DB_PATH = `${tmpdir()}/threadz-test-${crypto.randomUUID()}.sqlite`;
 process.env.THREADZ_DB = DB_PATH;
 const BACKUP_DIR = `${DB_PATH}.backups`;
 process.env.THREADZ_BACKUPS = BACKUP_DIR;
@@ -15,21 +16,16 @@ process.env.THREADZ_IMAGES = IMAGES_DIR;
 let genOutput: unknown = { description: "a real description of the thread", tags: ["alpha", "beta"] };
 const EMBED_VEC = Float32Array.from([0.1, -0.2, 0.3, 0.4, -0.5, 0.6, 0.7, -0.8]);
 
+// Spread the real module first so a new export in model.ts never breaks the suite (and HttpError stays real).
+const realModel = { ...(await import("../backend/model.ts")) }; // captured before the mock replaces it
 mock.module("../backend/model.ts", () => ({
+  ...realModel,
   CLAUDE_MODEL: "test-model",
   askModel: async (opts: { messages: { content: string }[] }) => ({
     text: `stub answer to: ${opts.messages.at(-1)?.content}`,
   }),
   ollamaGenerateJson: async () => genOutput,
   embed: async (texts: string[]) => texts.map(() => Float32Array.from(EMBED_VEC)),
-  HttpError: class HttpError extends Error {
-    constructor(
-      public status: number,
-      message: string,
-    ) {
-      super(message);
-    }
-  },
 }));
 
 const { appendMessage, backupDb, createThread, db, getMessages, getThread, threadEmbeddings } = await import(
@@ -37,13 +33,13 @@ const { appendMessage, backupDb, createThread, db, getMessages, getThread, threa
 );
 const { generateMetadata, looksLikeGarbage, MIN_WORDS, stripImages } = await import("../backend/metadata.ts");
 
-const BASE = "http://localhost:8788";
-let server: { stop: () => void };
+let BASE = "";
+let server: { port: number; stop: () => void };
 
 beforeAll(async () => {
-  process.env.PORT = "8788";
+  process.env.PORT = "0"; // any free port
   server = (await import("../backend/server.ts")).default as never;
-  await new Promise((r) => setTimeout(r, 50)); // let Bun.serve bind
+  BASE = `http://localhost:${server.port}`;
 });
 afterAll(() => {
   server?.stop?.();
@@ -318,6 +314,80 @@ describe("backend accepts what a syncing device sends", () => {
   });
 });
 
+describe("request bodies are validated (a wrong type is the caller's 400, never a 500)", () => {
+  const send = (method: string, path: string, body: string) =>
+    fetch(`${BASE}${path}`, { method, headers: { "content-type": "application/json" }, body });
+  const create = (title: string) =>
+    send("POST", "/api/threads", JSON.stringify({ title })).then((r) => r.json() as Promise<{ id: string }>);
+
+  test("non-JSON and wrong-typed bodies get a 400 with a short message", async () => {
+    const bad = await send("POST", "/api/threads", "not json");
+    expect([bad.status, (await bad.json()).error]).toEqual([400, "body must be valid JSON"]);
+
+    const wrongType = await send("POST", "/api/threads", JSON.stringify({ title: 5 }));
+    expect(wrongType.status).toBe(400);
+    expect((await wrongType.json()).error).toStartWith("title:");
+
+    const t = await create("__e2e__ validation");
+    const badRole = await send(
+      "POST",
+      `/api/threads/${t.id}/messages`,
+      JSON.stringify({ id: "x", content: "hi", role: "root" }),
+    );
+    expect(badRole.status).toBe(400);
+    expect((await badRole.json()).error).toStartWith("role:");
+    expect((await send("PATCH", `/api/threads/${t.id}`, JSON.stringify({ title: ["a"] }))).status).toBe(400);
+    expect((await send("POST", `/api/threads/${t.id}/ask`, JSON.stringify({ prompt: 1 }))).status).toBe(400);
+    expect(getMessages(t.id)).toHaveLength(0);
+
+    const syncBadRole = await send(
+      "POST",
+      "/api/sync",
+      JSON.stringify({ messages: [{ id: "m", threadId: t.id, content: "x", role: "system" }] }),
+    );
+    expect(syncBadRole.status).toBe(400);
+    expect((await send("POST", "/api/sync", "[]")).status).toBe(400);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("the handlers' own missing-field messages are unchanged", async () => {
+    const t = await create("__e2e__ missing");
+    const noContent = await send("POST", `/api/threads/${t.id}/messages`, "{}");
+    expect([noContent.status, (await noContent.json()).error]).toEqual([400, "id and content are required"]);
+    const noPrompt = await send("POST", `/api/threads/${t.id}/ask`, "{}");
+    expect((await noPrompt.json()).error).toBe("prompt is required");
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("responses carry no `source` field", async () => {
+    const t = await create("__e2e__ no-source");
+    await send("POST", `/api/threads/${t.id}/messages`, JSON.stringify({ id: crypto.randomUUID(), content: "hello" }));
+    const got = await fetch(`${BASE}/api/threads/${t.id}`).then((r) => r.json());
+    expect(got.thread).not.toHaveProperty("source");
+    expect(got.messages[0]).not.toHaveProperty("source");
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+});
+
+describe("search (LIKE wildcards in the query are literal)", () => {
+  const find = async (q: string) =>
+    (await fetch(`${BASE}/api/threads?q=${encodeURIComponent(q)}`).then((r) => r.json())) as { title: string }[];
+
+  test("`%` and `_` match themselves, not everything", async () => {
+    createThread("like-1", "100% done");
+    createThread("like-2", "1000 done");
+    expect((await find("100%")).map((t) => t.title)).toEqual(["100% done"]);
+    expect((await find("_")).map((t) => t.title)).not.toContain("1000 done");
+    expect(await find("%")).toHaveLength(1);
+  });
+
+  test("a thread is found by the text of one of its messages", async () => {
+    createThread("like-3", "plain title");
+    appendMessage({ id: crypto.randomUUID(), threadId: "like-3", role: "user", content: "the zebra crossed" });
+    expect((await find("zebra")).map((t) => t.title)).toEqual(["plain title"]);
+  });
+});
+
 describe("POST /api/sync (invariant: a device's work lands atomically, after a backup, never destroying unseen edits)", () => {
   const sync = (body: unknown) =>
     fetch(`${BASE}/api/sync`, {
@@ -393,7 +463,6 @@ describe("local mode (invariant: no data lost across sync)", () => {
       removeItem: (k: string) => void store.delete(k),
     },
   });
-  process.env.VITE_BACKEND_URL = BASE;
 
   let local: typeof import("../frontend/src/lib/local");
   let handoff: typeof import("../frontend/src/lib/handoff");
@@ -401,6 +470,7 @@ describe("local mode (invariant: no data lost across sync)", () => {
   let modeLib: typeof import("../frontend/src/lib/mode");
   let images: typeof import("../frontend/src/lib/images");
   beforeAll(async () => {
+    process.env.VITE_BACKEND_URL = BASE; // read when frontend/src/lib/config is first imported
     images = await import("../frontend/src/lib/images");
     local = await import("../frontend/src/lib/local");
     handoff = await import("../frontend/src/lib/handoff");

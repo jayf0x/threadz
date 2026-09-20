@@ -1,16 +1,16 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import type { Role, SyncPayload } from "./schemas";
 
-// Source-agnostic store: `source` is metadata on every row, never structure.
-// A future Obsidian / ~/.claude importer is just another writer with a different `source`.
+// Plain threads and messages. Databases made before `source` was dropped keep an inert
+// `source TEXT NOT NULL DEFAULT 'pwa'` column: inserts that omit it get the default, so no migration.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS threads (
   id          TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
-  source      TEXT NOT NULL DEFAULT 'pwa',
   description TEXT,
   tags        TEXT,                 -- JSON string[]
   embedding   BLOB,                 -- Float32Array of the thread summary
@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS messages (
   content     TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
   seq         INTEGER NOT NULL,     -- append order within the thread
-  source      TEXT NOT NULL DEFAULT 'pwa',
   meta        TEXT,                 -- JSON object, e.g. {"voice":true}
   edited_at   INTEGER,              -- when content was last edited (NULL = never)
   edits       TEXT                  -- JSON [{content, at}] previous versions, oldest first
@@ -36,7 +35,6 @@ export type ThreadRow = {
   title: string;
   created_at: number;
   updated_at: number;
-  source: string;
   description: string | null;
   tags: string | null;
   embedding: Uint8Array | null;
@@ -46,11 +44,10 @@ export type ThreadRow = {
 export type MessageRow = {
   id: string;
   thread_id: string;
-  role: string;
+  role: Role;
   content: string;
   created_at: number;
   seq: number;
-  source: string;
   meta: string | null;
   edited_at: number | null;
   edits: string | null;
@@ -89,15 +86,17 @@ export const listThreads = (q?: string, sort = "updated") => {
   const order =
     sort === "created" ? "created_at DESC" : sort === "title" ? "title COLLATE NOCASE ASC" : "updated_at DESC";
   if (q?.trim()) {
-    const like = `%${q.trim()}%`;
+    // `%` and `_` in the query are literal characters, not wildcards.
+    const like = `%${q.trim().replace(/[\\%_]/g, "\\$&")}%`;
     return db
-      .query<ThreadRow, [string, string, string]>(
+      .query<ThreadRow, [string]>(
         `SELECT DISTINCT t.* FROM threads t
          LEFT JOIN messages m ON m.thread_id = t.id
-         WHERE t.title LIKE ?1 OR t.description LIKE ?1 OR t.tags LIKE ?1 OR m.content LIKE ?1
+         WHERE t.title LIKE ?1 ESCAPE '\\' OR t.description LIKE ?1 ESCAPE '\\'
+            OR t.tags LIKE ?1 ESCAPE '\\' OR m.content LIKE ?1 ESCAPE '\\'
          ORDER BY ${order}`,
       )
-      .all(like, like, like);
+      .all(like);
   }
   return db.query<ThreadRow, []>(`SELECT * FROM threads ORDER BY ${order}`).all();
 };
@@ -110,15 +109,9 @@ export const getMessages = (threadId: string) =>
   db.query<MessageRow, [string]>("SELECT * FROM messages WHERE thread_id = ? ORDER BY seq").all(threadId);
 
 // `createdAt` lets a device that captured offline keep the original timestamp.
-export const createThread = (id: string, title: string, source = "pwa", createdAt?: number) => {
+export const createThread = (id: string, title: string, createdAt?: number) => {
   const ts = clampTs(createdAt);
-  db.query("INSERT INTO threads (id, title, created_at, updated_at, source) VALUES (?, ?, ?, ?, ?)").run(
-    id,
-    title,
-    ts,
-    ts,
-    source,
-  );
+  db.query("INSERT INTO threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)").run(id, title, ts, ts);
   return getThread(id)!;
 };
 
@@ -127,9 +120,8 @@ export const createThread = (id: string, title: string, source = "pwa", createdA
 export const appendMessage = (msg: {
   id: string;
   threadId: string;
-  role: string;
+  role: Role;
   content: string;
-  source?: string;
   meta?: unknown;
   createdAt?: number;
 }) => {
@@ -141,17 +133,8 @@ export const appendMessage = (msg: {
     .query<{ n: number }, [string]>("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM messages WHERE thread_id = ?")
     .get(msg.threadId)!;
   db.query(
-    "INSERT INTO messages (id, thread_id, role, content, created_at, seq, source, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  ).run(
-    msg.id,
-    msg.threadId,
-    msg.role,
-    msg.content,
-    ts,
-    seqRow.n,
-    msg.source || "pwa",
-    msg.meta ? JSON.stringify(msg.meta) : null,
-  );
+    "INSERT INTO messages (id, thread_id, role, content, created_at, seq, meta) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(msg.id, msg.threadId, msg.role, msg.content, ts, seqRow.n, msg.meta ? JSON.stringify(msg.meta) : null);
   db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(ts, msg.threadId);
   const message = db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(msg.id)!;
   return { message, inserted: true };
@@ -235,7 +218,6 @@ export const threadJson = (t: ThreadRow) => ({
   createdAt: t.created_at,
   updatedAt: t.updated_at,
   renamedAt: t.renamed_at,
-  source: t.source,
   description: t.description,
   tags: t.tags ? (JSON.parse(t.tags) as string[]) : [],
   hasEmbedding: !!t.embedding,
@@ -248,7 +230,6 @@ export const messageJson = (m: MessageRow) => ({
   content: m.content,
   createdAt: m.created_at,
   seq: m.seq,
-  source: m.source,
   meta: m.meta ? JSON.parse(m.meta) : null,
   editedAt: m.edited_at,
   edits: m.edits ? (JSON.parse(m.edits) as Version[]) : [],
@@ -305,22 +286,6 @@ export const backupDb = () => {
   return file;
 };
 
-export type SyncPayload = {
-  threads: { id: string; title: string; createdAt?: number; renamedAt?: number | null }[];
-  messages: {
-    id: string;
-    threadId: string;
-    role?: string;
-    content: string;
-    meta?: unknown;
-    createdAt?: number;
-    editedAt?: number | null;
-    edits?: Version[];
-  }[];
-  // Delete only if the thread is still exactly what the device last saw (`baseHash`).
-  deletes: { id: string; baseHash: string }[];
-};
-
 // Union-merge a device's offline work into main, all-or-nothing. Appends and creates are
 // idempotent; a delete never destroys edits the device hasn't seen ("content wins").
 export const applySync = db.transaction((p: SyncPayload) => {
@@ -333,7 +298,7 @@ export const applySync = db.transaction((p: SyncPayload) => {
 
   for (const t of p.threads) {
     if (!getThread(t.id)) {
-      createThread(t.id, (t.title || "Untitled thread").slice(0, 200), "pwa", t.createdAt);
+      createThread(t.id, (t.title || "Untitled thread").slice(0, 200), t.createdAt);
       created++;
     }
     if (t.renamedAt) renameThread(t.id, t.title, t.renamedAt);

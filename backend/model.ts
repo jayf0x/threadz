@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 // The one seam for model calls. A future Ollama/vLLM/Claude routing gateway
@@ -14,6 +17,13 @@ const GEN_MODEL = process.env.THREADZ_GEN_MODEL || "qwen3.5:0.8b";
 const EMBED_MODEL = process.env.THREADZ_EMBED_MODEL || "nomic-embed-text";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
+
+// A fresh empty directory (created once) to run Claude in: never the repo or the home directory.
+let sandbox: string | undefined;
+const sandboxDir = () => {
+  sandbox ??= mkdtempSync(join(tmpdir(), "threadz-claude-"));
+  return sandbox;
+};
 
 /**
  * The model seam. v1 routes to Claude via the Claude Code SDK, which uses the
@@ -37,8 +47,15 @@ export const askModel = async (opts: { system?: string; messages: ChatMessage[] 
         model: CLAUDE_MODEL,
         systemPrompt:
           opts.system ?? "You are a thinking partner inside a personal knowledge system. Be concise and concrete.",
-        allowedTools: [], // pure chat — no tools, no file access
-        settingSources: [], // ignore any project/user CLAUDE.md + settings
+        // The model must see only the thread text sent to it, never this device's files. `allowedTools`
+        // is just an auto-approve list, so the sandbox is: no built-in tools, deny anything else, an
+        // empty working directory, and none of the user's own Claude config (settings, MCP servers).
+        tools: [],
+        permissionMode: "dontAsk",
+        cwd: sandboxDir(),
+        settingSources: [],
+        strictMcpConfig: true,
+        mcpServers: {},
         maxTurns: 1,
         ...(process.env.CLAUDE_BIN ? { pathToClaudeCodeExecutable: process.env.CLAUDE_BIN } : {}),
       },

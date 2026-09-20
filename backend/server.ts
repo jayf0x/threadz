@@ -1,4 +1,5 @@
 import type { BunRequest } from "bun";
+import type { z } from "zod";
 import {
   allMessages,
   appendMessage,
@@ -13,7 +14,6 @@ import {
   listThreads,
   messageJson,
   renameThread,
-  type SyncPayload,
   threadEmbeddings,
   threadHash,
   threadJson,
@@ -21,6 +21,7 @@ import {
 import { imageFile, saveImage } from "./images";
 import { generateMetadata, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
+import { AppendMessage, AskThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -46,6 +47,21 @@ const wrap =
       return json({ error: String(err) }, 500);
     }
   };
+
+// Parse + validate a JSON body; a bad body is the caller's fault (400), never a 500.
+const readBody = async <S extends z.ZodType>(req: Request, schema: S): Promise<z.infer<S>> => {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    throw new HttpError(400, "body must be valid JSON");
+  }
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const issue = parsed.error.issues[0];
+  const path = issue?.path.map(String).join(".");
+  throw new HttpError(400, path ? `${path}: ${issue?.message}` : (issue?.message ?? "invalid body"));
+};
 
 const cosine = (a: ArrayLike<number>, b: ArrayLike<number>) => {
   let dot = 0;
@@ -115,12 +131,7 @@ const server = Bun.serve({
     "/api/sync": {
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req) => {
-        const body = (await req.json()) as Partial<SyncPayload>;
-        const payload: SyncPayload = {
-          threads: body.threads ?? [],
-          messages: body.messages ?? [],
-          deletes: body.deletes ?? [],
-        };
+        const payload = await readBody(req, SyncPayload);
         if (payload.threads.length + payload.messages.length + payload.deletes.length > 0) backupDb();
         const { touched, ...result } = applySync(payload);
         for (const id of touched) refreshMetadata(id);
@@ -151,19 +162,13 @@ const server = Bun.serve({
         return json(rows.map(threadJson));
       }),
       POST: wrap(async (req) => {
-        const body = (await req.json()) as {
-          id?: string;
-          title?: string;
-          seed?: string;
-          source?: string;
-          createdAt?: number;
-        };
+        const body = await readBody(req, CreateThread);
         const id = body.id || crypto.randomUUID();
         // Idempotent like appends: a device replaying a local thread may hit an id we already have.
         const existing = getThread(id);
         if (existing) return json(threadJson(existing));
         const title = (body.title || "Untitled thread").slice(0, 200);
-        const thread = createThread(id, title, body.source || "pwa", body.createdAt);
+        const thread = createThread(id, title, body.createdAt);
         if (body.seed?.trim()) {
           appendMessage({ id: crypto.randomUUID(), threadId: id, role: "user", content: body.seed.trim() });
           refreshMetadata(id);
@@ -184,7 +189,7 @@ const server = Bun.serve({
       }),
       PATCH: wrap(async (req, p) => {
         requireThread(p.id);
-        const body = (await req.json()) as { title?: string; renamedAt?: number };
+        const body = await readBody(req, RenameThread);
         if (!body.title?.trim()) throw new HttpError(400, "title is required");
         const thread = renameThread(p.id, body.title, body.renamedAt)!;
         refreshMetadata(p.id);
@@ -201,14 +206,7 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req, p) => {
         requireThread(p.id);
-        const body = (await req.json()) as {
-          id: string;
-          role?: "user" | "assistant";
-          content: string;
-          meta?: unknown;
-          source?: string;
-          createdAt?: number;
-        };
+        const body = await readBody(req, AppendMessage);
         if (!body.id || !body.content?.trim()) throw new HttpError(400, "id and content are required");
         const { message, inserted } = appendMessage({
           id: body.id,
@@ -216,7 +214,6 @@ const server = Bun.serve({
           role: body.role || "user",
           content: body.content.trim(),
           meta: body.meta,
-          source: body.source,
           createdAt: body.createdAt,
         });
         if (inserted) refreshMetadata(p.id);
@@ -229,7 +226,7 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       PATCH: wrap(async (req, p) => {
         requireThread(p.id);
-        const body = (await req.json()) as { content?: string; editedAt?: number };
+        const body = await readBody(req, EditMessage);
         if (!body.content?.trim()) throw new HttpError(400, "content is required");
         const at = Math.min(body.editedAt || Date.now(), Date.now());
         const message = editMessage(p.mid, [{ content: body.content.trim(), at }]);
@@ -243,16 +240,11 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req, p) => {
         requireThread(p.id);
-        const body = (await req.json()) as {
-          prompt: string;
-          commit?: boolean;
-          userMessageId?: string;
-          assistantMessageId?: string;
-        };
+        const body = await readBody(req, AskThread);
         if (!body.prompt?.trim()) throw new HttpError(400, "prompt is required");
 
         const history: ChatMessage[] = getMessages(p.id).map((m) => ({
-          role: m.role === "assistant" ? "assistant" : "user",
+          role: m.role,
           content: m.content,
         }));
         const messages: ChatMessage[] = [...history, { role: "user", content: body.prompt.trim() }];
@@ -276,7 +268,6 @@ const server = Bun.serve({
             threadId: p.id,
             role: "assistant",
             content: text,
-            source: "claude",
           });
           committed = true;
           refreshMetadata(p.id);
