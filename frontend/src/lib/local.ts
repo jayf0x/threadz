@@ -208,7 +208,7 @@ export const localApi: Api = {
     return { message: strip(message) };
   },
 
-  // No Claude on the device. Local mode is capture-only; the UI disables Ask.
+  // No Claude on the device. Local mode is capture-only; the UI does not offer Ask.
   ask: async () => {
     throw new ApiError(503, "Claude needs the main backend — go live to ask.");
   },

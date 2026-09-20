@@ -43,7 +43,7 @@ export const Composer = ({
 }: {
   threadId: string;
   busy: boolean;
-  canAsk: boolean; // Claude runs on the backend; not available in local mode
+  canAsk: boolean; // Claude runs on the backend; in local mode the Ask toggle is not offered
   onNote: (text: string, meta: { voice: true } | null) => Promise<boolean>;
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
 }) => {
@@ -216,31 +216,32 @@ export const Composer = ({
         {showVoice && <VoiceSettings />}
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <fieldset className="flex gap-px border border-border p-px">
-            <legend className="sr-only">Entry type</legend>
-            {MODES.map(({ value, label }) => (
-              <label
-                key={value}
-                title={value === "ask" && !canAsk ? "Claude runs on the main backend — go live to ask." : undefined}
-                className={cn(
-                  "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
-                  value === "ask" && !canAsk && "cursor-not-allowed opacity-45",
-                  mode === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="mode"
-                  value={value}
-                  checked={mode === value}
-                  disabled={value === "ask" && !canAsk}
-                  onChange={() => setMode(value)}
-                  className="sr-only"
-                />
-                {label}
-              </label>
-            ))}
-          </fieldset>
+          {canAsk && (
+            <fieldset className="flex gap-px border border-border p-px">
+              <legend className="sr-only">Entry type</legend>
+              {MODES.map(({ value, label }) => (
+                <label
+                  key={value}
+                  className={cn(
+                    "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
+                    mode === value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="mode"
+                    value={value}
+                    checked={mode === value}
+                    onChange={() => setMode(value)}
+                    className="sr-only"
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+          )}
 
           {mode === "ask" && (
             <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">

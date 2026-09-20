@@ -18,7 +18,7 @@ export const StatusPill = () => {
       : "Working on this device. Main is not reachable."
     : up
       ? "Live on main. Open to work locally."
-      : "Main is unreachable — captures queue as unsent. Open for options.";
+      : "Main is unreachable. Open for options.";
 
   return (
     <button
