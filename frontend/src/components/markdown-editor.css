@@ -1,0 +1,121 @@
+/* Milkdown/Crepe styling for <MarkdownEditor>. Import only Crepe's
+ * structural CSS (never a color theme — raw colors are banned, see lint:tokens)
+ * and point its `--crepe-color-*` vars at the semantic tokens. Markdown does the styling; this only sets a calm type
+ * scale so # / ## / ### read as a hierarchy. */
+@import "@milkdown/crepe/theme/common/reset.css";
+@import "@milkdown/crepe/theme/common/prosemirror.css";
+@import "@milkdown/crepe/theme/common/list-item.css";
+@import "@milkdown/crepe/theme/common/placeholder.css";
+
+.threadz-md {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--foreground);
+  --crepe-color-surface: var(--card);
+  --crepe-color-surface-low: var(--muted);
+  --crepe-color-on-surface: var(--foreground);
+  --crepe-color-on-surface-variant: var(--muted-foreground);
+  --crepe-color-outline: var(--border);
+  --crepe-color-primary: var(--primary);
+  --crepe-color-secondary: var(--secondary);
+  --crepe-color-on-secondary: var(--secondary-foreground);
+  --crepe-color-inverse: var(--foreground);
+  --crepe-color-on-inverse: var(--background);
+  --crepe-color-inline-code: var(--accent-foreground);
+  --crepe-color-inline-area: var(--accent);
+  --crepe-color-error: var(--destructive);
+  --crepe-color-hover: var(--accent);
+  --crepe-color-selected: color-mix(in oklab, var(--ring) 30%, transparent);
+  --crepe-shadow-1: none;
+  --crepe-shadow-2: none;
+  --crepe-font-title: inherit;
+  --crepe-font-default: inherit;
+  --crepe-font-code: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --crepe-base-font-size: 15px;
+}
+
+.threadz-md {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--md-min-height, 100%);
+}
+
+/* Flex chain so the editable area fills the pane: a click anywhere below the
+ * text still lands in the editor instead of dead space. */
+.threadz-md .milkdown {
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.threadz-md .milkdown .ProseMirror {
+  padding: var(--md-padding, 14px 18px 40px);
+  max-height: var(--md-max-height, none);
+  overflow-y: auto;
+  flex: 1;
+  outline: none;
+  caret-color: var(--foreground);
+}
+
+.threadz-md .milkdown .ProseMirror > :first-child { margin-top: 0; }
+
+/* Rhythm follows Crepe's own guide (reset.css: line-height 1.5, small
+ * vertical padding on blocks) scaled to our 13px base. Its defaults were
+ * tuned for a 16px full-page editor: 32px list rows and 24–32px heading
+ * margins read as double-spaced in a widget. */
+.threadz-md .milkdown .ProseMirror p { margin: 0; padding: 2px 0; line-height: 1.5; }
+
+.threadz-md .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 2px 0;
+  margin: 0.8em 0 0.15em;
+}
+.threadz-md .milkdown .ProseMirror h1 { font-size: 1.5em; letter-spacing: -0.01em; }
+.threadz-md .milkdown .ProseMirror h2 { font-size: 1.25em; }
+.threadz-md .milkdown .ProseMirror h3 { font-size: 1.1em; }
+.threadz-md .milkdown .ProseMirror :is(h4, h5, h6) { font-size: 1em; color: var(--muted-foreground); }
+
+/* Crepe fixes list label rows at 32px; match the paragraph row instead. */
+.threadz-md .milkdown .milkdown-list-item-block li { gap: 6px; }
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper,
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .label {
+  height: calc(1.5em + 4px);
+}
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .label { padding: 2px 0; }
+
+.threadz-md .milkdown .ProseMirror blockquote {
+  margin: 0.25em 0;
+  padding-left: 0.85em;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+.threadz-md .milkdown .ProseMirror pre {
+  font-family: var(--crepe-font-code);
+  font-size: 0.9em;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0.5em 0;
+  white-space: pre-wrap;
+}
+.threadz-md .milkdown .ProseMirror hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+.threadz-md .milkdown .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  text-underline-offset: 2px;
+}
+
+/* List markers ship at ≈ --border — too faint; lift to the text color. */
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper,
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper svg {
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+  fill: color-mix(in oklab, var(--foreground) 80%, transparent);
+}

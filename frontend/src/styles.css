@@ -77,11 +77,6 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
-/* Pending / unsent things look like a pencilled draft: hatched paper. */
-.hatch {
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 7px);
-}
-
 @keyframes rise {
   from {
     opacity: 0;

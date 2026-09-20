@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS threads (
   source      TEXT NOT NULL DEFAULT 'pwa',
   description TEXT,
   tags        TEXT,                 -- JSON string[]
-  embedding   BLOB                  -- Float32Array of the thread summary
+  embedding   BLOB,                 -- Float32Array of the thread summary
+  renamed_at  INTEGER               -- last rename; newest wins when a device syncs a title
 );
 CREATE TABLE IF NOT EXISTS messages (
   id          TEXT PRIMARY KEY,     -- client-generated UUID == idempotency key
@@ -23,7 +24,9 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at  INTEGER NOT NULL,
   seq         INTEGER NOT NULL,     -- append order within the thread
   source      TEXT NOT NULL DEFAULT 'pwa',
-  meta        TEXT                  -- JSON object, e.g. {"voice":true}
+  meta        TEXT,                 -- JSON object, e.g. {"voice":true}
+  edited_at   INTEGER,              -- when content was last edited (NULL = never)
+  edits       TEXT                  -- JSON [{content, at}] previous versions, oldest first
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, seq);
 `;
@@ -37,6 +40,7 @@ export type ThreadRow = {
   description: string | null;
   tags: string | null;
   embedding: Uint8Array | null;
+  renamed_at: number | null;
 };
 
 export type MessageRow = {
@@ -48,12 +52,30 @@ export type MessageRow = {
   seq: number;
   source: string;
   meta: string | null;
+  edited_at: number | null;
+  edits: string | null;
 };
+
+export type Version = { content: string; at: number };
 
 const DB_PATH = process.env.THREADZ_DB || "threadz.sqlite";
 export const db = new Database(DB_PATH, { create: true });
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 db.exec(SCHEMA);
+
+// Databases made before edit/rename existed: add the columns once.
+const addColumn = (table: string, col: string, type: string) => {
+  if (
+    !db
+      .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+      .all()
+      .some((c) => c.name === col)
+  )
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+};
+addColumn("threads", "renamed_at", "INTEGER");
+addColumn("messages", "edited_at", "INTEGER");
+addColumn("messages", "edits", "TEXT");
 
 export const now = () => Date.now();
 
@@ -148,6 +170,54 @@ export const deleteThread = (id: string) => {
   db.query("DELETE FROM threads WHERE id = ?").run(id);
 };
 
+// Newest rename wins. A device syncing an older title never clobbers a newer one on main.
+export const renameThread = (id: string, title: string, renamedAt?: number) => {
+  const t = getThread(id);
+  const at = clampTs(renamedAt);
+  const clean = title.trim().slice(0, 200);
+  if (!t || !clean || at <= (t.renamed_at ?? 0)) return t;
+  db.query("UPDATE threads SET title = ?, renamed_at = ?, updated_at = MAX(updated_at, ?) WHERE id = ?").run(
+    clean,
+    at,
+    at,
+    id,
+  );
+  return getThread(id)!;
+};
+
+// Every version of a message (previous ones + the current one) merged with another set,
+// newest wins, the rest kept as history. Symmetric, so two devices converge whatever the
+// order they sync in. `at` is the identity of a version.
+export const mergeVersions = (a: Version[], b: Version[]) => {
+  const byAt = new Map<number, Version>();
+  for (const v of [...a, ...b]) byAt.set(v.at, v);
+  const all = [...byAt.values()].sort((x, y) => x.at - y.at);
+  return { current: all.at(-1)!, edits: all.slice(0, -1) };
+};
+
+const versionsOf = (m: MessageRow): Version[] => [
+  ...(m.edits ? (JSON.parse(m.edits) as Version[]) : []),
+  { content: m.content, at: m.edited_at ?? m.created_at },
+];
+
+// Edit a message (`incoming` = its new version, plus history when it comes from a device).
+export const editMessage = (id: string, incoming: Version[]) => {
+  const m = db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id);
+  if (!m) return null;
+  if (incoming.length === 1 && incoming[0].content === m.content) return m; // nothing changed
+  const { current, edits } = mergeVersions(versionsOf(m), incoming);
+  const at = m.edited_at ?? m.created_at;
+  if (current.at === at && current.content === m.content && edits.length === versionsOf(m).length - 1) return m;
+  db.query("UPDATE messages SET content = ?, edited_at = ?, edits = ? WHERE id = ?").run(
+    current.content,
+    current.at,
+    edits.length ? JSON.stringify(edits) : null,
+    id,
+  );
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(current.at, m.thread_id);
+  return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
+};
+
 export const threadEmbeddings = () =>
   db
     .query<{ id: string; title: string; embedding: Uint8Array }, []>(
@@ -163,6 +233,7 @@ export const threadJson = (t: ThreadRow) => ({
   title: t.title,
   createdAt: t.created_at,
   updatedAt: t.updated_at,
+  renamedAt: t.renamed_at,
   source: t.source,
   description: t.description,
   tags: t.tags ? (JSON.parse(t.tags) as string[]) : [],
@@ -178,18 +249,22 @@ export const messageJson = (m: MessageRow) => ({
   seq: m.seq,
   source: m.source,
   meta: m.meta ? JSON.parse(m.meta) : null,
+  editedAt: m.edited_at,
+  edits: m.edits ? (JSON.parse(m.edits) as Version[]) : [],
 });
 
 // --- change detection + sync ---------------------------------------------------
 
-// What a device compares to know whether main moved. Title + message ids only:
+// What a device compares to know whether main moved. Title + message ids + edit times only:
 // description/tags are generated asynchronously after every append and would make
 // main look like it "keeps changing" right after a sync.
 export const threadHash = (t: ThreadRow) => {
   const ids = db
-    .query<{ id: string }, [string]>("SELECT id FROM messages WHERE thread_id = ? ORDER BY id")
+    .query<{ id: string; edited_at: number | null }, [string]>(
+      "SELECT id, edited_at FROM messages WHERE thread_id = ? ORDER BY id",
+    )
     .all(t.id)
-    .map((r) => r.id);
+    .map((r) => (r.edited_at ? `${r.id}@${r.edited_at}` : r.id));
   return new Bun.CryptoHasher("sha1").update(`${t.id}\n${t.title}\n${ids.join(",")}`).digest("hex");
 };
 
@@ -229,8 +304,17 @@ export const backupDb = () => {
 };
 
 export type SyncPayload = {
-  threads: { id: string; title: string; createdAt?: number }[];
-  messages: { id: string; threadId: string; role?: string; content: string; meta?: unknown; createdAt?: number }[];
+  threads: { id: string; title: string; createdAt?: number; renamedAt?: number | null }[];
+  messages: {
+    id: string;
+    threadId: string;
+    role?: string;
+    content: string;
+    meta?: unknown;
+    createdAt?: number;
+    editedAt?: number | null;
+    edits?: Version[];
+  }[];
   // Delete only if the thread is still exactly what the device last saw (`baseHash`).
   deletes: { id: string; baseHash: string }[];
 };
@@ -250,6 +334,7 @@ export const applySync = db.transaction((p: SyncPayload) => {
       createThread(t.id, (t.title || "Untitled thread").slice(0, 200), "pwa", t.createdAt);
       created++;
     }
+    if (t.renamedAt) renameThread(t.id, t.title, t.renamedAt);
     touched.add(t.id);
   }
   for (const m of p.messages) {
@@ -257,8 +342,10 @@ export const applySync = db.transaction((p: SyncPayload) => {
       missing.add(m.threadId); // deleted on main since the device last looked — it will re-pull and retry
       continue;
     }
-    const r = appendMessage({ ...m, role: m.role || "user" });
+    // A new message arrives as its first version; the edits are then merged on top.
+    const r = appendMessage({ ...m, content: m.edits?.[0]?.content ?? m.content, role: m.role || "user" });
     if (r.inserted) appended++;
+    if (m.editedAt) editMessage(m.id, [...(m.edits ?? []), { content: m.content, at: m.editedAt }]);
     touched.add(m.threadId);
   }
   for (const d of p.deletes) {

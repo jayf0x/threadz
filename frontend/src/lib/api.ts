@@ -27,6 +27,16 @@ export const remoteApi = {
 
   getThread: (id: string) => req<{ thread: Thread; messages: Message[]; hash?: string }>(`/api/threads/${id}`),
 
+  renameThread: (id: string, title: string) =>
+    req<Thread>(`/api/threads/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+
+  // The previous text is kept by the backend (`edits`).
+  editMessage: (threadId: string, id: string, content: string) =>
+    req<{ message: Message }>(`/api/threads/${threadId}/messages/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+
   deleteThread: (id: string) => req<{ ok: true }>(`/api/threads/${id}`, { method: "DELETE" }),
 
   // Idempotent append. Backend dedupes on `id`.
@@ -102,6 +112,16 @@ export const api: Api = {
     via(
       () => remoteApi.getThread(id),
       () => localApi.getThread(id),
+    ),
+  renameThread: (id, title) =>
+    via(
+      () => remoteApi.renameThread(id, title),
+      () => localApi.renameThread(id, title),
+    ),
+  editMessage: (threadId, id, content) =>
+    via(
+      () => remoteApi.editMessage(threadId, id, content),
+      () => localApi.editMessage(threadId, id, content),
     ),
   deleteThread: (id) =>
     via(

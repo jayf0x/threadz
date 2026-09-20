@@ -5,11 +5,13 @@ import {
   backupDb,
   createThread,
   deleteThread,
+  editMessage,
   getMessages,
   getThread,
   heads,
   listThreads,
   messageJson,
+  renameThread,
   type SyncPayload,
   threadEmbeddings,
   threadHash,
@@ -22,7 +24,7 @@ const PORT = Number(process.env.PORT || 8787);
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "access-control-allow-headers": "content-type",
 };
 
@@ -159,6 +161,14 @@ const server = Bun.serve({
           hash: threadHash(thread),
         });
       }),
+      PATCH: wrap(async (req, p) => {
+        requireThread(p.id);
+        const body = (await req.json()) as { title?: string; renamedAt?: number };
+        if (!body.title?.trim()) throw new HttpError(400, "title is required");
+        const thread = renameThread(p.id, body.title, body.renamedAt)!;
+        refreshMetadata(p.id);
+        return json(threadJson(thread));
+      }),
       DELETE: wrap((_req, p) => {
         requireThread(p.id);
         deleteThread(p.id);
@@ -190,6 +200,21 @@ const server = Bun.serve({
         });
         if (inserted) refreshMetadata(p.id);
         return json({ message: messageJson(message), inserted });
+      }),
+    },
+
+    // Edit in place; the previous text is kept in the message's `edits`.
+    "/api/threads/:id/messages/:mid": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      PATCH: wrap(async (req, p) => {
+        requireThread(p.id);
+        const body = (await req.json()) as { content?: string; editedAt?: number };
+        if (!body.content?.trim()) throw new HttpError(400, "content is required");
+        const at = Math.min(body.editedAt || Date.now(), Date.now());
+        const message = editMessage(p.mid, [{ content: body.content.trim(), at }]);
+        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
+        refreshMetadata(p.id);
+        return json({ message: messageJson(message) });
       }),
     },
 

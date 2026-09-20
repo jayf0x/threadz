@@ -2,6 +2,7 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Api } from "./api";
 import { ApiError } from "./errors";
 import type { Message, Snapshot, SyncResult, Thread, Unsynced } from "./types";
+import { mergeMessage, versionsOf } from "./versions";
 
 // The device's own database. Unlike the `threadz` mirror (lib/db.ts) this is
 // AUTHORITATIVE while in local mode and is never cleared wholesale: every write
@@ -83,6 +84,7 @@ export const localApi: Api = {
       title: (title || "Untitled thread").slice(0, 200),
       createdAt: ts,
       updatedAt: ts,
+      renamedAt: null,
       source: "pwa",
       description: null,
       tags: [],
@@ -114,6 +116,26 @@ export const localApi: Api = {
     if (!thread) throw notFound();
     const messages = await db.getAllFromIndex("messages", "byThread", id);
     return { thread: strip(thread), messages: messages.sort((a, b) => a.seq - b.seq).map(strip) };
+  },
+
+  renameThread: async (id, title) => {
+    const clean = title?.trim().slice(0, 200);
+    if (!clean) throw new ApiError(400, "title is required");
+    const db = await getDB();
+    const tx = db.transaction("threads", "readwrite");
+    const thread = await tx.store.get(id);
+    if (!thread) throw notFound();
+    const at = Date.now();
+    const renamed: LThread = {
+      ...thread,
+      title: clean,
+      renamedAt: at,
+      updatedAt: Math.max(thread.updatedAt, at),
+      dirty: 1,
+    };
+    await tx.store.put(renamed);
+    await tx.done;
+    return strip(renamed);
   },
 
   deleteThread: async (id) => {
@@ -163,6 +185,27 @@ export const localApi: Api = {
     await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, ts) });
     await tx.done;
     return { message: strip(message), inserted: true };
+  },
+
+  editMessage: async (threadId, id, content) => {
+    const text = content?.trim();
+    if (!text) throw new ApiError(400, "content is required");
+    const db = await getDB();
+    const tx = db.transaction(["threads", "messages"], "readwrite");
+    const thread = await tx.objectStore("threads").get(threadId);
+    const old = await tx.objectStore("messages").get(id);
+    if (!thread || !old || old.threadId !== threadId) throw notFound();
+    if (text === old.content) return { message: strip(old) };
+    const at = Date.now();
+    const message: LMessage = {
+      ...old,
+      ...mergeMessage(old, { ...old, content: text, editedAt: at, edits: versionsOf(old) }),
+      dirty: 1,
+    };
+    await tx.objectStore("messages").put(message);
+    await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, at) });
+    await tx.done;
+    return { message: strip(message) };
   },
 
   // No Claude on the device. Local mode is capture-only; the UI disables Ask.
@@ -255,11 +298,26 @@ export const mergeRemoteThread = async (thread: Thread, messages: Message[], has
   if (trashed) await tx.objectStore("trash").delete(thread.id);
   const have = await tx.objectStore("threads").get(thread.id);
   if (!have?.dirty) await tx.objectStore("threads").put({ ...thread, dirty: 0 });
+  // A pending local rename stays unless main renamed it more recently.
+  else if ((thread.renamedAt ?? 0) > (have.renamedAt ?? 0))
+    await tx.objectStore("threads").put({ ...have, title: thread.title, renamedAt: thread.renamedAt });
   let added = 0;
   for (const m of messages) {
-    if (await tx.objectStore("messages").get(m.id)) continue;
-    await tx.objectStore("messages").put({ ...m, dirty: 0 });
-    added++;
+    const mine = await tx.objectStore("messages").get(m.id);
+    if (!mine) {
+      await tx.objectStore("messages").put({ ...m, dirty: 0 });
+      added++;
+      continue;
+    }
+    // Same note edited on both sides: newest text wins, the other stays in its history.
+    const merged = mergeMessage(mine, m);
+    const same = (x: Message) =>
+      x.content === merged.content &&
+      (x.editedAt ?? null) === merged.editedAt &&
+      (x.edits?.length ?? 0) === merged.edits?.length;
+    if (!same(m))
+      await tx.objectStore("messages").put({ ...merged, dirty: 1 }); // main lacks something we hold
+    else if (!same(mine)) await tx.objectStore("messages").put({ ...merged, dirty: 0 });
   }
   const mainIds = new Set(messages.map((m) => m.id));
   for (const m of trashed?.messages ?? []) {

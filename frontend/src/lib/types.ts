@@ -3,11 +3,15 @@ export type Thread = {
   title: string;
   createdAt: number;
   updatedAt: number;
+  renamedAt?: number | null; // last rename; newest wins on sync
   source: string;
   description: string | null;
   tags: string[];
   hasEmbedding: boolean;
 };
+
+// A previous text of a message; `at` (when that text was written) identifies it.
+export type Version = { content: string; at: number };
 
 export type Message = {
   id: string;
@@ -18,6 +22,8 @@ export type Message = {
   seq: number;
   source: string;
   meta: Record<string, unknown> | null;
+  editedAt?: number | null; // null/absent = never edited
+  edits?: Version[]; // previous texts, oldest first
 };
 
 // v2 — backend endpoint only, not surfaced in the UI (see api.ts note).
@@ -51,11 +57,11 @@ export type Snapshot = {
 // What a sync would push. Shown to the user before they confirm.
 export type Unsynced = { threads: number; messages: number; deletions: number };
 
-// Change detection: one hash per thread (title + message ids) and one for the whole store.
+// Change detection: one hash per thread (title + message ids + edit times) and one for the whole store.
 export type Head = { head: string; threads: Record<string, string> };
 
 export type SyncPayload = {
-  threads: { id: string; title: string; createdAt: number }[];
+  threads: { id: string; title: string; createdAt: number; renamedAt: number | null }[];
   messages: {
     id: string;
     threadId: string;
@@ -63,6 +69,8 @@ export type SyncPayload = {
     content: string;
     meta: unknown;
     createdAt: number;
+    editedAt: number | null;
+    edits: Version[];
   }[];
   deletes: { id: string; baseHash: string }[];
 };

@@ -1,7 +1,7 @@
 import { CornerDownLeft, Mic, Square } from "lucide-react";
 import { useRef, useState } from "react";
+import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
 import { useDraft } from "@/hooks/useDraft";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { cn } from "@/lib/cn";
@@ -35,6 +35,7 @@ export const Composer = ({
   const sending = useRef(false);
   const [commit, setCommit] = useState(true);
   const voice = useVoiceCapture();
+  const editor = useRef<MarkdownEditorHandle>(null);
 
   const live = voice.state === "recording" || voice.state === "transcribing";
   const loading = voice.state === "loading-model" || voice.state === "transcribing";
@@ -52,12 +53,13 @@ export const Composer = ({
   // The draft is only cleared once the text is stored (or answered). A failure
   // leaves it in the box — and in localStorage — exactly as typed.
   const submit = async () => {
-    const text = draft.trim();
+    const text = (editor.current?.getMarkdown() ?? draft).trim();
     if (!text || busy || sending.current) return;
     sending.current = true; // ⌘↵ twice before `busy` renders must not send twice
     try {
       const ok = mode === "note" ? await onNote(text, fromVoice ? { voice: true } : null) : await onAsk(text, commit);
       if (ok) {
+        editor.current?.setMarkdown("");
         setDraft("");
         setFromVoice(false);
       }
@@ -112,16 +114,17 @@ export const Composer = ({
 
       <div className="mx-auto max-w-3xl px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-10">
         <div className="relative">
-          <Textarea
-            aria-label={mode === "note" ? "New note" : "Question for Claude"}
-            className="h-24 pr-12"
-            placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
+          <MarkdownEditor
+            handleRef={editor}
             value={draft}
+            onChange={edit}
             readOnly={busy}
-            onChange={(e) => edit(e.target.value)}
-            onKeyDown={(e) => {
+            placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
+            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_48px_12px_14px]"
+            onKeyDownCapture={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
+                e.stopPropagation();
                 submit();
               }
             }}

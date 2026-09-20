@@ -64,7 +64,12 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
     if (pending) {
       phase?.(`Sending ${pending} change${pending === 1 ? "" : "s"}…`);
       const result = await postSync({
-        threads: batch.threads.map((t) => ({ id: t.id, title: t.title, createdAt: t.createdAt })),
+        threads: batch.threads.map((t) => ({
+          id: t.id,
+          title: t.title,
+          createdAt: t.createdAt,
+          renamedAt: t.renamedAt ?? null,
+        })),
         messages: batch.messages.map((m) => ({
           id: m.id,
           threadId: m.threadId,
@@ -72,6 +77,8 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
           content: m.content,
           meta: m.meta,
           createdAt: m.createdAt,
+          editedAt: m.editedAt ?? null,
+          edits: m.edits ?? [],
         })),
         deletes,
       });

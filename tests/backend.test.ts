@@ -443,6 +443,60 @@ describe("local mode (invariant: no data lost across sync)", () => {
     await cleanUp(t.id);
   });
 
+  const mainPatch = (path: string, body: unknown) =>
+    fetch(`${BASE}/api/threads/${path}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+  const mainMessages = async (id: string) => (await mainGet(id).then((r) => r.json())).messages;
+
+  test("an edit and a rename made offline reach main; previous text is kept", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ edit", seed: "first draft" });
+    await handoff.syncNow();
+    const [m] = (await local.localApi.getThread(t.id)).messages;
+    await local.localApi.editMessage(t.id, m.id, "second draft");
+    await local.localApi.renameThread(t.id, "__local__ renamed");
+
+    await handoff.syncNow();
+    const main = await mainGet(t.id).then((r) => r.json());
+    expect(main.thread.title).toBe("__local__ renamed");
+    expect(main.messages[0].content).toBe("second draft");
+    expect(main.messages[0].edits.map((v: { content: string }) => v.content)).toEqual(["first draft"]);
+    expect((await local.localApi.getThread(t.id)).messages[0].edits).toHaveLength(1);
+    await cleanUp(t.id);
+  });
+
+  test("the same note edited on main and on the device: newest text wins, the other stays in history", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ both-edit", seed: "base" });
+    await handoff.syncNow();
+    const [m] = (await local.localApi.getThread(t.id)).messages;
+    await mainPatch(`${t.id}/messages/${m.id}`, { content: "main edit" });
+    await new Promise((r) => setTimeout(r, 5));
+    await local.localApi.editMessage(t.id, m.id, "device edit");
+
+    await handoff.syncNow();
+    for (const msgs of [(await mainMessages(t.id)) as never[], (await local.localApi.getThread(t.id)).messages]) {
+      const x = msgs[0] as { content: string; edits: { content: string }[] };
+      expect(x.content).toBe("device edit");
+      expect(x.edits.map((v) => v.content)).toEqual(["base", "main edit"]);
+    }
+    await cleanUp(t.id);
+  });
+
+  test("a newer rename on main is not clobbered by an older one from the device", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ rename-race" });
+    await handoff.syncNow();
+    await local.localApi.renameThread(t.id, "device name");
+    await new Promise((r) => setTimeout(r, 5));
+    await mainPatch(t.id, { title: "main name" });
+
+    await handoff.syncNow();
+    expect((await mainGet(t.id).then((r) => r.json())).thread.title).toBe("main name");
+    expect((await local.localApi.getThread(t.id)).thread.title).toBe("main name");
+    await cleanUp(t.id);
+  });
+
   test("deleted on main, untouched here: follows main, copy kept in trash", async () => {
     const t = await local.localApi.createThread({ title: "__local__ follow-delete", seed: "bye" });
     await handoff.syncNow();

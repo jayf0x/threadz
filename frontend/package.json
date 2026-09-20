@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",
+    "@milkdown/crepe": "^7.22.0",
+    "@milkdown/kit": "^7.22.0",
     "@ricky0123/vad-web": "^0.0.30",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

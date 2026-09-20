@@ -85,7 +85,9 @@ bun run typecheck
 | GET | `/api/threads?q=&sort=updated\|created\|title` | list / search |
 | POST | `/api/threads` | create `{ title, seed?, id?, createdAt? }` — idempotent on `id` |
 | GET | `/api/threads/:id` | `{ thread, messages }` |
+| PATCH | `/api/threads/:id` | rename `{ title }` |
 | DELETE | `/api/threads/:id` | delete thread + messages |
+| PATCH | `/api/threads/:id/messages/:mid` | edit `{ content }`; the old text is appended to `edits` |
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
 | POST | `/api/threads/:id/metadata` | force regen tags/description/embedding |
@@ -122,8 +124,10 @@ the pill for the connection dialog.
 
 ### Load-bearing decisions
 
-- **Append-only.** Committed messages are never edited/reordered. Only mutable state is the
-  device outbox (`frontend/src/lib/db.ts`).
+- **Append-only, edits keep history.** Messages are never deleted or reordered. Your own notes can
+  be edited in place, but the previous text is kept in the message's `edits` (`[{content, at}]`),
+  and edits sync in both directions: newest text wins, the other version stays in the history.
+  Thread renames are last-write-wins (`renamedAt`).
 - **Idempotency keys.** Every append carries a client UUID; the backend dedupes on it
   (primary key). Retrying a flaky send is safe.
 - **One model seam.** All Claude calls go through `askModel()` in `backend/model.ts` —

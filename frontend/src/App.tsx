@@ -15,10 +15,7 @@ export const App = () => {
   return (
     <>
       {mode === "local" && (
-        <div
-          aria-hidden
-          className="hatch pointer-events-none fixed inset-x-0 top-0 z-40 h-1.5 border-b border-primary"
-        />
+        <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
       )}
       <Shell key={mode} selected={selected} setSelected={setSelected} />
       <ConnectionDialog />
@@ -29,7 +26,9 @@ export const App = () => {
 const Shell = ({ selected, setSelected }: { selected: string | null; setSelected: (id: string | null) => void }) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && !(e.target as HTMLElement).closest("input,textarea,select") && setSelected(null);
+      e.key === "Escape" &&
+      !(e.target as HTMLElement).closest("input,textarea,select,[contenteditable=true]") &&
+      setSelected(null);
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [setSelected]);
@@ -37,19 +36,14 @@ const Shell = ({ selected, setSelected }: { selected: string | null; setSelected
   return (
     <div className="grid h-dvh lg:grid-cols-[23rem_1fr]">
       <aside className={cn("min-h-0 border-r border-border bg-secondary", selected && "hidden lg:block")}>
-        <ThreadList onOpen={setSelected} selectedId={selected} />
+        <ThreadList
+          onOpen={setSelected}
+          selectedId={selected}
+          onDeleted={(id) => id === selected && setSelected(null)}
+        />
       </aside>
       <main className={cn("min-h-0", !selected && "hidden lg:block")}>
-        {selected ? (
-          <ThreadView
-            key={selected}
-            threadId={selected}
-            onBack={() => setSelected(null)}
-            onDeleted={() => setSelected(null)}
-          />
-        ) : (
-          <Blank />
-        )}
+        {selected ? <ThreadView key={selected} threadId={selected} onBack={() => setSelected(null)} /> : <Blank />}
       </main>
     </div>
   );

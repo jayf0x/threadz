@@ -61,6 +61,27 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
+  // Edit a sent message. Same contract as addMessage: true only once the new text is stored.
+  const editMessage = useCallback(
+    async (id: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!threadId || !text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await api.editMessage(threadId, id, text);
+      } catch (e) {
+        setError(msg(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+      await pullThread(threadId).catch(() => {});
+      return true;
+    },
+    [threadId],
+  );
+
   // Ask Claude. commit=false → disposable scratch answer (returned, not stored).
   // commit=true → appended at commit time.
   const ask = useCallback(
@@ -87,5 +108,5 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
-  return { messages, unsynced, busy, error, addMessage, ask, refresh };
+  return { messages, unsynced, busy, error, addMessage, editMessage, ask, refresh };
 };
