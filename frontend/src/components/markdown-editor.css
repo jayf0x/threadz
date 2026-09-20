@@ -60,7 +60,7 @@
 .threadz-md .milkdown .ProseMirror > :first-child { margin-top: 0; }
 
 /* Rhythm follows Crepe's own guide (reset.css: line-height 1.5, small
- * vertical padding on blocks) scaled to our 13px base. Its defaults were
+ * vertical padding on blocks) scaled to our 15px base. Its defaults were
  * tuned for a 16px full-page editor: 32px list rows and 24–32px heading
  * margins read as double-spaced in a widget. */
 .threadz-md .milkdown .ProseMirror p { margin: 0; padding: 2px 0; line-height: 1.5; }

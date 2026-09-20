@@ -5,8 +5,6 @@
    Tokens + theme come from twinz (ochre-paper). Components read colour through
    token names only — `bun run lint:tokens` enforces it. */
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   color-scheme: light dark;
   --radius: 0.5rem;

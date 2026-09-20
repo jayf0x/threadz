@@ -2,6 +2,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { Download, HardDriveDownload, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/lib/errors";
 import { download, enterLocal, exportBackup, goLive, importBackup, lastExport, type SyncReport } from "@/lib/handoff";
 import { latestBackup } from "@/lib/local";
 import { replicaReady } from "@/lib/mode";
@@ -33,8 +34,6 @@ const report = (r: SyncReport) =>
     .filter(Boolean)
     .join(" ");
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 // The one place mode changes happen. Nothing switches on its own: going local and
 // going live are both buttons here, and going live syncs first.
 export const ConnectionDialog = () => {
@@ -59,7 +58,7 @@ export const ConnectionDialog = () => {
     try {
       await fn();
     } catch (e) {
-      setError(msg(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
       setPhase(null);

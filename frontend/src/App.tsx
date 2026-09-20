@@ -3,6 +3,7 @@ import { ConnectionDialog } from "@/components/ConnectionDialog";
 import { ThreadList } from "@/components/ThreadList";
 import { ThreadView } from "@/components/ThreadView";
 import { cn } from "@/lib/cn";
+import { isTypingTarget } from "@/lib/dom";
 import { useStatus } from "@/lib/status";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
@@ -25,10 +26,9 @@ export const App = () => {
 
 const Shell = ({ selected, setSelected }: { selected: string | null; setSelected: (id: string | null) => void }) => {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" &&
-      !(e.target as HTMLElement).closest("input,textarea,select,[contenteditable=true]") &&
-      setSelected(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isTypingTarget(e)) setSelected(null);
+    };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [setSelected]);

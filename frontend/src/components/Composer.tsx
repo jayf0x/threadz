@@ -7,6 +7,7 @@ import { VoiceSettings } from "@/components/VoiceSettings";
 import { useDraft } from "@/hooks/useDraft";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { cn } from "@/lib/cn";
+import { errorMessage } from "@/lib/errors";
 import { addImage } from "@/lib/imageSync";
 import type { VoiceState } from "@/lib/voice/engine";
 
@@ -64,7 +65,7 @@ export const Composer = ({
       try {
         editor.current?.insertImage(await addImage(file));
       } catch (e) {
-        setImageError(e instanceof Error ? e.message : String(e));
+        setImageError(errorMessage(e));
       }
     }
   };

@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
+
 import { env, type PipelineType, pipeline, TextStreamer } from "@huggingface/transformers";
+import { errorMessage } from "@/lib/errors";
 
 // On-device transcription in a worker so decoding never janks the UI. One pipeline is
 // resident at a time; switching models disposes the old one. Messages are handled
@@ -71,7 +73,7 @@ const handle = async (m: WorkerIn) => {
       post({ type: "ready", model: m.model });
     } catch (err) {
       broken = m.model;
-      post({ type: "fail", model: m.model, error: err instanceof Error ? err.message : String(err) });
+      post({ type: "fail", model: m.model, error: errorMessage(err) });
     }
     return;
   }
@@ -99,7 +101,7 @@ const handle = async (m: WorkerIn) => {
     const text: string = (Array.isArray(out) ? out.map((o: { text: string }) => o.text).join(" ") : out.text).trim();
     post({ type: "result", recId, seq, text });
   } catch (err) {
-    post({ type: "fail", recId, seq, error: err instanceof Error ? err.message : String(err) });
+    post({ type: "fail", recId, seq, error: errorMessage(err) });
   }
 };
 

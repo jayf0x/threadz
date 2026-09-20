@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { getThreadMessages } from "@/lib/db";
+import { errorMessage } from "@/lib/errors";
 import { unsyncedMessageIds } from "@/lib/local";
 import { onChange, pullThread } from "@/lib/sync";
 import type { Message } from "@/lib/types";
 
 const uuid = () => crypto.randomUUID();
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const useThread = (threadId: string | null) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,7 +26,7 @@ export const useThread = (threadId: string | null) => {
     try {
       await pullThread(threadId);
     } catch (e) {
-      setError(msg(e));
+      setError(errorMessage(e));
     }
   }, [threadId]);
 
@@ -50,7 +50,7 @@ export const useThread = (threadId: string | null) => {
       try {
         await api.appendMessage(threadId, { id: uuid(), role: "user", content: text, meta });
       } catch (e) {
-        setError(msg(e));
+        setError(errorMessage(e));
         return false;
       } finally {
         setBusy(false);
@@ -71,7 +71,7 @@ export const useThread = (threadId: string | null) => {
       try {
         await api.editMessage(threadId, id, text);
       } catch (e) {
-        setError(msg(e));
+        setError(errorMessage(e));
         return false;
       } finally {
         setBusy(false);
@@ -99,7 +99,7 @@ export const useThread = (threadId: string | null) => {
         if (commit) await pullThread(threadId);
         return answer;
       } catch (e) {
-        setError(msg(e));
+        setError(errorMessage(e));
         throw e;
       } finally {
         setBusy(false);

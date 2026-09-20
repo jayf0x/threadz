@@ -13,7 +13,7 @@
 // Type-only: erased at compile time, so the document-touching runtime modules
 // stay out of the static import graph.
 import type { Ctx } from "@milkdown/kit/ctx";
-import type { Node } from "@milkdown/kit/prose/model";
+import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { padForInsert } from "@/lib/voice/text";
@@ -21,8 +21,6 @@ import { imageView } from "./imageView";
 import "./markdown-editor.css";
 
 export type MarkdownEditorHandle = {
-  /** Move focus into the editor and drop the caret at the very end. */
-  focusEnd: () => void;
   /** The markdown right now. `onChange` is debounced (~200ms), so a submit handler
    * that fires straight after typing must read this instead of its last value. */
   getMarkdown: () => string;
@@ -38,10 +36,32 @@ export type MarkdownEditorHandle = {
   insertImage: (src: string) => boolean;
 };
 
+type EditorTrLike = {
+  doc: { resolve: (pos: number) => ResolvedPos };
+  setSelection: (s: unknown) => unknown;
+  insertText: (t: string, from: number) => EditorTrLike;
+  insert: (at: number, node: unknown) => EditorTrLike;
+};
+
+// Minimal shape of the ProseMirror EditorView bits the insert helpers touch — keeps
+// prose types (and their document-touching modules) out of the static graph.
+type EditorViewLike = {
+  state: {
+    tr: {
+      setSelection: (s: unknown) => unknown;
+      insertText: (t: string, from: number) => EditorTrLike;
+      insert: (at: number, node: unknown) => EditorTrLike;
+    };
+    doc: Node;
+    selection: { to: number };
+  };
+  dispatch: (tr: unknown) => void;
+  focus: () => void;
+};
+
 type Loaded = {
   editor: { action: (fn: (ctx: Ctx) => void) => void };
   replaceAll: (markdown: string) => (ctx: Ctx) => void;
-  focusEnd: () => void;
   insertAtCaret: (text: string, touched: boolean) => void;
   insertImage: (src: string, touched: boolean) => void;
 };
@@ -50,7 +70,6 @@ export const MarkdownEditor = ({
   value,
   onChange,
   placeholder = "start writing…",
-  formatOnType = true,
   readOnly = false,
   handleRef,
   onKeyDownCapture,
@@ -60,9 +79,6 @@ export const MarkdownEditor = ({
   value: string;
   onChange?: (markdown: string) => void;
   placeholder?: string;
-  /** `false` keeps `# ` and ``` as literal text instead of reshaping the
-   * editor mid-keystroke (a chat prompt, not a document). Read once at mount. */
-  formatOnType?: boolean;
   /** Display mode: same rendering, no caret. Toggles live. */
   readOnly?: boolean;
   handleRef?: Ref<MarkdownEditorHandle>;
@@ -84,7 +100,7 @@ export const MarkdownEditor = ({
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
   // Mount-time inputs, read inside the async effect without becoming deps.
-  const initial = useRef({ value, placeholder, formatOnType, readOnly });
+  const initial = useRef({ value, placeholder, readOnly });
   // Has the user ever put a caret in here? Until then a programmatic insert goes to the end
   // (ProseMirror's untouched selection sits at the very start, i.e. *before* a restored draft).
   const touchedRef = useRef(false);
@@ -108,7 +124,7 @@ export const MarkdownEditor = ({
         ]);
       if (destroyed || !containerRef.current) return;
 
-      const { value: v, placeholder: text, formatOnType: format, readOnly: ro } = initial.current;
+      const { value: v, placeholder: text, readOnly: ro } = initial.current;
       const crepe = new CrepeBuilder({ root: containerRef.current, defaultValue: v })
         .addFeature(listItem)
         // "doc": show the placeholder only when the whole field is empty —
@@ -123,44 +139,30 @@ export const MarkdownEditor = ({
           onChangeRef.current?.(markdown);
         });
       });
-      // Remove the typed triggers (input rules + keymaps) for headings and
-      // fenced code; the nodes stay in the schema so pasted markdown still
-      // round-trips.
-      if (!format)
-        await crepe.editor.remove([
-          commonmark.wrapInHeadingInputRule,
-          ...commonmark.headingKeymap,
-          commonmark.createCodeBlockInputRule,
-          ...commonmark.codeBlockKeymap,
-        ]);
 
+      // safe: EditorViewLike is a structural subset of ProseMirror's EditorView
+      const viewOf = (ctx: Ctx) => ctx.get(core.editorViewCtx) as EditorViewLike;
       loadedRef.current = {
         editor: crepe.editor,
         replaceAll: utils.replaceAll,
-        focusEnd: () =>
-          crepe.editor.action((ctx: Ctx) => {
-            const view = ctx.get(core.editorViewCtx) as EditorViewLike;
-            view.dispatch(view.state.tr.setSelection(state.Selection.atEnd(view.state.doc)));
-            view.focus();
-          }),
         insertAtCaret: (text, touched) =>
           crepe.editor.action((ctx: Ctx) => {
-            const view = ctx.get(core.editorViewCtx) as EditorViewLike;
+            const view = viewOf(ctx);
             const { doc } = view.state;
             const at = touched ? view.state.selection.to : state.Selection.atEnd(doc).to;
             const around = (from: number, to: number) =>
               doc.textBetween(Math.max(0, from), Math.min(doc.content.size, to), " ");
             const pad = padForInsert(around(at - 1, at), around(at, at + 1), text);
             const tr = view.state.tr.insertText(pad.text, at);
-            tr.setSelection(state.Selection.near(tr.doc.resolve(at + pad.caretOffset) as never));
+            tr.setSelection(state.Selection.near(tr.doc.resolve(at + pad.caretOffset)));
             view.dispatch(tr);
           }),
         insertImage: (src, touched) =>
           crepe.editor.action((ctx: Ctx) => {
-            const view = ctx.get(core.editorViewCtx) as EditorViewLike;
+            const view = viewOf(ctx);
             const at = touched ? view.state.selection.to : state.Selection.atEnd(view.state.doc).to;
             const tr = view.state.tr.insert(at, commonmark.imageSchema.type(ctx).create({ src }));
-            tr.setSelection(state.Selection.near(tr.doc.resolve(at + 1) as never));
+            tr.setSelection(state.Selection.near(tr.doc.resolve(at + 1)));
             view.dispatch(tr);
           }),
       };
@@ -193,7 +195,6 @@ export const MarkdownEditor = ({
   }, [value]);
 
   useImperativeHandle(handleRef, () => ({
-    focusEnd: () => loadedRef.current?.focusEnd(),
     setMarkdown: (md) => {
       const loaded = loadedRef.current;
       if (!loaded) return;
@@ -245,27 +246,4 @@ export const MarkdownEditor = ({
       }}
     />
   );
-};
-
-type EditorTrLike = {
-  doc: { resolve: (pos: number) => unknown };
-  setSelection: (s: unknown) => unknown;
-  insertText: (t: string, from: number) => EditorTrLike;
-  insert: (at: number, node: unknown) => EditorTrLike;
-};
-
-// Minimal shape of the ProseMirror EditorView bits focusEnd touches — keeps
-// prose types (and their document-touching modules) out of the static graph.
-type EditorViewLike = {
-  state: {
-    tr: {
-      setSelection: (s: unknown) => unknown;
-      insertText: (t: string, from: number) => EditorTrLike;
-      insert: (at: number, node: unknown) => EditorTrLike;
-    };
-    doc: Node;
-    selection: { to: number };
-  };
-  dispatch: (tr: unknown) => void;
-  focus: () => void;
 };

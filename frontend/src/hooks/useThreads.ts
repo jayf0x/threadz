@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getThreads } from "@/lib/db";
+import { errorMessage } from "@/lib/errors";
 import { onChange, pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
 
@@ -20,7 +21,7 @@ export const useThreads = () => {
     try {
       await pullThreads();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setSyncing(false);
     }

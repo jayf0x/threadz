@@ -10,6 +10,8 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { type Sort, useThreads } from "@/hooks/useThreads";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { isTypingTarget } from "@/lib/dom";
+import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
 import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
@@ -36,9 +38,7 @@ export const ThreadList = ({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (e.metaKey || e.ctrlKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
-        return;
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e)) return;
       if (e.key === "/") {
         e.preventDefault();
         search.current?.focus();
@@ -154,7 +154,7 @@ const ThreadRow = ({
       await api.renameThread(thread.id, next);
       await pullThreads();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   };
 
@@ -169,7 +169,7 @@ const ThreadRow = ({
       await pullThreads().catch(() => {}); // drop it from the index
       onDeleted(thread.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   };
 
@@ -283,7 +283,7 @@ const NewThread = ({ onClose, onCreated }: { onClose: () => void; onCreated: (id
       onCreated(thread.id);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

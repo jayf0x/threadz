@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/cn";
 
 export type Theme = "light" | "system" | "dark";
@@ -16,28 +16,6 @@ const read = (): Theme => {
   return c.contains("dark") ? "dark" : c.contains("light") ? "light" : "system";
 };
 
-/** Resolved dark boolean, for the few spots that need the real value (canvas
- * colors, image treatment) rather than a CSS class to style against. */
-export function useIsDark(): boolean {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const sync = () => {
-      const t = read();
-      setDark(t === "dark" || (t === "system" && mq.matches));
-    };
-    sync();
-    mq.addEventListener("change", sync);
-    const obs = new MutationObserver(sync);
-    obs.observe(document.documentElement, { attributeFilter: ["class"] });
-    return () => {
-      mq.removeEventListener("change", sync);
-      obs.disconnect();
-    };
-  }, []);
-  return dark;
-}
-
 const OPTIONS: { value: Theme; label: string; path: string }[] = [
   {
     value: "light",
@@ -52,11 +30,9 @@ const OPTIONS: { value: Theme; label: string; path: string }[] = [
   },
 ];
 
-/** Same three-way toggle, one implementation — this file used to exist,
- * hand-copied, in both weighted-grid/demo and dyslexia-logger. */
+/** Three-way light / system / dark toggle. */
 export function ThemeToggle({ className }: { className?: string }) {
-  const [theme, setTheme] = useState<Theme>("system");
-  useEffect(() => setTheme(read()), []);
+  const [theme, setTheme] = useState<Theme>(read);
 
   return (
     <fieldset className={cn("flex gap-px border border-border p-px", className)}>
