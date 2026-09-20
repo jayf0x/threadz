@@ -2,15 +2,15 @@
 
 ## What this is
 
-Threadz — personal-brain POC. Read `brain-poc-handover.md` (vision + MUST invariants) and
+Threadz — personal-brain POC. Read `README.md` (API, local mode, photos, load-bearing decisions) and
 `backlog.md` (open questions) before changing behavior.
 
 ## Mental model
 
-- One backend, one SQLite file, many devices. The frontend keeps a **disposable** local
-  mirror (wholesale-replaced on fetch) and a **durable** outbox (unsent drafts).
-- The backend is source-agnostic: a "thread"/"message" has a `source` column, never
-  source-specific structure.
+- One backend, one SQLite file, many devices. The frontend keeps a **disposable** mirror of main
+  (`threadz` IndexedDB, wholesale-replaced on fetch) and a **durable** device copy (`threadz-local`,
+  see Local mode below).
+- The backend stores plain threads and messages; nothing in the schema depends on where a note came from.
 
 ## Commands (bun only, never npm/yarn/pnpm)
 
@@ -27,39 +27,37 @@ Typecheck passing says nothing about whether the UI renders.
 
 ## Conventions
 
-**Enforced by `bun run check`** (don't work around these; fix the code): no `any` (a `biome-ignore` with a
+**Enforced by `bun run check`** (fix the code, don't work around it): no `any` (a `biome-ignore` with a
 reason is the only exit), no `../` imports, no reaching into `features/<x>/*` except its `index.ts`, unused
 imports/vars, formatting + import order, raw colours (`// twinz-allow-raw-color` for a real one-off), and
 `noUncheckedIndexedAccess`.
 
-**By hand** (no tool catches these, so review for them): file order (imports, types, exported component,
-its helpers in call order, constants; in a component state, handlers, effects last); effects only for
-external sync, never derived state; a component that fetches or transforms data moves that into a hook or
-pure function; two copies is a note, three is an extraction; split a file past ~250 lines or 3 jobs;
-delete dead code and comments that restate the code.
-
+**Guidelines** (not enforced; use judgment): file order (imports, types, exported component, its helpers in
+call order, constants; in a component state, handlers, effects last); effects only for syncing with something
+external, never for derived state; fetching and transforming data live in a hook or pure function, not in JSX;
+extract a helper when the same code shows up a third time; delete dead code and comments that restate the code.
 
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
-- `frontend/src/lib/**` and the feature hooks (`frontend/src/features/*/use*.ts`) hold the invariant-critical logic and
-  are tested — change with care, keep the hook contracts stable.
+- `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
-  SDK / local CLI auth — no API key). Nowhere else.
+  SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty
+  working directory: the model sees only the thread text it is sent, never the device's files.
 - **Local mode** (`lib/local.ts`, `replica.ts`, `handoff.ts`, `mode.ts`, `status.ts`): `threadz-local`
   is the device's authoritative copy of main. While live it is kept warm by `pullMain()` (hash
   compare vs `base`, fetch changed threads, union); `api.ts` `via()` auto-detaches to it when main is
   truly unreachable. Never clear it wholesale, never auto-switch back to live, and move data only
   through `handoff.syncNow()` (pull → one `/api/sync` push → verify → compare hashes). Merges are
   unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable.
-  Keep `remoteApi` and `localApi` signature-identical. The old outbox is gone (drained once by
-  `replica.ts`); hooks no longer expose `outbox`/`send`.
+  Keep `remoteApi` and `localApi` signature-identical. Local mode offers no Ask (Claude lives on main). A
+  legacy `outbox` IndexedDB store is drained once into the device copy by `replica.ts`; nothing writes it.
 - **Images** (`lib/images.ts`, `imageSync.ts`; `backend/images.ts`): a note holds only `![](img:<sha256>#WxH)`.
   Bytes live in their own IndexedDB (`threadz-images`) and, on main, as files in `THREADZ_IMAGES` — never in
   `exportSnapshot`/`saveBackup`/`mergeSnapshot`/Export, never in SQLite, `backupDb()` or `/api/snapshot`. A `dirty`
   image is never deleted; it is `PUT` to main before `/api/sync`.
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint — do not wire it into the UI.
-- Metadata generation is fire-and-forget on commit. No queues, no tiers.
-- Tests: a handful around the §3 invariants + one HTTP round-trip that cleans up after
-  itself. "Zero new tests" is valid for a change that doesn't touch an invariant.
+- Metadata generation is fire-and-forget after each append (no queue).
+- Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
+  itself. No per-component suites; a change that touches none of that needs no new test.

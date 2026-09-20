@@ -1,15 +1,14 @@
 # Threadz — Personal Brain POC (v1)
 
 A thread-based chat PWA backed by one shared local-network service. Threads live in one
-place; any device on the LAN can read and append; offline captures queue and never send
-themselves. See `brain-poc-handover.md` for the vision and invariants; `backlog.md` for
-open questions and deliberate scoping.
+place; any device on the LAN can read and append; a device that loses the backend keeps working
+on its own copy and syncs when you say so. See `backlog.md` for open questions and deliberate scoping.
 
 ## What's here
 
 ```
 backend/    Bun + bun:sqlite service. HTTP API, model seam, metadata + embeddings.
-frontend/   React 19 + Vite + Tailwind v4 PWA. IndexedDB mirror + outbox, on-device whisper.
+frontend/   React 19 + Vite + Tailwind v4 PWA. IndexedDB mirror + local copy, on-device whisper.
 tests/      bun test — invariant + HTTP e2e tests.
 scripts/    smoke.sh — curl-based end-to-end check against a running backend.
 ```
@@ -84,7 +83,7 @@ frontend/src/
   components/ui/         generic primitives (Button, Field, Input, Select, Eyebrow…): no app imports
   features/<name>/       one feature: components, its hooks, pure helpers, tests
     index.ts             the feature's public surface, the only thing other features import
-  lib/                   device store, sync, api, voice engine: invariant-critical, tested
+  lib/                   device store, sync, api, voice engine: change with care
   themes/                the only place raw colours live
 ```
 
@@ -128,8 +127,8 @@ the pill for the connection dialog.
 - **Auto-detach.** While live, the app keeps a full copy of main on the device (`threadz-local`,
   plus per-thread hashes of what it last agreed on with main). If main becomes unreachable, the
   app switches to that copy by itself — a failed write is retried on the device, never dropped —
-  and says so once. **Work locally** does the same on purpose. Claude ("Ask") needs main and is
-  disabled while local; local threads carry no tags/description until they reach main.
+  and says so once. **Work locally** does the same on purpose. Claude ("Ask") needs main, so the
+  Ask toggle is not offered while local; local threads carry no tags/description until they reach main.
 - **Coming back is never automatic.** A "Main is reachable" banner offers Review; going live is a
   button. It runs: pull main's changes into the device copy → send everything pending in one
   request → re-read what was sent and prove every local note is on main → compare hashes. Only
@@ -180,6 +179,6 @@ don't know images exist.
   (primary key). Retrying a flaky send is safe.
 - **One model seam.** All Claude calls go through `askModel()` in `backend/model.ts` —
   the plug point for a future routing gateway.
-- **Source-agnostic store.** `source` is a column, not a shape. Obsidian / `~/.claude`
-  importers become additional writers.
-- **Nothing auto-sends.** Reconnecting shows a pending banner; the user hits "Send now".
+- **Nothing auto-syncs.** Reconnecting shows a "Main is reachable" banner; the user reviews and goes live.
+- **Claude sees only the thread.** `askModel()` runs with no tools, no MCP servers and an empty working
+  directory, so a prompt can never read the machine it runs on.

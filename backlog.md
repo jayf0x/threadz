@@ -7,7 +7,7 @@ are in `README.md`.
 
 - **Related threads.** `GET /api/threads/:id/related` (embedding cosine) exists but
   is not in the UI — similarity wasn't meaningful at this scale. v2 revisits this as
-  a real graph feature (entity extraction + community detection, per handover §1).
+  a real graph feature (entity extraction + community detection).
 
 ## Images in notes — shipped, what remains
 
@@ -97,3 +97,25 @@ reported afterwards, never asked. Revisit once this has run against real use:
   paste an API key (billed, key lives on the phone).
 - **No in-app restore** of `trash` / safety copies / main's backups; they're plain JSON or
   SQLite files (re-import via Import; copy a backup over `threadz.sqlite`).
+
+## Known issues — found in the code-quality audit, not fixed
+
+Reported by a read-only audit; none reproduced in a running app. Each is small; fix when touching the file.
+
+- **Push race (`local.ts` `commitPush`).** A row is marked clean without comparing it to what was sent, so a
+  rename made during the push round-trip can be overwritten by main's title. Message edits are re-sent by the verify step.
+- **Status probe (`status.ts`).** The first probe sets `reachable` directly, so a single failed ping while live with a
+  warm copy auto-detaches; the "two agreeing probes" comment is not what the code does.
+- **`detach()` (`mode.ts`)** sets `auto` even when already local, so a later `goLive` can show a false "main went away".
+- **Voice worker (`voice/engine.ts`, `whisper-worker.ts`).** After `onerror` the dead worker is kept, so the next load
+  hangs; a quick Stop then Start can release the new session's mic; the worker's message chain has no `.catch`.
+- **`findUnfinished` (`recordings.ts`)** only inspects the newest row, so an empty newest one hides an older recoverable one.
+- **`replica.ts`.** `hash ?? ""` makes a thread refetch on every pull; a throw in `drainOutbox` aborts `syncNow`.
+- **`mergeSnapshot` (`local.ts`)** can create duplicate `seq` values and drops trashed messages the file lacks.
+- **Import (`handoff.ts`)** checks that keys exist, not their types; a bad file is stored as pending and can crash search.
+  A stored voice language that is not in `LANGUAGES` makes every utterance fail.
+- **`api.ts`** sends `content-type: application/json` on GETs (a CORS preflight each time); a JSON `null` error body throws a TypeError.
+- **`imageSync.ts`** caches bytes from main without checking their sha256 against the hash.
+- **Plain `http://<lan-ip>`** has no `crypto.subtle` / `randomUUID`, which breaks more than voice (see the HTTPS note in the README).
+- **`voice/text.ts`** strips real speech that sits in parentheses or asterisks.
+- **`useThread`** `load` has no staleness guard (out-of-order results can overwrite newer data).
