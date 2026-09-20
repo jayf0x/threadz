@@ -400,6 +400,8 @@ export const mergeSnapshot = async (snap: Snapshot) => {
   return added;
 };
 
+// Text only. Photos live in their own database (lib/images.ts) that nothing here — export, backup,
+// import — ever touches, so an image can never enter a snapshot.
 export const exportSnapshot = async (): Promise<Snapshot> => {
   const db = await getDB();
   return {

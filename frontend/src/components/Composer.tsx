@@ -1,4 +1,4 @@
-import { CornerDownLeft, Mic, Settings2, Square } from "lucide-react";
+import { CornerDownLeft, ImagePlus, Mic, Settings2, Square } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { MarkdownEditor, type MarkdownEditorHandle } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { VoiceSettings } from "@/components/VoiceSettings";
 import { useDraft } from "@/hooks/useDraft";
 import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { cn } from "@/lib/cn";
+import { addImage } from "@/lib/imageSync";
 import type { VoiceState } from "@/lib/voice/engine";
 
 type Mode = "note" | "ask";
@@ -53,6 +54,20 @@ export const Composer = ({
   const [commit, setCommit] = useState(true);
   const [showVoice, setShowVoice] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  // A picked/pasted/dropped photo is compressed and stored on this device, then dropped into the note at the caret.
+  const attach = async (files: Iterable<File>) => {
+    setImageError(null);
+    for (const file of files) {
+      try {
+        editor.current?.insertImage(await addImage(file));
+      } catch (e) {
+        setImageError(e instanceof Error ? e.message : String(e));
+      }
+    }
+  };
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
   // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,
@@ -70,7 +85,7 @@ export const Composer = ({
   const voice = useVoiceCapture(threadId, insert);
   const listening = voice.phase === "listening";
   const active = voice.phase !== "idle";
-  const status = voiceStatus(voice);
+  const status = voiceStatus(voice) ?? (imageError ? { text: imageError, tone: "error" as const } : null);
 
   // The draft is only cleared once the text is stored (or answered). A failure
   // leaves it in the box — and in localStorage — exactly as typed.
@@ -126,8 +141,9 @@ export const Composer = ({
             value={draft}
             onChange={setDraft}
             readOnly={busy}
+            onImageFile={(f) => attach([f])}
             placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
-            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px]"
+            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px] [--md-img-max:12rem]"
             onKeyDownCapture={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -155,6 +171,30 @@ export const Composer = ({
               <Mic className={cn("size-4", active && "blink")} />
             )}
           </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Add photo"
+            title="Add photo"
+            className="absolute right-2 top-11"
+            disabled={busy}
+            onClick={() => picker.current?.click()}
+            onPointerDown={(e) => e.preventDefault()}
+          >
+            <ImagePlus className="size-4" />
+          </Button>
+          <input
+            ref={picker}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            data-testid="photo-input"
+            onChange={(e) => {
+              attach([...(e.target.files ?? [])]);
+              e.target.value = ""; // picking the same photo again must fire again
+            }}
+          />
         </div>
 
         <div className="mt-1 h-4" aria-live="polite">

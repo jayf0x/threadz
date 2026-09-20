@@ -74,7 +74,7 @@ bun run smoke http://localhost:8787   # real end-to-end against Ollama (+ Claude
 bun run typecheck
 ```
 
-## API (all JSON)
+## API (JSON, except the image bytes)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -91,6 +91,8 @@ bun run typecheck
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
 | POST | `/api/threads/:id/metadata` | force regen tags/description/embedding |
+| PUT | `/api/images/:hash` | store a photo: raw JPEG bytes, `:hash` = its sha256 hex. The body is re-hashed and must be a JPEG (magic bytes) ≤ 8MB, else 400/415/413. Idempotent: a replay changes nothing (`{ ok, stored }`) |
+| GET | `/api/images/:hash` | the JPEG, `cache-control: immutable`; 404 if unknown |
 | GET | `/api/threads/:id/related` | top-5 cosine-similar threads — **v2, not used by the UI** |
 
 ### Local mode (work with no backend)
@@ -120,7 +122,29 @@ the pill for the connection dialog.
 - **Main backs itself up** before applying a sync: `backups/threadz-<time>.sqlite` next to the
   database (`THREADZ_BACKUPS` to relocate, `THREADZ_KEEP_BACKUPS`, default 20). To revert main,
   stop the backend and copy one over `threadz.sqlite`.
+- **Photos** are sent first, one idempotent `PUT` each, before the atomic sync (see below).
 - `VITE_LOCAL=1` builds default to local mode and skip the backend presence stream (static hosting).
+
+### Photos in notes
+
+The composer's image button (also paste / drop) takes a photo, shrinks it in the browser to ≤1600px on the
+long edge as a JPEG (~0.8; every browser can encode JPEG, Safari can't do WebP/AVIF) and puts
+`![](img:<sha256>#<w>x<h>)` in the note. The `#WxH` reserves a grey box of the right shape; the bytes are
+only looked up when it scrolls into view. The note stays plain markdown — sync, thread hashes and edits
+don't know images exist.
+
+- **Images are never in a backup or snapshot, on purpose.** Device: their own IndexedDB database
+  (`threadz-images`, `lib/images.ts`), which `exportSnapshot`, the rolling safety copy, Export/Import and the
+  mirror never read. Main: plain files in `THREADZ_IMAGES` (default `images/` beside the database), not SQLite
+  rows, so neither `VACUUM INTO` backups nor `/api/snapshot` carry them. There is no image backup at all: a photo
+  is content-addressed and immutable, so a copy on the device that took it plus a copy on main is the whole
+  story. `KEEP_BACKUPS` stays for the (cheap, text-only) database backups: they protect against a bad sync.
+  Consequence: an **Export backup** file holds references, not pictures.
+- **Not lost.** A photo taken on the device stays flagged `dirty` until main acknowledged its `PUT`, and is
+  never deleted by anything. While live it is sent immediately (and retried on every pull); `syncNow` sends
+  any left before the note that shows it. Photos from main are cached on the device on first view (live);
+  offline, an uncached one stays a grey box.
+- Orphans (a photo whose note was never sent or was deleted) are harmless and not collected.
 
 ### Load-bearing decisions
 

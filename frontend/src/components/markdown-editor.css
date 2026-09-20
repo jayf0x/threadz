@@ -119,3 +119,15 @@
   color: color-mix(in oklab, var(--foreground) 80%, transparent);
   fill: color-mix(in oklab, var(--foreground) 80%, transparent);
 }
+
+/* Photos (`img:` refs, see imageView.ts): a grey box of the right aspect ratio until the bytes arrive. */
+.threadz-md .threadz-img {
+  display: inline-block;
+  vertical-align: bottom;
+  max-width: min(100%, var(--md-img-max, 32rem)); /* the composer shrinks it */
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--muted);
+}
+.threadz-md .threadz-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.threadz-md .ProseMirror-selectednode.threadz-img { outline: 2px solid var(--ring); }

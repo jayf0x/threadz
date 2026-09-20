@@ -40,6 +40,10 @@ Typecheck passing says nothing about whether the UI renders.
   unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable.
   Keep `remoteApi` and `localApi` signature-identical. The old outbox is gone (drained once by
   `replica.ts`); hooks no longer expose `outbox`/`send`.
+- **Images** (`lib/images.ts`, `imageSync.ts`; `backend/images.ts`): a note holds only `![](img:<sha256>#WxH)`.
+  Bytes live in their own IndexedDB (`threadz-images`) and, on main, as files in `THREADZ_IMAGES` — never in
+  `exportSnapshot`/`saveBackup`/`mergeSnapshot`/Export, never in SQLite, `backupDb()` or `/api/snapshot`. A `dirty`
+  image is never deleted; it is `PUT` to main before `/api/sync`.
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint — do not wire it into the UI.
 - Metadata generation is fire-and-forget on commit. No queues, no tiers.
 - Tests: a handful around the §3 invariants + one HTTP round-trip that cleans up after

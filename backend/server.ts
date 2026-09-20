@@ -17,6 +17,7 @@ import {
   threadHash,
   threadJson,
 } from "./db";
+import { imageFile, saveImage } from "./images";
 import { generateMetadata, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
 
@@ -24,7 +25,7 @@ const PORT = Number(process.env.PORT || 8787);
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "access-control-allow-headers": "content-type",
 };
 
@@ -94,6 +95,7 @@ const server = Bun.serve({
     "/api/presence": presence,
 
     // Whole store in one consistent read: a device going local copies this, and verifies against it.
+    // Text only — images are fetched one by one from /api/images/:hash.
     "/api/snapshot": () =>
       json({
         version: 1,
@@ -120,6 +122,21 @@ const server = Bun.serve({
         for (const id of touched) refreshMetadata(id);
         return json({ ...result, ...heads() });
       }),
+    },
+
+    // Immutable, content-addressed JPEGs. PUT is idempotent and re-hashes the body.
+    "/api/images/:hash": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      GET: wrap((_req, p) => {
+        const file = imageFile(p.hash);
+        if (!file) throw new HttpError(404, "image not found");
+        return new Response(file, {
+          headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=31536000, immutable", ...CORS },
+        });
+      }),
+      PUT: wrap(async (req, p) =>
+        json({ ok: true, stored: await saveImage(p.hash, new Uint8Array(await req.arrayBuffer())) }),
+      ),
     },
 
     "/api/threads": {

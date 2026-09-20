@@ -25,12 +25,15 @@ export const looksLikeGarbage = (s: string) =>
 // Skip generation entirely below this — nothing to summarise, model will invent/parrot.
 export const MIN_WORDS = 4;
 
+// Images are `![](img:<hash>#WxH)` — noise to a text summariser.
+export const stripImages = (s: string) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+
 export const generateMetadata = async (threadId: string) => {
   const thread = getThread(threadId);
   if (!thread) return;
   const messages = getMessages(threadId);
   const transcript = messages
-    .map((m) => `${m.role}: ${m.content}`)
+    .map((m) => `${m.role}: ${stripImages(m.content)}`)
     .join("\n")
     .slice(0, 6000);
 

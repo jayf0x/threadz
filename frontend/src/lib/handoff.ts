@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { fetchHead, postSync } from "./api";
+import { pushImages } from "./imageSync";
 import {
   commitPush,
   countUnsynced,
@@ -42,7 +43,7 @@ const sameHeads = (base: Record<string, string>, main: Record<string, string>) =
 
 // Reconcile the device with main until both agree. Each round:
 //   1. pull      main's changes into the device copy (union; deletes vs edits → content wins)
-//   2. push      everything pending, in ONE request (main backs itself up, applies atomically)
+//   2. push      photos main lacks (PUT per image), then everything pending, in ONE request (main backs itself up, applies atomically)
 //   3. re-read   the threads we touched from main, prove every local note is there
 //                (if not, it becomes pending again), and refresh our base hashes from them
 //   4. compare   main's hashes with our base: equal = in sync
@@ -61,6 +62,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
     const deletes = batch.trash.filter((x) => base[x.id]).map((x) => ({ id: x.id, baseHash: base[x.id] }));
     const pending = batch.threads.length + batch.messages.length + batch.trash.length;
 
+    await pushImages(); // photos first: a note must never reach main ahead of its image
     if (pending) {
       phase?.(`Sending ${pending} change${pending === 1 ? "" : "s"}…`);
       const result = await postSync({

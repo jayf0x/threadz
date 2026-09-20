@@ -17,6 +17,7 @@ import type { Node } from "@milkdown/kit/prose/model";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { padForInsert } from "@/lib/voice/text";
+import { imageView } from "./imageView";
 import "./markdown-editor.css";
 
 export type MarkdownEditorHandle = {
@@ -33,6 +34,8 @@ export type MarkdownEditorHandle = {
    * user never put a caret in the editor, it goes at the end. False if the editor isn't
    * loaded yet (caller should keep the text elsewhere). */
   insertAtCaret: (text: string) => boolean;
+  /** Insert an image (`img:` ref or URL) at the caret, same placement rules as `insertAtCaret`. */
+  insertImage: (src: string) => boolean;
 };
 
 type Loaded = {
@@ -40,6 +43,7 @@ type Loaded = {
   replaceAll: (markdown: string) => (ctx: Ctx) => void;
   focusEnd: () => void;
   insertAtCaret: (text: string, touched: boolean) => void;
+  insertImage: (src: string, touched: boolean) => void;
 };
 
 export const MarkdownEditor = ({
@@ -50,6 +54,7 @@ export const MarkdownEditor = ({
   readOnly = false,
   handleRef,
   onKeyDownCapture,
+  onImageFile,
   className,
 }: {
   value: string;
@@ -64,9 +69,11 @@ export const MarkdownEditor = ({
   /** Capture phase — runs before ProseMirror's own handlers, so a caller can
    * claim a chord (e.g. ⌘Enter to send) with preventDefault + stopPropagation. */
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
+  /** Called with an image pasted or dropped into the editor (which then inserts nothing itself). */
+  onImageFile?: (file: File) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
-   * scrolls), `--md-min-height` (default 100%). Set them from here, e.g. `[--md-padding:10px_12px]`. */
+   * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
   className?: string;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,6 +115,8 @@ export const MarkdownEditor = ({
         // "block" re-shows it on every empty line, which reads as "my text
         // disappeared".
         .addFeature(placeholderFeature, { text, mode: "doc" });
+      // Photos: `img:` refs render as lazy grey boxes (components/imageView.ts).
+      crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;
@@ -144,6 +153,14 @@ export const MarkdownEditor = ({
             const pad = padForInsert(around(at - 1, at), around(at, at + 1), text);
             const tr = view.state.tr.insertText(pad.text, at);
             tr.setSelection(state.Selection.near(tr.doc.resolve(at + pad.caretOffset) as never));
+            view.dispatch(tr);
+          }),
+        insertImage: (src, touched) =>
+          crepe.editor.action((ctx: Ctx) => {
+            const view = ctx.get(core.editorViewCtx) as EditorViewLike;
+            const at = touched ? view.state.selection.to : state.Selection.atEnd(view.state.doc).to;
+            const tr = view.state.tr.insert(at, commonmark.imageSchema.type(ctx).create({ src }));
+            tr.setSelection(state.Selection.near(tr.doc.resolve(at + 1) as never));
             view.dispatch(tr);
           }),
       };
@@ -193,8 +210,27 @@ export const MarkdownEditor = ({
         return false; // handle is published just before crepe.create() finishes
       }
     },
+    insertImage: (src) => {
+      const loaded = loadedRef.current;
+      if (!loaded) return false;
+      try {
+        loaded.insertImage(src, touchedRef.current);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     getMarkdown: () => crepeRef.current?.getMarkdown() ?? lastEmittedRef.current,
   }));
+
+  // Pasting or dropping a photo: hand the file to the caller instead of letting ProseMirror embed it.
+  const takeFile = (e: React.ClipboardEvent | React.DragEvent, files: FileList | null | undefined) => {
+    const file = [...(files ?? [])].find((f) => f.type.startsWith("image/"));
+    if (!file || !onImageFile) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onImageFile(file);
+  };
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: focus bubbling only records "the user has been here"; the div isn't a control
@@ -202,6 +238,8 @@ export const MarkdownEditor = ({
       ref={containerRef}
       className={cn("threadz-md", className)}
       onKeyDownCapture={onKeyDownCapture}
+      onPasteCapture={(e) => takeFile(e, e.clipboardData.files)}
+      onDropCapture={(e) => takeFile(e, e.dataTransfer.files)}
       onFocus={() => {
         touchedRef.current = true;
       }}
@@ -213,13 +251,18 @@ type EditorTrLike = {
   doc: { resolve: (pos: number) => unknown };
   setSelection: (s: unknown) => unknown;
   insertText: (t: string, from: number) => EditorTrLike;
+  insert: (at: number, node: unknown) => EditorTrLike;
 };
 
 // Minimal shape of the ProseMirror EditorView bits focusEnd touches — keeps
 // prose types (and their document-touching modules) out of the static graph.
 type EditorViewLike = {
   state: {
-    tr: { setSelection: (s: unknown) => unknown; insertText: (t: string, from: number) => EditorTrLike };
+    tr: {
+      setSelection: (s: unknown) => unknown;
+      insertText: (t: string, from: number) => EditorTrLike;
+      insert: (at: number, node: unknown) => EditorTrLike;
+    };
     doc: Node;
     selection: { to: number };
   };

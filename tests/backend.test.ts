@@ -1,6 +1,6 @@
 import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives under frontend/
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 
 // Isolated DB + stubbed model seam BEFORE importing anything that touches them.
 // Only the model seam is mocked — real db + real metadata logic run against it.
@@ -8,6 +8,8 @@ const DB_PATH = `/tmp/threadz-test-${crypto.randomUUID()}.sqlite`;
 process.env.THREADZ_DB = DB_PATH;
 const BACKUP_DIR = `${DB_PATH}.backups`;
 process.env.THREADZ_BACKUPS = BACKUP_DIR;
+const IMAGES_DIR = `${DB_PATH}.images`;
+process.env.THREADZ_IMAGES = IMAGES_DIR;
 
 // Tests tweak these to drive the (mocked) local model.
 let genOutput: unknown = { description: "a real description of the thread", tags: ["alpha", "beta"] };
@@ -30,8 +32,10 @@ mock.module("../backend/model.ts", () => ({
   },
 }));
 
-const { appendMessage, createThread, db, getMessages, getThread, threadEmbeddings } = await import("../backend/db.ts");
-const { generateMetadata, looksLikeGarbage, MIN_WORDS } = await import("../backend/metadata.ts");
+const { appendMessage, backupDb, createThread, db, getMessages, getThread, threadEmbeddings } = await import(
+  "../backend/db.ts"
+);
+const { generateMetadata, looksLikeGarbage, MIN_WORDS, stripImages } = await import("../backend/metadata.ts");
 
 const BASE = "http://localhost:8788";
 let server: { stop: () => void };
@@ -45,6 +49,7 @@ afterAll(() => {
   server?.stop?.();
   db.close();
   rmSync(BACKUP_DIR, { recursive: true, force: true });
+  rmSync(IMAGES_DIR, { recursive: true, force: true });
 });
 
 describe("idempotent append (invariant: threads append-only, dedupe on client UUID)", () => {
@@ -127,6 +132,66 @@ describe("metadata generation (bug: gemma3:270m parroted the prompt into the DB)
   test("MIN_WORDS is a sane threshold", () => {
     expect(MIN_WORDS).toBeGreaterThan(0);
     expect(MIN_WORDS).toBeLessThan(20);
+  });
+});
+
+describe("images (invariant: immutable files on main, outside SQLite, snapshots and backups)", () => {
+  // Not a decodable picture, but main only checks the JPEG magic bytes and the hash.
+  const bytes = Uint8Array.from({ length: 5000 }, (_, i) =>
+    i === 0 ? 0xff : i === 1 ? 0xd8 : i === 2 ? 0xff : (i * 7) % 251,
+  );
+  const hashOf = (b: Uint8Array) => new Bun.CryptoHasher("sha256").update(b).digest("hex");
+  const hash = hashOf(bytes);
+  const put = (h: string, body: Uint8Array) => fetch(`${BASE}/api/images/${h}`, { method: "PUT", body });
+
+  test("PUT then GET is byte-identical, cacheable forever; a replayed PUT changes nothing", async () => {
+    const first = await put(hash, bytes);
+    expect(first.status).toBe(200);
+    expect((await first.json()).stored).toBe(true);
+    const file = `${IMAGES_DIR}/${hash}`;
+    const before = statSync(file).mtimeMs;
+
+    const got = await fetch(`${BASE}/api/images/${hash}`);
+    expect(got.headers.get("content-type")).toBe("image/jpeg");
+    expect(got.headers.get("cache-control")).toContain("immutable");
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes);
+
+    await new Promise((r) => setTimeout(r, 15));
+    expect((await (await put(hash, bytes)).json()).stored).toBe(false);
+    expect(statSync(file).mtimeMs).toBe(before);
+    expect(readdirSync(IMAGES_DIR)).toEqual([hash]); // no temp files left behind
+  });
+
+  test("rejects a body that is not the hash it claims, not a JPEG, or a hash that is not a hash", async () => {
+    const other = Uint8Array.from(bytes, (b, i) => (i === 100 ? b ^ 1 : b));
+    expect((await put(hash, other)).status).toBe(400);
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    expect((await put(hashOf(png), png)).status).toBe(415);
+    expect((await put("not-a-hash", bytes)).status).toBe(400);
+    expect((await fetch(`${BASE}/api/images/${"b".repeat(64)}`)).status).toBe(404);
+    expect(readdirSync(IMAGES_DIR)).toEqual([hash]);
+  });
+
+  test("CORS allows PUT from the app's origin", async () => {
+    const r = await fetch(`${BASE}/api/images/${hash}`, { method: "OPTIONS" });
+    expect(r.headers.get("access-control-allow-methods")).toContain("PUT");
+  });
+
+  test("images are in neither /api/snapshot nor a backupDb() copy", async () => {
+    const t = createThread("img-t", "photo thread");
+    appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: `look ![](img:${hash}#40x30)` });
+    const snap = JSON.stringify(await (await fetch(`${BASE}/api/snapshot`)).json());
+    expect(snap).toContain(`img:${hash}`); // the reference is text …
+    expect(snap).not.toContain("/9j/"); // … no base64 JPEG
+    const copy = readFileSync(backupDb());
+    expect(copy.includes(bytes.slice(0, 256))).toBe(false); // … and the bytes never reach a database copy
+    expect(readdirSync(BACKUP_DIR).some((f) => f === hash)).toBe(false);
+  });
+
+  test("image markdown is stripped from what the metadata model reads", () => {
+    expect(stripImages(`a walk ![](img:${hash}#40x30) in the park\n![alt](https://x/y.png)`)).toBe(
+      "a walk  in the park\n",
+    );
   });
 });
 
@@ -334,7 +399,9 @@ describe("local mode (invariant: no data lost across sync)", () => {
   let handoff: typeof import("../frontend/src/lib/handoff");
   let remote: typeof import("../frontend/src/lib/api");
   let modeLib: typeof import("../frontend/src/lib/mode");
+  let images: typeof import("../frontend/src/lib/images");
   beforeAll(async () => {
+    images = await import("../frontend/src/lib/images");
     local = await import("../frontend/src/lib/local");
     handoff = await import("../frontend/src/lib/handoff");
     remote = await import("../frontend/src/lib/api");
@@ -396,6 +463,23 @@ describe("local mode (invariant: no data lost across sync)", () => {
     expect(await localContents(t.id)).toHaveLength(2);
     // in sync = our base hashes are exactly main's
     expect(await local.getBase()).toEqual((await fetch(`${BASE}/api/head`).then((r) => r.json())).threads);
+    await cleanUp(t.id);
+  });
+
+  test("a photo taken offline reaches main before its note, is then clean on the device, and a replay sends nothing", async () => {
+    const bytes = Uint8Array.from({ length: 3000 }, (_, i) => (i < 3 ? [0xff, 0xd8, 0xff][i] : (i * 13) % 253));
+    const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+    const t = await local.localApi.createThread({ title: "__local__ photo", seed: `![](img:${hash}#40x30)` });
+    await images.putImage(hash, new Blob([bytes], { type: "image/jpeg" }), 1);
+    expect((await fetch(`${BASE}/api/images/${hash}`)).status).toBe(404);
+
+    await handoff.syncNow();
+    const got = await fetch(`${BASE}/api/images/${hash}`);
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes);
+    expect(await images.dirtyImages()).toEqual([]);
+    expect(await images.getImage(hash)).toBeDefined(); // still on the device
+    expect(await contents(t.id)).toEqual([`![](img:${hash}#40x30)`]);
+    await handoff.syncNow(); // idempotent
     await cleanUp(t.id);
   });
 

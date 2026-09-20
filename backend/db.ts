@@ -58,7 +58,7 @@ export type MessageRow = {
 
 export type Version = { content: string; at: number };
 
-const DB_PATH = process.env.THREADZ_DB || "threadz.sqlite";
+export const DB_PATH = process.env.THREADZ_DB || "threadz.sqlite";
 export const db = new Database(DB_PATH, { create: true });
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 db.exec(SCHEMA);
@@ -286,6 +286,7 @@ const KEEP_BACKUPS = Number(process.env.THREADZ_KEEP_BACKUPS || 20);
 
 // A consistent copy of the whole database, taken before a device's changes are applied.
 // Reverting main = stop the backend and copy one of these over threadz.sqlite.
+// Text only: images are files in their own directory (backend/images.ts) and are never copied here.
 export const backupDb = () => {
   const dir = process.env.THREADZ_BACKUPS || join(dirname(resolve(DB_PATH)), "backups");
   mkdirSync(dir, { recursive: true });

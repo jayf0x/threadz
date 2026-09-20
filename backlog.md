@@ -9,6 +9,33 @@ are in `README.md`.
   is not in the UI — similarity wasn't meaningful at this scale. v2 revisits this as
   a real graph feature (entity extraction + community detection, per handover §1).
 
+## Images in notes — shipped, what remains
+
+Shipped: attach (button/paste/drop) → JPEG ≤1600px → device `threadz-images` DB, outside every backup
+(details and the "no image backups" decision in `README.md`); lazy grey-box rendering; `PUT`/`GET
+/api/images/:hash` on main; photos pushed before `/api/sync` and best-effort on every live pull. Verified
+headless in Chrome (desktop + 390px, live + local, reload, sync back). **Not yet tried on a real phone**
+(iOS HEIC picker, camera capture, canvas memory on old iPhones, `crypto.subtle` needs HTTPS there).
+
+Left:
+
+- **Export backup does not contain images** (JSON only), so a file restored on a fresh device shows grey boxes
+  until it syncs with a main that has them. Zip export, or say so in the UI.
+- **A photo main rejects blocks going live.** `syncNow` throws if a `PUT` fails, so a permanent 4xx (can't happen
+  with our own ≤1600px JPEGs, but it's a wedge if it ever does) would stop the sync. Skip-and-report if it shows up.
+- **Local mode is on-demand for images.** Offline, a photo that was never viewed while live is a grey box; going
+  live never back-fills. Decide a replication policy (cache all / recent N) once real use shows the volume.
+- **Thumbnail tier** (~600px) if decoded-bitmap memory kills the iOS tab with many images in one thread.
+- **Orphan GC** of files/blobs no note references (main and device). Nothing evicts cached-from-main images either.
+- **Large uploads / body caps.** One ~300KB `PUT` is fine; revisit (streaming, keep originals) if images get bigger.
+  Main's ceiling is `MAX_IMAGE_BYTES` (8MB) in `backend/images.ts`.
+- **Editing.** No image button in the per-note editor (Composer only);
+  an image is removed with Backspace on it. No alt text / captions.
+- **Image-only notes** get metadata from the title alone (image markdown is stripped from the transcript); no
+  vision captioning.
+- `navigator.storage.persist()` on the installed iOS PWA: verify it holds, since photos on a not-yet-synced
+  device exist nowhere else.
+
 ## Streaming voice — shipped, residual device testing
 
 Dictation, not "recording": tap the mic, speak, text lands **at the caret** in the composer
@@ -65,7 +92,7 @@ reported afterwards, never asked. Revisit once this has run against real use:
 - **Seed note dedupe.** If a live create-with-seed reaches main but its reply is lost, the
   device's retry creates its own seed note (different id) → one duplicate line at sync.
 - **Static hosting (GitHub Pages).** `VITE_LOCAL=1` works without a backend, but Pages serves
-  under `/<repo>/`: `/vad/…`, `/icon.svg` and the manifest `start_url`/`scope` need Vite `base`.
+  under `/<repo>/`: `/vad/…`, the icons/`favicon.ico` and the manifest `start_url`/`scope` need Vite `base`.
 - **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or
   paste an API key (billed, key lives on the phone).
 - **No in-app restore** of `trash` / safety copies / main's backups; they're plain JSON or

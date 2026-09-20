@@ -78,6 +78,22 @@ export const fetchHead = () => req<Head>("/api/head");
 export const postSync = (payload: SyncPayload) =>
   req<SyncResult>("/api/sync", { method: "POST", body: JSON.stringify(payload) });
 
+// Images are raw bytes, one immutable file per hash (see lib/imageSync.ts).
+export const putImageRemote = async (hash: string, blob: Blob) => {
+  const res = await fetch(`${BACKEND_URL}/api/images/${hash}`, {
+    method: "PUT",
+    headers: { "content-type": "image/jpeg" },
+    body: blob,
+  });
+  if (!res.ok) throw new ApiError(res.status, `image upload failed: ${res.status}`);
+};
+
+export const fetchImageRemote = async (hash: string) => {
+  const res = await fetch(`${BACKEND_URL}/api/images/${hash}`);
+  if (!res.ok) throw new ApiError(res.status, `image ${res.status}`);
+  return res.blob();
+};
+
 // Every screen talks to `api`. Live → main. If main can't be reached (a real network
 // failure, confirmed by a probe; not an HTTP error) and the device already holds a full
 // copy, drop into local mode once and answer from the device instead. Coming back to

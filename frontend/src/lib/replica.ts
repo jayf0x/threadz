@@ -1,6 +1,7 @@
 import { fetchHead, remoteApi } from "./api";
 import { getOutbox, removeFromOutbox } from "./db";
 import { ApiError } from "./errors";
+import { pushImages } from "./imageSync";
 import { applyRemoteDelete, getBase, localApi, mergeRemoteThread } from "./local";
 import { markReplicaReady } from "./mode";
 
@@ -63,6 +64,7 @@ const run = async (): Promise<PullReport> => {
   }
 
   markReplicaReady();
+  await pushImages().catch(() => {}); // main is reachable (we just read it): send photos it lacks
   await drainOutbox();
   return report;
 };
