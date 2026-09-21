@@ -34,3 +34,15 @@ export const LANGUAGES: { code: string; label: string }[] = [
 ];
 
 export const findModel = (id: string): VoiceModel => MODELS.find((m) => m.id === id) ?? MODELS[0];
+
+// A stored/unknown code falls back to "auto": whisper throws on a language it doesn't know.
+export const findLanguage = (code: unknown): string => LANGUAGES.find((l) => l.code === code)?.code ?? "auto";
+
+// Which models are fully in transformers.js's Cache Storage, from the cached request URLs.
+// Whisper needs both the encoder and the merged decoder; one alone is a half-finished download.
+export const cachedModelIds = (urls: string[]): string[] =>
+  MODELS.filter((m) =>
+    ["encoder_model", "decoder_model_merged"].every((f) =>
+      urls.some((u) => u.includes(`/${m.id}/resolve/`) && u.includes(`/onnx/${f}`)),
+    ),
+  ).map((m) => m.id);

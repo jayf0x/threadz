@@ -105,7 +105,20 @@ const handle = async (m: WorkerIn) => {
   }
 };
 
+// A throw must neither poison the chain (every later message would be skipped) nor leave the
+// main thread waiting on a reply, so it becomes a `fail` for that message.
+const failed = (m: WorkerIn, err: unknown) => {
+  const error = errorMessage(err);
+  post(
+    m.type === "load" ? { type: "fail", model: m.model, error } : { type: "fail", recId: m.recId, seq: m.seq, error },
+  );
+};
+
 let chain: Promise<void> = Promise.resolve();
 self.onmessage = (e: MessageEvent<WorkerIn>) => {
-  chain = chain.then(() => handle(e.data));
+  const m = e.data;
+  chain = chain
+    .then(() => handle(m))
+    .catch((err) => failed(m, err))
+    .catch(() => {}); // even the failure report failed (e.g. the port is gone) — keep the chain alive
 };
