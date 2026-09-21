@@ -62,6 +62,14 @@ test("an empty unfinished recording is cleaned up, not surfaced", async () => {
   expect(await findUnfinished()).toBeNull();
 });
 
+test("an empty newest unfinished recording does not hide an older recoverable one", async () => {
+  const older = await startRecording("t");
+  await appendSegment(older, 0, "keep me");
+  await new Promise((r) => setTimeout(r, 5)); // distinct startedAt
+  await startRecording("t"); // newer, nothing captured
+  expect((await findUnfinished())?.recordingId).toBe(older);
+});
+
 test("discard removes the recording and its segments", async () => {
   const rec = await startRecording("t");
   await appendSegment(rec, 0, "gone");
