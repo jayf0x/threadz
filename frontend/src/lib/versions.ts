@@ -20,3 +20,6 @@ export const mergeMessage = (mine: Message, theirs: Message): Message => {
   const edited = edits.length > 0;
   return { ...theirs, content: current.content, editedAt: edited ? current.at : null, edits };
 };
+
+// Reading order. Two devices that appended while apart can share a `seq`; the timestamp settles the tie.
+export const bySeq = (a: Message, b: Message) => a.seq - b.seq || a.createdAt - b.createdAt;

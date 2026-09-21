@@ -2,7 +2,7 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Api } from "./api";
 import { ApiError } from "./errors";
 import type { Message, Snapshot, SyncResult, Thread, Unsynced } from "./types";
-import { mergeMessage, versionsOf } from "./versions";
+import { bySeq, mergeMessage, versionsOf } from "./versions";
 
 // The device's own database. Unlike the `threadz` mirror (lib/db.ts) this is
 // AUTHORITATIVE while in local mode and is never cleared wholesale: every write
@@ -44,6 +44,10 @@ const getDB = () => {
   });
   return dbp;
 };
+
+// The note a thread is created with gets an id derived from the thread's, so main and the device
+// agree on it: a create whose reply was lost and is retried here dedupes at sync instead of doubling the seed.
+export const seedId = (threadId: string) => `seed-${threadId}`;
 
 const strip = <T extends Dirty>({ dirty, ...rest }: T): Omit<T, "dirty"> => rest;
 const notFound = () => new ApiError(404, "thread not found");
@@ -93,7 +97,7 @@ export const localApi: Api = {
     await tx.objectStore("threads").put(thread);
     if (seed?.trim()) {
       const m: LMessage = {
-        id: crypto.randomUUID(),
+        id: seedId(id),
         threadId: id,
         role: "user",
         content: seed.trim(),
@@ -113,7 +117,7 @@ export const localApi: Api = {
     const thread = await db.get("threads", id);
     if (!thread) throw notFound();
     const messages = await db.getAllFromIndex("messages", "byThread", id);
-    return { thread: strip(thread), messages: messages.sort((a, b) => a.seq - b.seq).map(strip) };
+    return { thread: strip(thread), messages: messages.sort(bySeq).map(strip) };
   },
 
   renameThread: async (id, title) => {
@@ -232,7 +236,7 @@ export const unsyncedMessageIds = async (threadId: string) => {
 export const unsyncedBatch = async () => {
   const db = await getDB();
   const messages = (await db.getAllFromIndex("messages", "dirty", 1)).sort(
-    (a, b) => a.threadId.localeCompare(b.threadId) || a.seq - b.seq,
+    (a, b) => a.threadId.localeCompare(b.threadId) || bySeq(a, b),
   );
   return {
     threads: await db.getAllFromIndex("threads", "dirty", 1),
@@ -249,27 +253,38 @@ export const getBase = async () =>
 
 type Batch = Awaited<ReturnType<typeof unsyncedBatch>>;
 
-// After main acknowledged a push: flip exactly what was sent to clean, in ONE
-// transaction. Re-reads each row so one edited since the batch was read is never
-// marked clean by mistake. `missing`/`kept` rows stay dirty for the next round.
+// After main acknowledged a push: flip what was sent to clean, in ONE transaction. Each row is
+// re-read and compared, on the fields that were sent, with the copy that was sent: one renamed or
+// edited during the round-trip stays dirty for the next round instead of being marked clean by mistake.
+// `missing`/`kept` rows stay dirty too.
 export const commitPush = async (sent: Batch, r: SyncResult) => {
   const db = await getDB();
   const tx = db.transaction(["threads", "messages", "trash", "base"], "readwrite");
-  const clean = async (store: "threads" | "messages" | "trash", id: string) => {
-    const row = await tx.objectStore(store).get(id);
-    // biome-ignore lint/suspicious/noExplicitAny: three stores, one identical operation
-    if (row) await tx.objectStore(store).put({ ...row, dirty: 0 } as any);
-  };
   const missing = new Set(r.missing);
-  for (const t of sent.threads) await clean("threads", t.id);
-  for (const m of sent.messages) if (!missing.has(m.threadId)) await clean("messages", m.id);
+  for (const t of sent.threads) {
+    const row = await tx.objectStore("threads").get(t.id);
+    if (row && sameThread(row, t)) await tx.objectStore("threads").put({ ...row, dirty: 0 });
+  }
+  for (const m of sent.messages) {
+    if (missing.has(m.threadId)) continue;
+    const row = await tx.objectStore("messages").get(m.id);
+    if (row && sameMessage(row, m)) await tx.objectStore("messages").put({ ...row, dirty: 0 });
+  }
   for (const x of sent.trash) {
-    await clean("trash", x.id);
+    const row = await tx.objectStore("trash").get(x.id);
+    if (row && row.deletedAt === x.deletedAt) await tx.objectStore("trash").put({ ...row, dirty: 0 });
     if (r.deleted.includes(x.id)) await tx.objectStore("base").delete(x.id);
     // r.kept: main changed since our base. Leave base stale — the next pull sees the mismatch and resurrects the thread.
   }
   await tx.done;
 };
+
+// What /api/sync carries for a thread / a note; another field changing (updatedAt) is no reason to resend.
+const sameThread = (a: Thread, b: Thread) => a.title === b.title && (a.renamedAt ?? null) === (b.renamedAt ?? null);
+const sameMessage = (a: Message, b: Message) =>
+  a.content === b.content &&
+  (a.editedAt ?? null) === (b.editedAt ?? null) &&
+  JSON.stringify(a.edits ?? []) === JSON.stringify(b.edits ?? []);
 
 // Something we thought main had, it doesn't: make it a pending change again.
 export const markDirty = async (messageIds: string[]) => {
@@ -286,7 +301,7 @@ export const markDirty = async (messageIds: string[]) => {
 
 // Union main's version of a thread into ours. Never drops a local note; a thread we
 // deleted but main changed comes back ("content wins"), along with our own notes.
-export const mergeRemoteThread = async (thread: Thread, messages: Message[], hash: string) => {
+export const mergeRemoteThread = async (thread: Thread, messages: Message[], hash: string | undefined) => {
   const db = await getDB();
   const tx = db.transaction(["threads", "messages", "trash", "base"], "readwrite");
   const trashed = await tx.objectStore("trash").get(thread.id);
@@ -319,7 +334,7 @@ export const mergeRemoteThread = async (thread: Thread, messages: Message[], has
     if (!mainIds.has(m.id) && !(await tx.objectStore("messages").get(m.id)))
       await tx.objectStore("messages").put({ ...m, dirty: 1 }); // our notes from before the delete
   }
-  await tx.objectStore("base").put({ id: thread.id, hash });
+  if (hash) await tx.objectStore("base").put({ id: thread.id, hash });
   await tx.done;
   return { added, resurrected: !!trashed };
 };
@@ -374,25 +389,77 @@ export const updateMeta = async (threads: Thread[]) => {
 // --- snapshots: adopt from backend, import from file, export, backup ---------
 
 // Import: union merge that NEVER overwrites a row the device has and never deletes.
-// New rows are marked as pending so they sync; a thread deleted here comes back if the file has it.
+// New rows are marked as pending so they sync; a thread deleted here comes back if the file has it,
+// together with the notes we trashed that the file lacks. A note whose `seq` is already taken in its
+// thread gets the next free one, so an import never produces two notes at the same position.
 export const mergeSnapshot = async (snap: Snapshot) => {
   const db = await getDB();
   const tx = db.transaction(["threads", "messages", "trash"], "readwrite");
   const added = { threads: 0, messages: 0 };
+  const used = new Map<string, Set<number>>(); // seqs in use per thread, loaded on first touch
+  const place = async (m: Message) => {
+    let seqs = used.get(m.threadId);
+    if (!seqs) {
+      seqs = new Set((await tx.objectStore("messages").index("byThread").getAll(m.threadId)).map((x) => x.seq));
+      used.set(m.threadId, seqs);
+    }
+    const seq = seqs.has(m.seq) ? Math.max(0, ...seqs) + 1 : m.seq;
+    seqs.add(seq);
+    await tx.objectStore("messages").put({ ...m, seq, dirty: 1 });
+    added.messages++;
+  };
+  const ours: Message[] = []; // our own trashed notes of a thread the file brings back, placed after the file's
   for (const t of snap.threads) {
-    await tx.objectStore("trash").delete(t.id);
     if (await tx.objectStore("threads").get(t.id)) continue;
     await tx.objectStore("threads").put({ ...t, dirty: 1 });
     added.threads++;
+    const trashed = await tx.objectStore("trash").get(t.id);
+    if (!trashed) continue;
+    await tx.objectStore("trash").delete(t.id);
+    ours.push(...trashed.messages);
   }
-  for (const m of snap.messages) {
+  for (const m of [...snap.messages].sort(bySeq)) {
     if (!(await tx.objectStore("threads").get(m.threadId))) continue;
     if (await tx.objectStore("messages").get(m.id)) continue;
-    await tx.objectStore("messages").put({ ...m, dirty: 1 });
-    added.messages++;
+    await place(m);
   }
+  for (const m of ours.sort(bySeq)) if (!(await tx.objectStore("messages").get(m.id))) await place(m);
   await tx.done;
   return added;
+};
+
+// A backup file is untrusted: check the type of every field the app reads (search calls string methods on
+// them, sync sends them), not just that the keys exist. Returns the snapshot, or null if any row is malformed.
+export const parseSnapshot = (raw: unknown): Snapshot | null => {
+  const rec = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
+  const str = (x: unknown) => typeof x === "string";
+  const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+  const opt = (x: unknown, ok: (v: unknown) => boolean) => x === undefined || x === null || ok(x);
+  const versions = (x: unknown) => Array.isArray(x) && x.every((v) => rec(v) && str(v.content) && num(v.at));
+  const thread = (t: unknown) =>
+    rec(t) &&
+    str(t.id) &&
+    str(t.title) &&
+    num(t.createdAt) &&
+    num(t.updatedAt) &&
+    Array.isArray(t.tags) &&
+    t.tags.every(str) &&
+    opt(t.description, str) &&
+    opt(t.renamedAt, num);
+  const message = (m: unknown) =>
+    rec(m) &&
+    str(m.id) &&
+    str(m.threadId) &&
+    str(m.content) &&
+    num(m.createdAt) &&
+    num(m.seq) &&
+    (m.role === "user" || m.role === "assistant") &&
+    opt(m.meta, rec) &&
+    opt(m.editedAt, num) &&
+    (m.edits === undefined || versions(m.edits));
+  if (!rec(raw) || raw.version !== 1 || !Array.isArray(raw.threads) || !Array.isArray(raw.messages)) return null;
+  if (!raw.threads.every(thread) || !raw.messages.every(message)) return null;
+  return raw as Snapshot;
 };
 
 // Text only. Photos live in their own database (lib/images.ts) that nothing here — export, backup,
