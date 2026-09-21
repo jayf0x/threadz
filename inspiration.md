@@ -90,29 +90,61 @@ Zulip's answer to folders is two flat levels and cheap relabelling.
 
 ## Design leanings so far (from the conversation, not decided)
 
-- No folder hierarchy; a thread is an unopinionated container that gets meaning later through title and tags
-  (generated or typed). Zulip's channel+topic UI is not wanted; single threads that keep growing are. A tree view of
-  branching threads that link back is a possible future.
+- No folder hierarchy; a thread is an unopinionated container that gets its meaning from what is in it. Zulip's
+  channel+topic UI is not wanted; single threads that keep growing are. A tree view of branching threads that link
+  back is a possible future.
 - **Three different actions** (terminology settled 2026-09-21; an earlier "fork" here meant Copy):
-  - **Copy.** On A:N, create thread B as an identical copy of A up to and including N, with new UUIDs. A is
-    untouched; no pointers, no shared state. Copies keep their original `createdAt` and other row properties; the AI
-    description is dropped (regenerated); tags stay; all annotations are copied (remapped to the new message ids);
-    B's title is `Copy: <original title>`.
+  - **Copy.** On A:N, create thread B as an identical copy of A up to and including N, new UUIDs, A untouched, no
+    pointers or shared state. In the backlog.
   - **Branch (with pointers).** On A:N, create thread B that starts from A:N. Messages up to N belong to A: B cannot
     edit them, and changes in A show in B.
   - **Branch as sub-thread.** No new thread: a sub-thread inside A starting from A:N, shown as a toggle on A:N that
     switches branches.
-  - Plan so far: start with Copy; real branching (pointers) later instead of duplicating content.
-- **Tags:** one list; each tag has a source (user or AI) but looks the same (at most a small icon). Regenerating via AI
-  only regenerates the AI tags.
-- An always-visible input button that copies the thread at its last message and makes the typed text B's first note
-  was accepted.
-- **Annotation staleness.** An annotation may cite a range of messages (e.g. A0-A5) with a hash of it, purely to show
-  "the source changed since" (unchanged / changed / gone), a last-edited/hash lookup and not a message flow. The W3C
-  Web Annotation model records what the target looked like when annotated (TimeState) so an application can compare
-  later; the model does not detect change itself.
-- Known side effect of copies: near-duplicate content in search and trend detection. Idea: inert provenance data
-  (`copiedFrom` per message, `forkedFrom` per thread) that only the derived layer reads. Undecided.
+  - Plan so far: Copy first; real branching later instead of duplicating content.
+- Threads never include each other and never share state; only copies.
+
+## Ideas parked for later
+
+Not in the backlog. Draw from here when picking the next features.
+
+- **Branching, both kinds.** One model could serve both: every message gets a parent pointer, and the owning thread
+  stays as it is. A sub-thread branch is a new branch owned by A; a cross-thread branch is a new branch owned by B
+  whose ancestors in A are read-only. Roughly git's model. Build sub-thread first: it is the common LLM-chat pattern
+  (edit or regenerate makes a sibling branch), edits to A:3 show in every branch through it because it is the same
+  message, and it needs no cross-thread rules. Cross-thread adds: sync order (A before B, and a device holding B must
+  also hold A), a rule for deleting A (e.g. B turns into a copy at that moment), read-only ancestors, and a parent
+  pointer instead of `seq` to define "up to N" (concurrent appends can tie on `seq` and change a prefix). Adding the
+  parent pointer later is a migration that fills it from `seq`.
+- **Provenance for Copy.** Inert `copiedFrom` (per message) and `forkedFrom` (per thread), read only by the derived
+  layer to collapse near-duplicates in search and trend detection and to draw a branch tree. They cannot be back-filled
+  for copies made before they exist. Pointer branches would make them unnecessary.
+- **Annotation extensions.** AI feedback as an annotation ("ask about this message" adds an assistant annotation on
+  it, not a reply at the end of the thread). **Staleness citations:** an annotation may cite a range of messages
+  (e.g. A0-A5) with a hash of it, only to show "the source changed since" (unchanged / changed / gone): a
+  last-edited/hash lookup, not a message flow. The W3C Web Annotation model records what the target looked like when
+  annotated (TimeState) so an application can compare later; the model does not detect change itself. Copies would
+  remap citations inside the copied part and leave the rest pointing at the original.
+- **Details view for AI metadata.** Show it with the open thread, not in the list: a sheet from the thread header on
+  phones, a side panel on wide screens. A drawer rising from the bottom of the sidebar (the first idea) cannot work on
+  phones, because the sidebar is hidden while a thread is open (`App.tsx`). Related threads, themes, copies and an
+  annotation index could live there too.
+- **Tags.** Skipped until there are 20+ threads. If revived: one list, each tag with a source (user or AI), looking the
+  same (at most a small icon); AI regeneration replaces only the AI tags. The generator writes the whole `tags`
+  column after each append, so a tag typed into that column would be lost, hence the source flag. User tags are
+  content: they would have to sync up (the sync payload carries no tags), count towards the thread hash (tags and
+  description are excluded now) and merge like the title (newest wins).
+- **Stream-first home.** One feed of every note, newest first, composer at the bottom, a thread chip on each note;
+  Threads, Themes and Open become views, not places. A note lands in an Inbox and gets a thread later, or a thread is
+  created on the first sent note instead of on `+`.
+- **What folders did, and what could replace it:** finding (hybrid search plus "you wrote about this before"),
+  scoping (pinned threads, a focus filter), active vs archive (heat decay instead of filing), nesting (nothing).
+- **From Zulip, if needed:** links by message id that survive changes; a breadcrumb when content moves; status as a
+  label (settled / open) with an "unresolved" filter. Zulip's move maps to copy plus delete here, which loses
+  id-based links unless a redirect is kept.
+- **MCP server on main only** (a stdio process reading the SQLite file), not on the phone and not a backend.
+- **One-off import scripts** for an Obsidian vault (folder names could seed theme hints) and for ChatGPT/Claude
+  exports; personal scripts, not features.
+- **Undo toast for Copy**, if Copy ever gets an always-visible button.
 
 ## Sources
 

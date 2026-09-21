@@ -1,32 +1,85 @@
 # Threadz backlog
 
-Open items only. Resolved items live in the git history; deliberate scope choices
-are in `README.md`. What is left is v1 gaps against the goals, v2, or can't be settled without a real phone.
+Open items only. Resolved items live in the git history; deliberate scope choices are in `README.md`; ideas that are
+not committed to yet are in `inspiration.md`. What is left is v1 work, v2, or can't be settled without a real phone.
 
-## Next — v1 gaps against the goals
+## Next — v1
 
-Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps,
-detect recurring themes ("similar to x"), stay 100% local.
+Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps, stay 100% local.
+Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now.
 
+The first five entries belong together: what the list shows, the shared components, then the message menu,
+annotations and copy built on them.
+
+- **Take AI metadata out of v1.** Tested, does not belong in v1 (no solid place in the UI, output too weak).
+  - The list row shows title and date only: drop description and tags from `ThreadRow.tsx`. No tags feature (typing
+    or showing) until there are 20+ threads.
+  - Search matches titles and note text only: drop the description/tags clauses from `visibleThreads.ts`, the local
+    search in `local.ts` and `listThreads` in `backend/db.ts`.
+  - Docs: `README.md` says the generated description, tags, embeddings and related threads were tried and do not
+    belong in v1, and its mentions of them (intro, Ollama prerequisite, API table, local-mode note) match.
+  - `description`, `tags` and `embedding` stay as nullable fields; nothing new may depend on them.
+  - **Open:** what happens to the background generation (`refreshMetadata` after each append,
+    `POST /api/threads/:id/metadata`, Ollama as a prerequisite): leave it running unseen, switch it off behind a
+    flag (code kept for v2), or remove it.
+- **Shared components** (needed by the next three entries).
+  - `Popover` and `Menu` primitives in `components/ui/`: outside tap and Esc close them, keyboard reachable, usable
+    on touch. Implementation is the developer's call.
+  - `MessageInput`: the composer's editor, draft, image attach and send, extracted from `Composer.tsx` into a
+    reusable component and hook with minor adjustments. `Composer` wraps it and keeps voice dictation and Ask. The
+    draft key is per target (a thread, or a message for an annotation). No dictation in the annotation input for
+    now: the mic engine is one shared session.
+- **Message menu.** One ⋯ button per message holds every secondary action: Annotate, Copy thread from here, and the
+  existing per-message actions that belong there (edit). Always visible on touch, on hover on desktop (the rule the
+  thread-row actions already use); no row of icons per message. Thread-row actions (rename, regenerate title,
+  delete) stay as they are.
+- **Annotations.** A note attached to one message: text required, images optional. Opened from the message menu in a
+  popover holding a `MessageInput`; the message's existing annotations render as markdown.
+  - Real schema, no `z.unknown()`: the same fields as a message (id, role, content, createdAt, editedAt, edits) plus
+    the thread and message it belongs to, and no annotations of annotations. No `meta` unless a field needs it. One
+    base schema shared with messages: Zod in `backend/schemas.ts`, a SQLite table with cascade on thread delete, a
+    TS type.
+  - Backend and sync: add (idempotent by client id) and edit (history kept like messages) endpoints; `annotations`
+    in the `/api/sync` payload; the thread hash includes annotation ids and edit times so changes are noticed;
+    union merge by id, edits newest wins.
+  - Frontend: the `threadz` mirror and `threadz-local` stores (DB version bump plus migration); `remoteApi` and
+    `localApi` stay signature-identical; `exportSnapshot`, `mergeSnapshot`, `parseSnapshot` and trash carry
+    annotations, and old backup files still import.
+  - Not part of Ask context or search for now.
+  - **Open:** how an annotated message shows it: a count chip that expands inline, or only inside the popover.
+- **Copy thread from a message.** On A:N, create thread B as an identical copy of A from its first message up to
+  and including N. A is unchanged.
+  - New ids for the thread, every message and every annotation. Original `createdAt`, edits and other row properties
+    are kept. Annotations are copied with their message reference remapped. Images stay references
+    (`img:<sha256>`), no bytes are duplicated. `description`, `tags` and `embedding` stay null. Title is
+    `Copy: <original title>` ("Copy: Copy: X" is fine). B opens afterwards.
+  - One call in `remoteApi` and `localApi`: one transaction on main, IndexedDB in local mode. New ids derive from the
+    new thread id plus the original id, so a retry or double tap cannot duplicate (like the `seed-<threadId>`
+    note). Works offline; B syncs like any thread.
+  - Entry point: "Copy thread from here" in the message menu.
+  - **Open:** the main input also copying at the last message, with the typed text becoming B's first note (accepted
+    earlier as an always-visible button; unclear now that secondary actions live in menus).
+  - Not stored: `copiedFrom` / `forkedFrom`. They cannot be added retroactively; see `inspiration.md`.
+  - Tests: A untouched; B ids new, `createdAt` kept, annotations remapped, images shared, retry is idempotent, live
+    and local, an offline copy syncs.
 - **Capture without a title, the rest.** `+` / `n` now makes `Thread: NNN` and opens it, and yatefca names it from
   the first note. Still missing: opening the app (or a `/capture` deep link / PWA shortcut) landing in a focused
   composer, and an Inbox. Pressing `+` and walking away leaves an empty `Thread: NNN` behind; decide whether to
-  create on the first note instead. yatefca gives nothing for a very short note; `generateMetadata` could name those.
-- **Related threads failed for a fixable reason.** One vector per thread, built in `metadata.ts` from
-  `title + description + tags + the first 2000 chars` of the transcript: a thread is represented by its
-  beginning plus a generated summary (from whichever small test model is configured), so a thread that grows
-  drifts away from its vector. Try per-note (or chunk) embeddings, keep the generated description/tags out of
-  the embedding input, thread score = best/mean note match; judge on real data before wiring the endpoint
-  into the UI.
-  The same embeddings feed "similar to x" while writing and, later, a periodic theme digest.
-- **Search and todos.** Search is a literal `LIKE` (`db.ts`): no ranking, no meaning. Want SQLite FTS5 first,
-  then a semantic fallback with the existing `embed()`. Nothing gathers `- [ ]` across threads; an "Open todos"
-  view needs a query over messages, plus a decision on ticking a box (it is an edit, so it lands in `edits`).
+  create on the first note instead. yatefca gives nothing for a very short note.
+- **Search and todos.** Search is a literal `LIKE` (`db.ts`): no ranking. Want SQLite FTS5. Nothing gathers `- [ ]`
+  across threads; an "Open todos" view needs a query over messages, plus a decision on ticking a box (it is an edit,
+  so it lands in `edits`).
 
 ## v2 features (deferred by design)
 
-- **Related threads as a graph** (entity extraction + community detection). The plain "similar threads"
-  feature is tracked under Next.
+- **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
+  yet (ideas for a details view and for tags in `inspiration.md`).
+- **Related threads / "similar to x".** `GET /api/threads/:id/related` exists and is unused. It failed for a fixable
+  reason: one vector per thread, built in `metadata.ts` from `title + description + tags + the first 2000 chars`
+  of the transcript, so a growing thread drifts away from its vector. Try per-note (or chunk) embeddings, keep
+  generated text out of the embedding input, thread score = best/mean note match; judge on real data first. A
+  semantic fallback for search would use the same embeddings. A graph version (entity extraction + community
+  detection) comes after.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 - **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or
@@ -40,6 +93,8 @@ detect recurring themes ("similar to x"), stay 100% local.
 
 Everything is verified headless in Chrome (desktop + 390px); none of this has run on an iPhone.
 
+- **Popovers and the message menu on iOS:** positioning with the keyboard open, tap targets, dismissal. Only
+  testable on a device.
 - **Images:** iOS HEIC picker, camera capture, canvas memory on old iPhones; a ~600px thumbnail tier if
   decoded-bitmap memory kills the iOS tab with many images in one thread; `navigator.storage.persist()` on
   the installed PWA (photos on a not-yet-synced device exist nowhere else); `crypto.subtle` on plain `http://`.
