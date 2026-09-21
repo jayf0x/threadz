@@ -16,9 +16,12 @@ scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-p
 ## Prerequisites
 
 - [Bun](https://bun.sh) ≥ 1.3
-- [Ollama](https://ollama.com) running, with models pulled:
+- [Ollama](https://ollama.com) running, with two models pulled. These are test defaults, not decisions: any
+  Ollama model that can emit JSON works for tags/descriptions (`THREADZ_GEN_MODEL`), the embedding model is
+  swappable (`THREADZ_EMBED_MODEL`; vectors from different embedding models don't compare), and none of it has
+  been benchmarked yet.
   ```bash
-  ollama pull qwen3.5:0.8b       # tags + descriptions
+  ollama pull qwen3.5:0.8b       # tags + descriptions (small on purpose while testing)
   ollama pull nomic-embed-text   # embeddings
   ```
 - A logged-in `claude` CLI (for "Ask Claude"). The backend calls Claude through the
@@ -43,8 +46,10 @@ page on `:8787`, or `VITE_BACKEND_URL` at build time if it lives elsewhere.
 ### HTTPS on the phone (needed for mic, offline, install)
 
 Browsers only enable the mic, the service worker and "Add to Home Screen" on a secure origin —
-`http://<lan-ip>:5173` on the phone gets none of them (`localhost` is exempt). Easiest fix is
-Tailscale on both devices; `tailscale serve` gives each port a real cert:
+`http://<lan-ip>:5173` on the phone gets none of them (`localhost` is exempt). **How the phone reaches main
+securely is undecided.** Tailscale is one option that works today, but it costs phone battery, so it is a
+candidate, not the plan; a local CA on the LAN (e.g. mkcert), a reverse proxy or a tunnel are not evaluated yet.
+The Tailscale recipe (`tailscale serve` gives each port a real cert):
 
 ```bash
 tailscale serve --bg --https=443 http://localhost:5173    # frontend
@@ -228,6 +233,9 @@ don't know images exist.
   (primary key). Retrying a flaky send is safe.
 - **One model seam.** All Claude calls go through `askModel()` in `backend/model.ts` —
   the plug point for a future routing gateway.
+- **Main is the brain, phones are shadow clones.** Anything heavy (embeddings, comparing notes, batch jobs,
+  Claude) runs on main; a phone captures, reads and merges back, and runs no LLM. There is no hosted backend and
+  none is planned.
 - **Nothing auto-syncs.** Reconnecting shows a "Main is reachable" banner; the user reviews and goes live.
 - **Claude sees only the thread.** `askModel()` runs with no tools, no MCP servers and an empty working
   directory, so a prompt can never read the machine it runs on.

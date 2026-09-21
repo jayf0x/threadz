@@ -14,9 +14,10 @@ detect recurring themes ("similar to x"), stay 100% local.
   create on the first note instead. yatefca gives nothing for a very short note; `generateMetadata` could name those.
 - **Related threads failed for a fixable reason.** One vector per thread, built in `metadata.ts` from
   `title + description + tags + the first 2000 chars` of the transcript: a thread is represented by its
-  beginning plus a 0.8B-model summary, so a thread that grows drifts away from its vector. Try per-note (or
-  chunk) embeddings, drop the LLM description/tags from the embedding input, thread score = best/mean note
-  match; judge on real data before wiring the endpoint into the UI (AGENTS.md says "do not wire it" until then).
+  beginning plus a generated summary (from whichever small test model is configured), so a thread that grows
+  drifts away from its vector. Try per-note (or chunk) embeddings, keep the generated description/tags out of
+  the embedding input, thread score = best/mean note match; judge on real data before wiring the endpoint
+  into the UI.
   The same embeddings feed "similar to x" while writing and, later, a periodic theme digest.
 - **Search and todos.** Search is a literal `LIKE` (`db.ts`): no ranking, no meaning. Want SQLite FTS5 first,
   then a semantic fallback with the existing `embed()`. Nothing gathers `- [ ]` across threads; an "Open todos"

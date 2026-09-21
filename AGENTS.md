@@ -58,7 +58,7 @@ extract a helper when the same code shows up a third time; delete dead code and 
   Bytes live in their own IndexedDB (`threadz-images`) and, on main, as files in `THREADZ_IMAGES` — never in
   `exportSnapshot`/`saveBackup`/`mergeSnapshot`/Export, never in SQLite, `backupDb()` or `/api/snapshot`. A `dirty`
   image is never deleted; it is `PUT` to main before `/api/sync`.
-- "Related threads" (`/api/threads/:id/related`) is a v2 endpoint — do not wire it into the UI.
+- "Related threads" (`/api/threads/:id/related`) is not in the UI yet; the planned rework is in `backlog.md`.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
 - Metadata generation is fire-and-forget after each append (no queue).
 - Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
