@@ -1,13 +1,31 @@
 # Threadz backlog
 
 Open items only. Resolved items live in the git history; deliberate scope choices
-are in `README.md`. What is left is either v2 or can't be settled without a real phone.
+are in `README.md`. What is left is v1 gaps against the goals, v2, or can't be settled without a real phone.
+
+## Next — v1 gaps against the goals
+
+Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps,
+detect recurring themes ("similar to x"), stay 100% local.
+
+- **Capture without a title.** `NewThread.tsx` saves nothing until there is a title, and there is no inbox or
+  way to launch straight into capture. Want: opening the app (or a `/capture` deep link / PWA shortcut) lands in
+  a focused composer, the note goes to an Inbox, and the title comes later from `generateMetadata`. Keep the
+  `seed-<threadId>` idempotency and the local-mode rules.
+- **Related threads failed for a fixable reason.** One vector per thread, built in `metadata.ts` from
+  `title + description + tags + the first 2000 chars` of the transcript: a thread is represented by its
+  beginning plus a 0.8B-model summary, so a thread that grows drifts away from its vector. Try per-note (or
+  chunk) embeddings, drop the LLM description/tags from the embedding input, thread score = best/mean note
+  match; judge on real data before wiring the endpoint into the UI (AGENTS.md says "do not wire it" until then).
+  The same embeddings feed "similar to x" while writing and, later, a periodic theme digest.
+- **Search and todos.** Search is a literal `LIKE` (`db.ts`): no ranking, no meaning. Want SQLite FTS5 first,
+  then a semantic fallback with the existing `embed()`. Nothing gathers `- [ ]` across threads; an "Open todos"
+  view needs a query over messages, plus a decision on ticking a box (it is an edit, so it lands in `edits`).
 
 ## v2 features (deferred by design)
 
-- **Related threads.** `GET /api/threads/:id/related` (embedding cosine) exists but
-  is not in the UI — similarity wasn't meaningful at this scale. v2 revisits this as
-  a real graph feature (entity extraction + community detection).
+- **Related threads as a graph** (entity extraction + community detection). The plain "similar threads"
+  feature is tracked under Next.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **A central settings page** (the voice panel is a stopgap inline in the composer).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
