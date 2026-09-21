@@ -196,7 +196,12 @@ don't know images exist.
   never deleted by anything. While live it is sent immediately (and retried on every pull); `syncNow` sends
   any left before the note that shows it. Photos from main are cached on the device on first view (live);
   offline, an uncached one stays a grey box.
-- Orphans (a photo whose note was never sent or was deleted) are harmless and not collected.
+- **Orphans are collected.** Main deletes files no note (or kept edit) mentions once they are older than 7 days
+  (at startup, then daily). The device deletes clean cached images no note in the device copy mentions (a day
+  after caching); a `dirty` image is never deleted. Local mode fetches photos on demand, so an offline photo
+  never viewed while live is a grey box — a deliberate choice until real use shows the volume.
+- **Deliberate limits.** No zip export (that would be an image backup), no alt text/captions (the note format is
+  `![](img:<hash>#WxH)` only), no streaming upload (one ≤8MB `PUT` is fine at ≤1600px JPEG).
 
 ### Load-bearing decisions
 
