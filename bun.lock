@@ -32,6 +32,7 @@
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
         "tailwind-merge": "^3.0.2",
+        "yatefca": "^1.2.0",
       },
       "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
@@ -1644,7 +1645,11 @@
 
     "wrappy": ["wrappy@1.0.2", "", {}, "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="],
 
+    "yake-ts": ["yake-ts@1.2.5", "", {}, "sha512-FT2c5qeiRRbeLL9zrMro/SCCissHC9Jb85DYJg1dDDYh52sZ0WJx4lmjk5Ec2bbKHWobOS3Hgs3ZAbFUeEAr7Q=="],
+
     "yallist": ["yallist@5.0.0", "", {}, "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw=="],
+
+    "yatefca": ["yatefca@1.2.0", "", { "dependencies": { "yake-ts": "^1.2.4" }, "peerDependencies": { "@opencode-ai/plugin": ">=1" }, "optionalPeers": ["@opencode-ai/plugin"] }, "sha512-9K5gohA6tsrEW8CS8XoR9VnhL64m976pGv+ahdgvORgZJi9gpA/K+229BB4AP69xnivsX1zGLFh8nzg4j/CHIA=="],
 
     "zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
 

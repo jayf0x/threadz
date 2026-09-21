@@ -2,12 +2,14 @@ import { format, isThisYear } from "date-fns";
 import { Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { PencilSparkles } from "@/components/ui/pencil-sparkles";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
 import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
+import { noteText, titleFrom } from "./titles";
 
 export const ThreadRow = ({
   thread,
@@ -23,6 +25,8 @@ export const ThreadRow = ({
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(thread.title);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null); // a quiet answer that is not a failure
+  const [naming, setNaming] = useState(false);
   // The input's blur fires as it unmounts (after Enter or Esc): one rename per edit, and none after Esc.
   const settled = useRef(false);
 
@@ -37,6 +41,29 @@ export const ThreadRow = ({
       await pullThreads();
     } catch (e) {
       setError(errorMessage(e));
+    }
+  };
+
+  // Name the thread from what is in it (yatefca). Too little to go on, or no better than the current title: nothing changes.
+  const regenerate = async () => {
+    if (naming) return;
+    setNaming(true);
+    setError(null);
+    setNote(null);
+    try {
+      const { messages } = await api.getThread(thread.id);
+      const title = await titleFrom(noteText(messages));
+      if (!title || title === thread.title) {
+        setNote(title ? "Already named for what it says." : "Not enough written to name it yet.");
+        setTimeout(() => setNote(null), 3500);
+        return;
+      }
+      await api.renameThread(thread.id, title);
+      await pullThreads();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setNaming(false);
     }
   };
 
@@ -105,7 +132,7 @@ export const ThreadRow = ({
               {format(thread.updatedAt, "MMM")}
               {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
             </span>
-            <span className="min-w-0 pr-14">
+            <span className="min-w-0 pr-20">
               <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
               {thread.description && (
                 <span className="mt-0.5 line-clamp-2 block text-[13px] leading-snug text-muted-foreground">
@@ -117,6 +144,7 @@ export const ThreadRow = ({
                   {thread.tags.map((t) => `#${t}`).join("  ")}
                 </span>
               )}
+              {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
               {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
             </span>
           </button>
@@ -134,6 +162,16 @@ export const ThreadRow = ({
               }}
             >
               <Pencil className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Regenerate title"
+              title="Regenerate title from its notes"
+              disabled={naming}
+              className={cn(act, naming && "opacity-100")}
+              onClick={regenerate}
+            >
+              <PencilSparkles className={cn("size-3.5", naming && "animate-pulse")} />
             </button>
             <button
               type="button"

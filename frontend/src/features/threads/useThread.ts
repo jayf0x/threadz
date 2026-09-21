@@ -3,10 +3,24 @@ import { api } from "@/lib/api";
 import { getThreadMessages } from "@/lib/db";
 import { ApiError, errorMessage } from "@/lib/errors";
 import { unsyncedMessageIds } from "@/lib/local";
-import { onChange, pullThread } from "@/lib/sync";
-import type { Message } from "@/lib/types";
+import { getSettings } from "@/lib/settings";
+import { onChange, pullThread, pullThreads } from "@/lib/sync";
+import type { Message, Thread } from "@/lib/types";
+import { autoTitle } from "./titles";
 
 const uuid = () => crypto.randomUUID();
+
+// The first note names its thread (Settings → Naming). Fire-and-forget: a title is a nicety, so a failure here
+// never touches the note that was just stored.
+const autoName = async (thread: Thread, first: Message, previous?: string) => {
+  if (!getSettings().autoName) return;
+  try {
+    const title = await autoTitle(thread, first.content, previous);
+    if (!title) return;
+    await api.renameThread(thread.id, title);
+    await pullThreads();
+  } catch {}
+};
 
 export const useThread = (threadId: string | null) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -69,7 +83,9 @@ export const useThread = (threadId: string | null) => {
       } finally {
         setBusy(false);
       }
-      await pullThread(threadId).catch(() => {}); // refreshing the view can fail; the write already succeeded
+      // refreshing the view can fail; the write already succeeded
+      const view = await pullThread(threadId).catch(() => null);
+      if (view?.messages.length === 1) autoName(view.thread, view.messages[0]!);
       return true;
     },
     [threadId],
@@ -90,7 +106,9 @@ export const useThread = (threadId: string | null) => {
       } finally {
         setBusy(false);
       }
-      await pullThread(threadId).catch(() => {});
+      const view = await pullThread(threadId).catch(() => null);
+      const first = view?.messages[0];
+      if (view && first?.id === id) autoName(view.thread, first, first.edits?.at(-1)?.content);
       return true;
     },
     [threadId],

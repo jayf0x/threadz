@@ -20,7 +20,8 @@
     "onnxruntime-web": "1.29.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tailwind-merge": "^3.0.2"
+    "tailwind-merge": "^3.0.2",
+    "yatefca": "^1.2.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

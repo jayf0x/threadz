@@ -177,6 +177,21 @@ the pill for the connection dialog.
 - **Photos** are sent first, one idempotent `PUT` each, before the atomic sync (see below).
 - `VITE_LOCAL=1` builds default to local mode and skip the backend presence stream (static hosting, see "Publish to GitHub Pages").
 
+### Starting and naming threads
+
+`+` (or `n`) makes a thread at once, called `Thread: 004` (threads + 1, at least three digits; a number a delete left
+taken is skipped) and opens it. There is no form. **Name a thread from its first note** (Settings, on by default)
+renames it when that note is sent or edited, using [yatefca](https://www.npmjs.com/package/yatefca): keyword
+extraction, no model, so it also works offline and in local mode. It only replaces a title nobody chose (the
+placeholder, or exactly what it derived from the previous first note) and does nothing when the note is too thin to
+name. The pencil-sparkles button on a row does the same on demand from all of the thread's notes, and does replace a
+name you typed.
+
+### Settings
+
+The gear in the sidebar footer flips the sidebar to Settings: the auto-name switch and the speech model. They are per
+device (`localStorage`), never synced.
+
 ### Photos in notes
 
 The composer's image button (also paste / drop) takes a photo, shrinks it in the browser to ≤1600px on the

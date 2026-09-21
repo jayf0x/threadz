@@ -8,10 +8,10 @@ are in `README.md`. What is left is v1 gaps against the goals, v2, or can't be s
 Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps,
 detect recurring themes ("similar to x"), stay 100% local.
 
-- **Capture without a title.** `NewThread.tsx` saves nothing until there is a title, and there is no inbox or
-  way to launch straight into capture. Want: opening the app (or a `/capture` deep link / PWA shortcut) lands in
-  a focused composer, the note goes to an Inbox, and the title comes later from `generateMetadata`. Keep the
-  `seed-<threadId>` idempotency and the local-mode rules.
+- **Capture without a title, the rest.** `+` / `n` now makes `Thread: NNN` and opens it, and yatefca names it from
+  the first note. Still missing: opening the app (or a `/capture` deep link / PWA shortcut) landing in a focused
+  composer, and an Inbox. Pressing `+` and walking away leaves an empty `Thread: NNN` behind; decide whether to
+  create on the first note instead. yatefca gives nothing for a very short note; `generateMetadata` could name those.
 - **Related threads failed for a fixable reason.** One vector per thread, built in `metadata.ts` from
   `title + description + tags + the first 2000 chars` of the transcript: a thread is represented by its
   beginning plus a 0.8B-model summary, so a thread that grows drifts away from its vector. Try per-note (or
@@ -27,7 +27,6 @@ detect recurring themes ("similar to x"), stay 100% local.
 - **Related threads as a graph** (entity extraction + community detection). The plain "similar threads"
   feature is tracked under Next.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
-- **A central settings page** (the voice panel is a stopgap inline in the composer).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 - **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or
   paste an API key (billed, key lives on the phone).
@@ -53,5 +52,3 @@ Everything is verified headless in Chrome (desktop + 390px); none of this has ru
   offline afterwards.
 - **Local-mode timing:** whether the 2-probe detach (15s interval + `online`/`focus`) feels right on a flaky
   Wi-Fi handoff. The "Thread not found" state has never been opened in a browser.
-- **`NewThread` retry on a half-created seed.** If a create lands on main but the seed append then fails with
-  an HTTP error, main keeps an empty thread and a retry mints a new id. Only seen as a theory; fix if it shows up.

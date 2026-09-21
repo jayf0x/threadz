@@ -44,8 +44,11 @@
   --radius-xl: var(--radius-xl);
 }
 
-* {
-  border-color: var(--border);
+/* In a layer, so `border-primary` / `border-transparent` and friends can override it. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 html,

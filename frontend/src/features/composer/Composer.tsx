@@ -1,4 +1,4 @@
-import { CornerDownLeft, Mic, Settings2, Square } from "lucide-react";
+import { CornerDownLeft, Mic, Square } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
@@ -7,7 +7,6 @@ import type { VoiceState } from "@/lib/voice/engine";
 import { useDraft } from "./useDraft";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { VoiceMeter } from "./VoiceMeter";
-import { VoiceSettings } from "./VoiceSettings";
 
 type Mode = "note" | "ask";
 const MODES: { value: Mode; label: string }[] = [
@@ -51,7 +50,6 @@ export const Composer = ({
   const mode = canAsk ? picked : "note";
   const sending = useRef(false);
   const [commit, setCommit] = useState(true);
-  const [showVoice, setShowVoice] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
   const { attach, error: imageError } = useImageAttach(editor);
 
@@ -175,8 +173,6 @@ export const Composer = ({
           )}
         </div>
 
-        {showVoice && <VoiceSettings />}
-
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           {canAsk && (
             <fieldset className="flex gap-px border border-border p-px">
@@ -217,18 +213,7 @@ export const Composer = ({
             </label>
           )}
 
-          <Button
-            className="ml-auto"
-            size="icon"
-            variant="ghost"
-            aria-label="Voice settings"
-            aria-expanded={showVoice}
-            onClick={() => setShowVoice((v) => !v)}
-          >
-            <Settings2 className="size-4" />
-          </Button>
-
-          <Button disabled={busy || !draft.trim()} onClick={submit}>
+          <Button className="ml-auto" disabled={busy || !draft.trim()} onClick={submit}>
             {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
             {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
           </Button>
