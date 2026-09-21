@@ -61,6 +61,8 @@ Zulip's answer to folders is two flat levels and cheap relabelling.
   the paper: what to pass down, how much to compress, where merged content lands. Prototype only does full context or
   blank slate; no evaluation yet.
 - Everyone gives messages a parent. Nobody in this list has settled merging.
+- In-thread branching (one tree per conversation, a switcher at the fork) is the common LLM-chat pattern: editing a
+  message or regenerating a reply creates a sibling branch and keeps the original (Nodea).
 
 ## Ideas that came out (candidates)
 
@@ -91,10 +93,20 @@ Zulip's answer to folders is two flat levels and cheap relabelling.
 - No folder hierarchy; a thread is an unopinionated container that gets meaning later through title and tags
   (generated or typed). Zulip's channel+topic UI is not wanted; single threads that keep growing are. A tree view of
   branching threads that link back is a possible future.
-- **Fork = full copy.** Forking thread A at message N makes thread B a copy of A up to and including N, with new
-  UUIDs; A is untouched. No pointers, no shared state, threads never include each other. Copies keep their original
-  `createdAt` and other row properties; generated (AI) metadata is dropped from the copy and regenerated; all
-  annotations are copied; B's title is `Copy: <original title>`.
+- **Three different actions** (terminology settled 2026-09-21; an earlier "fork" here meant Copy):
+  - **Copy.** On A:N, create thread B as an identical copy of A up to and including N, with new UUIDs. A is
+    untouched; no pointers, no shared state. Copies keep their original `createdAt` and other row properties; the AI
+    description is dropped (regenerated); tags stay; all annotations are copied (remapped to the new message ids);
+    B's title is `Copy: <original title>`.
+  - **Branch (with pointers).** On A:N, create thread B that starts from A:N. Messages up to N belong to A: B cannot
+    edit them, and changes in A show in B.
+  - **Branch as sub-thread.** No new thread: a sub-thread inside A starting from A:N, shown as a toggle on A:N that
+    switches branches.
+  - Plan so far: start with Copy; real branching (pointers) later instead of duplicating content.
+- **Tags:** one list; each tag has a source (user or AI) but looks the same (at most a small icon). Regenerating via AI
+  only regenerates the AI tags.
+- An always-visible input button that copies the thread at its last message and makes the typed text B's first note
+  was accepted.
 - **Annotation staleness.** An annotation may cite a range of messages (e.g. A0-A5) with a hash of it, purely to show
   "the source changed since" (unchanged / changed / gone), a last-edited/hash lookup and not a message flow. The W3C
   Web Annotation model records what the target looked like when annotated (TimeState) so an application can compare
