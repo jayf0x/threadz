@@ -1,6 +1,6 @@
 import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives under frontend/
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // Isolated DB + stubbed model seam BEFORE importing anything that touches them.
@@ -31,6 +31,7 @@ mock.module("../backend/model.ts", () => ({
 const { appendMessage, backupDb, createThread, db, getMessages, getThread, threadEmbeddings } = await import(
   "../backend/db.ts"
 );
+const { collectOrphanImages } = await import("../backend/images.ts");
 const { generateMetadata, looksLikeGarbage, MIN_WORDS, stripImages } = await import("../backend/metadata.ts");
 
 let BASE = "";
@@ -182,6 +183,44 @@ describe("images (invariant: immutable files on main, outside SQLite, snapshots 
     const copy = readFileSync(backupDb());
     expect(copy.includes(bytes.slice(0, 256))).toBe(false); // … and the bytes never reach a database copy
     expect(readdirSync(BACKUP_DIR).some((f) => f === hash)).toBe(false);
+  });
+
+  test("orphan GC removes only old files no message (or kept edit) refers to", async () => {
+    const jpeg = (n: number) => Uint8Array.from({ length: 300 }, (_, i) => [0xff, 0xd8, 0xff][i] ?? (i * n) % 251);
+    const [used, edited, oldOrphan, freshOrphan] = [jpeg(3), jpeg(5), jpeg(7), jpeg(11)];
+    const [hUsed, hEdited, hOld, hFresh] = [used, edited, oldOrphan, freshOrphan].map(hashOf) as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    for (const [h, b] of [
+      [hUsed, used],
+      [hEdited, edited],
+      [hOld, oldOrphan],
+      [hFresh, freshOrphan],
+    ] as const)
+      await put(h, b);
+    const t = createThread("gc-t", "gc thread");
+    appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: `![](img:${hUsed}#4x3)` });
+    const m = crypto.randomUUID();
+    appendMessage({ id: m, threadId: t.id, role: "user", content: "first ![](img:" + hEdited + "#4x3)" });
+    db.query("UPDATE messages SET content = 'rewritten', edits = ? WHERE id = ?").run(
+      JSON.stringify([{ content: `first ![](img:${hEdited}#4x3)`, at: 1 }]),
+      m,
+    );
+    const later = Date.now() + 8 * 24 * 3600 * 1000;
+    // pretend 8 days have passed for everything but the "fresh" one
+    const dir = `${IMAGES_DIR}`;
+    utimesSync(`${dir}/${hFresh}`, new Date(later + 1000), new Date(later + 1000));
+
+    expect(collectOrphanImages(later)).toEqual([hOld]);
+    expect(readdirSync(dir).sort()).toEqual(
+      [hEdited, hFresh, hUsed, hash].filter((h) => existsSync(`${dir}/${h}`)).sort(),
+    );
+    expect(existsSync(`${dir}/${hOld}`)).toBe(false);
+    expect(existsSync(`${dir}/${hUsed}`)).toBe(true);
+    expect(existsSync(`${dir}/${hEdited}`)).toBe(true);
   });
 
   test("image markdown is stripped from what the metadata model reads", () => {
@@ -551,6 +590,30 @@ describe("local mode (invariant: no data lost across sync)", () => {
     expect(await contents(t.id)).toEqual([`![](img:${hash}#40x30)`]);
     await handoff.syncNow(); // idempotent
     await cleanUp(t.id);
+  });
+
+  test("device GC drops clean cached images nothing refers to; dirty, referenced (incl. trashed) and fresh ones stay", async () => {
+    const blob = new Blob([Uint8Array.of(0xff, 0xd8, 0xff, 1)], { type: "image/jpeg" });
+    const h = (c: string) => c.repeat(64);
+    const t = await local.localApi.createThread({ title: "__local__ gc", seed: `![](img:${h("1")}#4x3)` });
+    const gone = await local.localApi.createThread({ title: "__local__ gc trash", seed: `![](img:${h("2")}#4x3)` });
+    await local.localApi.deleteThread(gone.id); // its note now sits in trash: still a reference
+    for (const c of "12345") await images.putImage(h(c), blob, c === "4" ? 1 : 0);
+    // 1, 2 referenced; 3, 5 orphans (clean); 4 orphan but dirty (own hashes: the store is shared with images.test.ts)
+    expect(await images.gcDeviceImages()).not.toContain(h("3")); // cached just now: grace period
+    const later = Date.now() + 2 * 24 * 3600 * 1000;
+    const removed = await images.gcDeviceImages(later);
+    expect(removed).toContain(h("3"));
+    expect(removed).toContain(h("5"));
+    expect(removed).not.toContain(h("1"));
+    expect(removed).not.toContain(h("2"));
+    expect(removed).not.toContain(h("4"));
+    expect(await images.getImage(h("1"))).toBeDefined();
+    expect(await images.getImage(h("2"))).toBeDefined();
+    expect(await images.getImage(h("4"))).toBeDefined(); // dirty: never
+    expect(await images.getImage(h("3"))).toBeUndefined();
+    await images.markImageClean(h("4")); // a stand-in, not a real photo: don't let later syncs try to PUT it
+    await cleanUp(t.id, gone.id);
   });
 
   test("main changes are pulled in (new thread, new note) without touching local work", async () => {

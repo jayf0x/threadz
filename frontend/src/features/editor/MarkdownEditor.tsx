@@ -16,6 +16,7 @@ import type { Ctx } from "@milkdown/kit/ctx";
 import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/cn";
+import { housekeeping } from "@/lib/images";
 import { padForInsert } from "@/lib/voice/text";
 import { imageView } from "./imageView";
 import "./markdown-editor.css";
@@ -113,6 +114,7 @@ export const MarkdownEditor = ({
     if (!containerRef.current) return;
     let destroyed = false;
     let destroy: (() => void) | undefined;
+    housekeeping(); // once per page load: persistent-storage request + orphan sweep
 
     (async () => {
       const [{ CrepeBuilder }, { listItem }, { placeholder: placeholderFeature }, commonmark, core, state, utils] =

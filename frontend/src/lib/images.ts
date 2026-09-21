@@ -1,4 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
+import { exportSnapshot } from "./local";
 
 // Photos in notes. A note holds only a reference, `![](img:<sha256hex>#<w>x<h>)`; the bytes live
 // here, in their OWN IndexedDB database. Nothing that snapshots, backs up, exports or imports
@@ -29,7 +30,7 @@ export const fitSize = (w: number, h: number) => {
 
 // --- the store --------------------------------------------------------------------
 
-type Row = { hash: string; blob: Blob; dirty: 0 | 1 };
+type Row = { hash: string; blob: Blob; dirty: 0 | 1; at?: number }; // `at`: when cached (absent on older rows)
 interface ImagesDB extends DBSchema {
   images: { key: string; value: Row; indexes: { dirty: number } };
 }
@@ -45,7 +46,7 @@ const getDB = () => {
 // First write wins: an image we hold (maybe still dirty) is never replaced or demoted by a cached copy.
 export const putImage = async (hash: string, blob: Blob, dirty: 0 | 1) => {
   const tx = (await getDB()).transaction("images", "readwrite");
-  if (!(await tx.store.get(hash))) await tx.store.put({ hash, blob, dirty });
+  if (!(await tx.store.get(hash))) await tx.store.put({ hash, blob, dirty, at: Date.now() });
   await tx.done;
 };
 
@@ -59,6 +60,61 @@ export const markImageClean = async (hash: string) => {
   const row = await tx.store.get(hash);
   if (row) await tx.store.put({ ...row, dirty: 0 });
   await tx.done;
+};
+
+// --- orphan GC: clean cached images no note refers to ------------------------------------
+
+// Every image hash mentioned in these texts.
+export const referencedHashes = (texts: Iterable<string>) => {
+  const found = new Set<string>();
+  for (const t of texts) for (const m of t.matchAll(/img:([0-9a-f]{64})/g)) found.add(m[1] as string);
+  return found;
+};
+
+const GRACE_MS = 24 * 3600 * 1000; // a just-cached image may belong to a thread not in the device copy yet
+
+// Delete clean images that `used` doesn't mention. A dirty image (main hasn't acknowledged it) is never
+// deleted, nor is one cached in the last day. A clean one is only a cache of main, so the worst a wrong
+// call costs is a refetch. Returns the hashes removed.
+export const deleteOrphanImages = async (used: Set<string>, now = Date.now()) => {
+  const db = await getDB();
+  const removed: string[] = [];
+  for (const key of await db.getAllKeys("images")) {
+    if (used.has(key)) continue;
+    const tx = db.transaction("images", "readwrite");
+    const row = await tx.store.get(key);
+    if (row && !row.dirty && now - (row.at ?? 0) >= GRACE_MS) {
+      await tx.store.delete(key);
+      removed.push(key);
+    }
+    await tx.done;
+  }
+  return removed;
+};
+
+// What the device copy (`threadz-local`, trash included, every kept edit) refers to. An empty copy
+// (not warmed yet) collects nothing.
+export const gcDeviceImages = async (now = Date.now()) => {
+  const { messages, trash } = await exportSnapshot();
+  const all = [...messages, ...(trash ?? []).flatMap((t) => t.messages)];
+  if (!all.length) return [];
+  return deleteOrphanImages(
+    referencedHashes(all.flatMap((m) => [m.content, ...(m.edits ?? []).map((v) => v.content)])),
+    now,
+  );
+};
+
+// --- storage housekeeping, once per page load ----------------------------------------------
+
+let housekept = false;
+
+// Ask the browser not to evict our storage (photos not yet on main live only here) and sweep orphans.
+// Quiet on purpose: unsupported or refused is fine (the connection dialog shows the outcome).
+export const housekeeping = () => {
+  if (housekept) return;
+  housekept = true;
+  navigator.storage?.persist?.().catch(() => {});
+  gcDeviceImages().catch(() => {});
 };
 
 // --- browser only: compress a picked file ------------------------------------------
@@ -89,6 +145,7 @@ export const attachImage = async (file: File): Promise<string> => {
     if (!blob) throw new Error("Couldn't encode the image.");
     const hash = await sha256(blob);
     await putImage(hash, blob, 1);
+    housekeeping();
     return formatRef({ hash, w, h });
   } finally {
     URL.revokeObjectURL(url);
