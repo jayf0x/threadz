@@ -107,21 +107,19 @@ export const discard = async (recordingId: string): Promise<void> => {
   await tx.done;
 };
 
-// The newest recording left in `status:"recording"` — i.e. a session the tab
-// died in the middle of. Returned so the UI can offer to recover its text.
+// The newest recording left in `status:"recording"` that captured something — i.e. a session
+// the tab died in the middle of. Returned so the UI can offer to recover its text. Empty ones
+// newer than it are discarded on the way (nothing captured — don't nag about them).
 export const findUnfinished = async (): Promise<{ recordingId: string; lineCount: number; preview: string } | null> => {
   const recs = (await (await getDB()).getAll("recordings"))
     .filter((r) => r.status === "recording")
     .sort((a, b) => b.startedAt - a.startedAt);
-  const newest = recs[0];
-  if (!newest) return null;
-  const segs = await orderedSegments(newest.id);
-  if (!segs.length) {
-    await discard(newest.id); // nothing captured — don't nag about it
-    return null;
+  for (const rec of recs) {
+    const segs = await orderedSegments(rec.id);
+    if (segs.length) return { recordingId: rec.id, lineCount: segs.length, preview: join(segs).slice(0, 140) };
+    await discard(rec.id);
   }
-  const text = join(segs);
-  return { recordingId: newest.id, lineCount: segs.length, preview: text.slice(0, 140) };
+  return null;
 };
 
 const pruneOld = async (): Promise<void> => {

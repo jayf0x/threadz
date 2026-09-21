@@ -26,10 +26,19 @@ test("out-of-range caret is clamped", () => {
   expect(spliceAtCaret("ab", 99, "c").value).toBe("ab c");
 });
 
-test("non-speech annotations are dropped, real speech survives", () => {
+test("a segment that is only a non-speech annotation is dropped", () => {
   expect(cleanTranscript(" [BLANK_AUDIO] ")).toBe("");
+  expect(cleanTranscript("[MUSIC] [BLANK_AUDIO]")).toBe("");
   expect(cleanTranscript("♪ la la ♪")).toBe("");
-  expect(cleanTranscript("(music) hello")).toBe("hello");
-  expect(cleanTranscript("*sigh* Hello there.")).toBe("Hello there.");
+  expect(cleanTranscript(" (music)")).toBe("");
+  expect(cleanTranscript("*sigh*")).toBe("");
   expect(cleanTranscript("...")).toBe("");
+});
+
+test("real speech survives, including parentheses and asterisks inside it", () => {
+  expect(cleanTranscript("Hello. [BLANK_AUDIO]")).toBe("Hello.");
+  expect(cleanTranscript("(music) hello")).toBe("(music) hello");
+  expect(cleanTranscript("I think (maybe) so")).toBe("I think (maybe) so");
+  expect(cleanTranscript("*sigh* Hello there.")).toBe("*sigh* Hello there.");
+  expect(cleanTranscript("a (b) c (d)")).toBe("a (b) c (d)");
 });

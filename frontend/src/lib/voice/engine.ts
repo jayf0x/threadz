@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, findModel } from "./models";
+import { cachedModelIds, DEFAULT_MODEL, findLanguage, findModel } from "./models";
 import { appendSegment, assemble, discard, findUnfinished, finishRecording, startRecording } from "./recordings";
 import { cleanTranscript } from "./text";
 import type { WorkerIn, WorkerOut } from "./whisper-worker";
@@ -34,7 +34,8 @@ const REDEMPTION_MS = 800; // silence that ends an utterance — lower = snappie
 const IDLE_UNLOAD_MS = 3 * 60_000; // free the model's RAM after this long unused
 const VAD_BASE = `${import.meta.env.BASE_URL}vad/`; // self-hosted VAD assets (vite.config.ts copies them); base-aware for sub-path hosting
 const PREFS_KEY = "threadz.voice.prefs";
-const DOWNLOADED_KEY = "threadz.voice.downloaded";
+const DOWNLOADED_KEY = "threadz.voice.downloaded"; // hint, used only where Cache Storage is unavailable
+const WEB_CACHE = "transformers-cache"; // the Cache Storage bucket transformers.js writes model files to
 // ponytail: worker is terminated, not paused — reload from HTTP cache costs a few seconds. Raise
 // IDLE_UNLOAD_MS if that annoys.
 
@@ -46,7 +47,7 @@ export type Recovery = { recordingId: string; lineCount: number; preview: string
 export type VoiceState = {
   phase: Phase;
   model: { id: string; status: ModelStatus; pct: number };
-  downloaded: string[]; // model ids known to be in the browser cache
+  downloaded: string[]; // model ids in the browser cache (Cache Storage; localStorage hint as fallback)
   prefs: Prefs;
   partial: string; // tokens of the utterance currently being decoded
   pending: number; // decodes in flight (mic off + pending>0 = "finishing")
@@ -70,7 +71,7 @@ const write = (key: string, value: unknown) => {
 
 const initialPrefs = (): Prefs => {
   const p = read<Prefs>(PREFS_KEY, { model: DEFAULT_MODEL, language: "auto" });
-  return { model: findModel(p.model).id, language: p.language };
+  return { model: findModel(p.model).id, language: findLanguage(p.language) };
 };
 
 let state: VoiceState = (() => {
@@ -122,14 +123,29 @@ let unloadTimer: ReturnType<typeof setTimeout> | undefined;
 const getWorker = (): Worker => {
   if (!worker) {
     const w = new Worker(new URL("./whisper-worker.ts", import.meta.url), { type: "module" });
-    w.onmessage = (e: MessageEvent<WorkerOut>) => onWorker(e.data);
+    w.onmessage = (e: MessageEvent<WorkerOut>) => {
+      if (worker === w) onWorker(e.data);
+    };
     w.onerror = (e) => {
       e.preventDefault();
+      if (worker !== w) return;
+      dropWorker(); // a dead worker must not be reused: the next load would wait on it forever
       onWorker({ type: "fail", model: state.model.id, error: e.message || "Speech worker crashed" });
     };
     worker = w;
   }
   return worker;
+};
+
+// Terminate the worker. Decodes that were on it are gone, so settle them here or `pending` sticks.
+const dropWorker = () => {
+  worker?.terminate();
+  worker = null;
+  if (state.pending) set({ pending: 0, partial: "" });
+  for (const r of recs.values()) {
+    r.inflight = 0;
+    settle(r);
+  }
 };
 
 const send = (m: WorkerIn, transfer: Transferable[] = []) => {
@@ -141,8 +157,7 @@ const scheduleUnload = () => {
   clearTimeout(unloadTimer);
   if (state.phase !== "idle" || state.pending || state.model.status !== "ready") return;
   unloadTimer = setTimeout(() => {
-    worker?.terminate();
-    worker = null;
+    dropWorker();
     set({ model: { ...state.model, status: "idle", pct: 0 } });
   }, IDLE_UNLOAD_MS);
 };
@@ -150,6 +165,10 @@ const scheduleUnload = () => {
 const loadModel = (id: string) => {
   const m = state.model;
   if (m.id === id && (m.status === "loading" || m.status === "ready")) return;
+  // The worker handles messages one at a time, so a load queued behind another model's download
+  // would wait for all of it. Replace it instead: kill that worker (Cache Storage only ever holds
+  // whole files). With decodes queued behind the load we keep the worker and this load waits its turn.
+  if (m.status === "loading" && m.id !== id && !state.pending) dropWorker();
   set({ model: { id, status: "loading", pct: 0 } });
   send({ type: "load", model: id });
 };
@@ -157,12 +176,12 @@ const loadModel = (id: string) => {
 export const setModel = (id: string) => {
   const prefs = { ...state.prefs, model: findModel(id).id };
   write(PREFS_KEY, prefs);
-  set({ prefs, error: null, model: { id: prefs.model, status: "idle", pct: 0 } });
+  set({ prefs, error: null });
   loadModel(prefs.model);
 };
 
 export const setLanguage = (language: string) => {
-  const prefs = { ...state.prefs, language };
+  const prefs = { ...state.prefs, language: findLanguage(language) };
   write(PREFS_KEY, prefs);
   set({ prefs });
 };
@@ -193,6 +212,17 @@ const jobDone = (recId: string) => {
   }
 };
 
+// Cache Storage is the truth for "downloaded"; where it's unavailable (insecure context, private
+// mode) `downloaded` stays the localStorage hint.
+const refreshDownloaded = async () => {
+  try {
+    const keys = await (await caches.open(WEB_CACHE)).keys();
+    const downloaded = cachedModelIds(keys.map((r) => r.url));
+    write(DOWNLOADED_KEY, downloaded);
+    set({ downloaded });
+  } catch {}
+};
+
 const onWorker = (m: WorkerOut) => {
   switch (m.type) {
     case "progress":
@@ -205,6 +235,7 @@ const onWorker = (m: WorkerOut) => {
       set(
         m.model === state.model.id ? { downloaded, model: { id: m.model, status: "ready", pct: 100 } } : { downloaded },
       );
+      void refreshDownloaded();
       scheduleUnload();
       return;
     }
@@ -272,9 +303,9 @@ const acquireStream = async (): Promise<MediaStream> => {
   return s;
 };
 
-const releaseStream = () => {
-  for (const t of stream?.getTracks() ?? []) t.stop();
-  stream = null;
+const releaseStream = (s: MediaStream | null = stream) => {
+  for (const t of s?.getTracks() ?? []) t.stop();
+  if (s === stream) stream = null;
 };
 
 const takeWakeLock = async () => {
@@ -434,6 +465,8 @@ export const stop = async () => {
   startToken++; // cancels a start() that's still spinning up
   const mic = vad;
   const rec = current;
+  const held = stream; // this session's mic: a start() during the awaits below owns a new stream
+  stream = null;
   vad = null;
   current = null;
   speaking = false;
@@ -445,7 +478,7 @@ export const stop = async () => {
   try {
     await mic?.destroy(); // pause() inside → flushes the last utterance through onSpeechEnd → submit
   } catch {}
-  releaseStream();
+  releaseStream(held);
   if (rec) {
     rec.closed = true;
     settle(rec);
@@ -476,3 +509,5 @@ export const dismissRecovery = async () => {
 };
 
 export const clearError = () => set({ error: null });
+
+void refreshDownloaded();

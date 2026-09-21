@@ -1,12 +1,15 @@
 // Pure text helpers for dictation — no DOM, no React, so the caret rules are testable.
 
-// Whisper emits "[BLANK_AUDIO]", "(music)", "*sigh*", "♪ … ♪" for non-speech. Strip those;
-// if no letters/digits survive, the utterance was noise.
+// Whisper emits "[BLANK_AUDIO]", "(music)", "*sigh*", "♪ … ♪" for non-speech. Speech never
+// transcribes to square brackets, so those tags go wherever they sit ("Hello. [BLANK_AUDIO]").
+// The other shapes are also how people say parenthetical asides, so they only count as
+// annotations when they are the whole segment. If no letters/digits survive, it was noise.
+const BRACKET_TAG = /\[[^\]]*\]/g;
+const WHOLE_TAG = /^(?:\([^)]*\)|\*[^*]*\*|♪[^♪]*♪)$/;
+
 export const cleanTranscript = (raw: string): string => {
-  const text = raw
-    .replace(/[[(*♪][^\])*♪]*[\])*♪]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = raw.replace(BRACKET_TAG, " ").replace(/\s+/g, " ").trim();
+  if (WHOLE_TAG.test(text)) return "";
   return /[\p{L}\p{N}]/u.test(text) ? text : "";
 };
 
