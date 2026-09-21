@@ -66,6 +66,9 @@ export const BackupSection = ({ busy, run, setNote, backupAt, persisted }: Props
         />
       </div>
       <p className="text-xs text-muted-foreground">
+        Photos are not included: an export holds the notes and their photo references, not the pictures.
+      </p>
+      <p className="text-xs text-muted-foreground">
         Last export: {exportedAt ? `${formatDistanceToNow(exportedAt)} ago` : "never"}.{" "}
         {backupAt && (
           <>

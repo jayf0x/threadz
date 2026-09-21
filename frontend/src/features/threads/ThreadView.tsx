@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Composer } from "@/features/composer";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@/features/editor";
+import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange } from "@/lib/sync";
@@ -115,6 +115,7 @@ const EntryRow = ({
   const [text, setText] = useState(m.content);
   const [history, setHistory] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
+  const { attach, error: imageError } = useImageAttach(editor);
   const mine = m.role === "user";
   const changed = text.trim() && text.trim() !== m.content;
 
@@ -133,23 +134,28 @@ const EntryRow = ({
 
       {editing ? (
         <>
-          <MarkdownEditor
-            handleRef={editor}
-            value={text}
-            onChange={setText}
-            readOnly={busy}
-            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:60dvh] [--md-min-height:8rem] [--md-padding:10px_12px]"
-            onKeyDownCapture={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                e.stopPropagation();
-                save();
-              } else if (e.key === "Escape") {
-                e.stopPropagation();
-                setEditing(false);
-              }
-            }}
-          />
+          <div className="relative">
+            <MarkdownEditor
+              handleRef={editor}
+              value={text}
+              onChange={setText}
+              readOnly={busy}
+              onImageFile={(f) => attach([f])}
+              className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:60dvh] [--md-min-height:8rem] [--md-padding:10px_44px_10px_12px]"
+              onKeyDownCapture={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  save();
+                } else if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setEditing(false);
+                }
+              }}
+            />
+            <ImageButton onFiles={attach} disabled={busy} className="absolute right-1 top-1" />
+          </div>
+          {imageError && <p className="mt-1 truncate font-mono text-[11px] text-destructive">{imageError}</p>}
           <div className="mt-2 flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
               Cancel
