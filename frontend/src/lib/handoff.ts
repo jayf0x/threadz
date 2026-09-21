@@ -9,13 +9,13 @@ import {
   localMessageIds,
   markDirty,
   mergeSnapshot,
+  parseSnapshot,
   saveBackup,
   unsyncedBatch,
 } from "./local";
 import { replicaReady, setMode } from "./mode";
 import { addReports, emptyReport, fetchAndMerge, type PullReport, pullMain } from "./replica";
 import { emitChange } from "./sync";
-import type { Snapshot } from "./types";
 
 // Moving between main and this device. Nothing here runs by itself: going live is a
 // button, and nothing in this file removes a local note.
@@ -33,7 +33,7 @@ export const enterLocal = async () => {
 
 // --- local → live ---------------------------------------------------------------
 
-export type SyncReport = PullReport & { pushed: number };
+export type SyncReport = PullReport & { pushed: number; skippedImages: number };
 export type Phase = (text: string) => void;
 
 const sameHeads = (base: Record<string, string>, main: Record<string, string>) => {
@@ -50,11 +50,12 @@ const sameHeads = (base: Record<string, string>, main: Record<string, string>) =
 // Every step is idempotent, so a crash/reload/retry anywhere just resumes.
 export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
   await saveBackup("before-sync");
-  let report: SyncReport = { ...emptyReport(), pushed: 0 };
+  let report: SyncReport = { ...emptyReport(), pushed: 0, skippedImages: 0 };
+  const refused = new Set<string>(); // photos main turned down for good: they stay dirty on the device
 
   for (let round = 0; round < 4; round++) {
     phase?.("Reading main…");
-    report = { ...addReports(report, await pullMain()), pushed: report.pushed };
+    report = { ...addReports(report, await pullMain()), pushed: report.pushed, skippedImages: report.skippedImages };
 
     const batch = await unsyncedBatch();
     const base = await getBase();
@@ -65,7 +66,9 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
     });
     const pending = batch.threads.length + batch.messages.length + batch.trash.length;
 
-    await pushImages(); // photos first: a note must never reach main ahead of its image
+    // Photos first: a note should not reach main ahead of its image. One main refuses is skipped, not fatal.
+    for (const hash of (await pushImages()).skipped) refused.add(hash);
+    report.skippedImages = refused.size;
     if (pending) {
       phase?.(`Sending ${pending} change${pending === 1 ? "" : "s"}…`);
       const result = await postSync({
@@ -92,7 +95,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
 
       phase?.("Verifying…");
       for (const id of Object.keys(result.hashes)) {
-        const { mainIds } = await fetchAndMerge(id);
+        const { mainIds } = await fetchAndMerge(id, result.hashes[id]);
         const lacking = [...(await localMessageIds(id))].filter((m) => !mainIds.has(m));
         if (lacking.length) await markDirty(lacking);
       }
@@ -153,16 +156,12 @@ export const exportBackup = async () => {
 
 // Union import: adds what's missing (marked for sync), touches nothing else.
 export const importBackup = async (file: File) => {
-  const snap = JSON.parse(await file.text()) as Snapshot;
-  const ok = (r: unknown, keys: string[]) => !!r && typeof r === "object" && keys.every((k) => k in r);
-  if (
-    snap?.version !== 1 ||
-    !Array.isArray(snap.threads) ||
-    !Array.isArray(snap.messages) ||
-    !snap.threads.every((t) => ok(t, ["id", "title", "createdAt", "updatedAt", "tags"])) ||
-    !snap.messages.every((m) => ok(m, ["id", "threadId", "content", "createdAt", "seq", "role"]))
-  )
-    throw new Error("Not a Threadz backup file.");
+  let raw: unknown = null;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch {} // not JSON: rejected below with the rest
+  const snap = parseSnapshot(raw);
+  if (!snap) throw new Error("Not a Threadz backup file.");
   const added = await mergeSnapshot(snap);
   emitChange();
   return added;

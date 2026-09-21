@@ -103,10 +103,11 @@ export const listThreads = (q?: string, sort = "updated") => {
 
 export const getThread = (id: string) => db.query<ThreadRow, [string]>("SELECT * FROM threads WHERE id = ?").get(id);
 
-export const allMessages = () => db.query<MessageRow, []>("SELECT * FROM messages ORDER BY thread_id, seq").all();
+export const allMessages = () =>
+  db.query<MessageRow, []>("SELECT * FROM messages ORDER BY thread_id, seq, created_at").all();
 
 export const getMessages = (threadId: string) =>
-  db.query<MessageRow, [string]>("SELECT * FROM messages WHERE thread_id = ? ORDER BY seq").all(threadId);
+  db.query<MessageRow, [string]>("SELECT * FROM messages WHERE thread_id = ? ORDER BY seq, created_at").all(threadId);
 
 // `createdAt` lets a device that captured offline keep the original timestamp.
 export const createThread = (id: string, title: string, createdAt?: number) => {

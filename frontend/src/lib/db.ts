@@ -1,5 +1,6 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Message, OutboxItem, Thread } from "./types";
+import { bySeq } from "./versions";
 
 // Local mirror: what the screens render. Disposable — wholesale-replaced from whichever
 // store is active (main when live, the device copy when local) on every pull. Nothing
@@ -52,7 +53,7 @@ export const replaceThreadMessages = async (threadId: string, messages: Message[
 
 export const getThreadMessages = async (threadId: string) => {
   const rows = await (await getDB()).getAllFromIndex("messages", "byThread", threadId);
-  return rows.sort((a, b) => a.seq - b.seq);
+  return rows.sort(bySeq);
 };
 
 // --- legacy outbox (drained into the device store by lib/replica.ts; nothing writes it any more) ---

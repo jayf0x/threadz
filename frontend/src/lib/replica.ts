@@ -27,10 +27,11 @@ export const addReports = (a: PullReport, b: PullReport): PullReport => ({
   keptRemote: a.keptRemote + b.keptRemote,
 });
 
-// Fetch one thread from main and union it into the device copy.
-export const fetchAndMerge = async (id: string) => {
+// Fetch one thread from main and union it into the device copy. `knownHash` (from a /api/head read) stands in
+// if the thread reply carries none (a made-up "" base would never match main and refetch on every pull).
+export const fetchAndMerge = async (id: string, knownHash?: string) => {
   const { thread, messages, hash } = await remoteApi.getThread(id);
-  const r = await mergeRemoteThread(thread, messages, hash ?? "");
+  const r = await mergeRemoteThread(thread, messages, hash ?? knownHash);
   return { ...r, mainIds: new Set(messages.map((m) => m.id)) };
 };
 
@@ -47,7 +48,7 @@ const run = async (): Promise<PullReport> => {
     await Promise.all(
       changed.slice(i, i + BATCH).map(async (id) => {
         try {
-          const r = await fetchAndMerge(id);
+          const r = await fetchAndMerge(id, head.threads[id]);
           report.threads++;
           report.messages += r.added;
           if (r.resurrected) report.keptRemote++;
@@ -65,7 +66,7 @@ const run = async (): Promise<PullReport> => {
 
   markReplicaReady();
   await pushImages().catch(() => {}); // main is reachable (we just read it): send photos it lacks
-  await drainOutbox();
+  await drainOutbox().catch(() => {}); // legacy leftovers must never fail a pull or a sync
   return report;
 };
 

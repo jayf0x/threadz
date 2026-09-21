@@ -50,11 +50,16 @@ export const refreshUnsynced = async () => {
   if (JSON.stringify(u) !== JSON.stringify(state.unsynced)) set({ unsynced: u });
 };
 
-// A flip needs two agreeing probes, so one dropped packet can't blink the UI.
+// A flip needs two agreeing probes, so one dropped packet can't blink the UI. The very first probe just
+// sets the initial reading (there is nothing to flip from) — but it never detaches by itself: leaving
+// live mode needs `DETACH_AFTER` failed probes in a row, counted separately from the displayed state.
+const DETACH_AFTER = 2;
 let streak = 0;
-const probe = async () => {
+let misses = 0;
+export const probe = async () => {
   if (!HAS_BACKEND) return;
   const ok = await ping();
+  misses = ok ? 0 : misses + 1;
   if (!state.checked) {
     set({ checked: true, reachable: ok, nudge: ok && state.mode === "local" });
   } else if (ok === state.reachable) {
@@ -64,7 +69,7 @@ const probe = async () => {
     set({ reachable: ok, nudge: ok && state.mode === "local" });
   }
   // Cut off from main while live, with a full copy on the device: carry on locally.
-  if (state.checked && !state.reachable && state.mode === "live" && replicaReady()) detach(); // after two agreeing probes
+  if (misses >= DETACH_AFTER && state.mode === "live" && replicaReady()) detach();
   // Reachable while live: keep the device copy current so the next cut-off is seamless.
   if (ok && state.mode === "live") pullMain().catch(() => {});
 };
