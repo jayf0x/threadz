@@ -39,6 +39,7 @@ export const markReplicaReady = () => {
 // Coming back is never automatic — that needs a click (lib/handoff.ts).
 let auto = false;
 export const detach = () => {
+  if (current === "local") return; // already there: nothing went away, and a stale flag would lie after the next goLive
   auto = true;
   setMode("local");
 };
@@ -51,6 +52,7 @@ export const takeDetached = () => {
 export const setMode = (mode: Mode) => {
   if (mode === current) return;
   current = mode;
+  if (mode === "live") auto = false; // an unclaimed "main went away" must not outlive going live
   try {
     localStorage.setItem(KEY, mode);
   } catch {}

@@ -1,17 +1,19 @@
 import { BACKEND_URL } from "./config";
 import { ApiError } from "./errors";
-import { localApi } from "./local";
+import { localApi, seedId } from "./local";
 import { detach, getMode, replicaReady } from "./mode";
 import type { Head, Message, SyncPayload, SyncResult, Thread } from "./types";
 
 const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(BACKEND_URL + path, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers || {}) },
+    // Only requests with a body declare one: on a GET it would turn every read into a CORS preflight.
+    headers: { ...(init?.body ? { "content-type": "application/json" } : {}), ...(init?.headers || {}) },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, (body as { error?: string }).error || `${res.status} ${res.statusText}`);
+    const body: unknown = await res.json().catch(() => null); // may be non-JSON, or JSON `null`
+    const error = body && typeof body === "object" && "error" in body ? body.error : null;
+    throw new ApiError(res.status, typeof error === "string" && error ? error : `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 };
@@ -117,11 +119,18 @@ export const api: Api = {
       () => localApi.listThreads(q, sort),
     ),
   // A client id up front: if the reply is lost and we retry locally, main dedupes on it at sync.
-  createThread: (body) => {
+  // The seed is its own append with an id derived from the thread's (`seedId`), never the server's random one:
+  // if the create lands on main but its reply is lost, the local retry writes the same note id and sync dedupes.
+  createThread: ({ seed, ...body }) => {
     const b = { ...body, id: body.id ?? crypto.randomUUID() };
+    const text = seed?.trim();
     return via(
-      () => remoteApi.createThread(b),
-      () => localApi.createThread(b),
+      async () => {
+        const thread = await remoteApi.createThread(b);
+        if (text) await remoteApi.appendMessage(b.id, { id: seedId(b.id), content: text });
+        return thread;
+      },
+      () => localApi.createThread({ ...b, seed: text }),
     );
   },
   getThread: (id) =>
