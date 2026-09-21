@@ -1,10 +1,8 @@
-import { CornerDownLeft, ImagePlus, Mic, Settings2, Square } from "lucide-react";
+import { CornerDownLeft, Mic, Settings2, Square } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@/features/editor";
+import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
 import { cn } from "@/lib/cn";
-import { errorMessage } from "@/lib/errors";
-import { addImage } from "@/lib/imageSync";
 import type { VoiceState } from "@/lib/voice/engine";
 import { useDraft } from "./useDraft";
 import { useVoiceCapture } from "./useVoiceCapture";
@@ -55,20 +53,7 @@ export const Composer = ({
   const [commit, setCommit] = useState(true);
   const [showVoice, setShowVoice] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
-  const picker = useRef<HTMLInputElement>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
-
-  // A picked/pasted/dropped photo is compressed and stored on this device, then dropped into the note at the caret.
-  const attach = async (files: Iterable<File>) => {
-    setImageError(null);
-    for (const file of files) {
-      try {
-        editor.current?.insertImage(await addImage(file));
-      } catch (e) {
-        setImageError(errorMessage(e));
-      }
-    }
-  };
+  const { attach, error: imageError } = useImageAttach(editor);
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
   // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,
@@ -172,30 +157,7 @@ export const Composer = ({
               <Mic className={cn("size-4", active && "blink")} />
             )}
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Add photo"
-            title="Add photo"
-            className="absolute right-2 top-11"
-            disabled={busy}
-            onClick={() => picker.current?.click()}
-            onPointerDown={(e) => e.preventDefault()}
-          >
-            <ImagePlus className="size-4" />
-          </Button>
-          <input
-            ref={picker}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            data-testid="photo-input"
-            onChange={(e) => {
-              attach([...(e.target.files ?? [])]);
-              e.target.value = ""; // picking the same photo again must fire again
-            }}
-          />
+          <ImageButton onFiles={attach} disabled={busy} className="absolute right-2 top-11" />
         </div>
 
         <div className="mt-1 h-4" aria-live="polite">

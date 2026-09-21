@@ -18,7 +18,7 @@ import {
   threadHash,
   threadJson,
 } from "./db";
-import { imageFile, saveImage } from "./images";
+import { collectOrphanImages, imageFile, saveImage } from "./images";
 import { generateMetadata, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
 import { AppendMessage, AskThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
@@ -314,6 +314,10 @@ const server = Bun.serve({
     return json({ error: "not found" }, 404);
   },
 });
+
+// Orphan photos: once at start, then daily.
+collectOrphanImages();
+setInterval(collectOrphanImages, 24 * 3600 * 1000).unref();
 
 console.log(`[threadz] backend on http://0.0.0.0:${server.port}  (LAN: http://<mac-ip>:${server.port})`);
 
