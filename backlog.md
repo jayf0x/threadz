@@ -19,9 +19,11 @@ annotations and copy built on them.
   - Docs: `README.md` says the generated description, tags, embeddings and related threads were tried and do not
     belong in v1, and its mentions of them (intro, Ollama prerequisite, API table, local-mode note) match.
   - `description`, `tags` and `embedding` stay as nullable fields; nothing new may depend on them.
-  - **Open:** what happens to the background generation (`refreshMetadata` after each append,
-    `POST /api/threads/:id/metadata`, Ollama as a prerequisite): leave it running unseen, switch it off behind a
-    flag (code kept for v2), or remove it.
+  - The background generation (`refreshMetadata` after each append) is switched off behind an env flag, off by
+    default; the code stays for v2. With the flag off nothing calls Ollama, so it is no longer a prerequisite
+    (README and `.env.example` say it is only needed with the flag on). Endpoints that need it
+    (`POST /api/threads/:id/metadata`, `related`) answer with a clear "metadata is off" error. Tests that exercise
+    generation turn the flag on.
 - **Shared components** (needed by the next three entries).
   - `Popover` and `Menu` primitives in `components/ui/`: outside tap and Esc close them, keyboard reachable, usable
     on touch. Implementation is the developer's call.
@@ -56,9 +58,9 @@ annotations and copy built on them.
   - One call in `remoteApi` and `localApi`: one transaction on main, IndexedDB in local mode. New ids derive from the
     new thread id plus the original id, so a retry or double tap cannot duplicate (like the `seed-<threadId>`
     note). Works offline; B syncs like any thread.
-  - Entry point: "Copy thread from here" in the message menu.
-  - **Open:** the main input also copying at the last message, with the typed text becoming B's first note (accepted
-    earlier as an always-visible button; unclear now that secondary actions live in menus).
+  - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that copies
+    at the last message and makes the typed text B's first note (no always-visible Copy button, so no mistap next to
+    Send). That menu is the same `Menu` primitive and takes future secondary actions.
   - Not stored: `copiedFrom` / `forkedFrom`. They cannot be added retroactively; see `inspiration.md`.
   - Tests: A untouched; B ids new, `createdAt` kept, annotations remapped, images shared, retry is idempotent, live
     and local, an offline copy syncs.
