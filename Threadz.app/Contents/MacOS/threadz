@@ -1,27 +1,41 @@
 #!/bin/bash
-# Threadz launcher: build, serve, open a tab in the default browser, quit when the last tab closes
-# (the backend exits when its last /api/presence stream drops, see backend/server.ts).
+# Threadz launcher: (re)build only if the source moved, serve, open a tab in the default browser, quit when the
+# last tab closes (the backend exits when its last /api/presence stream drops, see backend/server.ts).
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 ROOT="$(cd "$(dirname "$(realpath "$0")")/../../.." && pwd)"   # realpath: works through the ~/Applications symlink
 LOG="$HOME/Library/Logs/threadz.log"
 PORT=4173
 URL="http://localhost:$PORT"
+HEALTH=localhost:8787/api/health
 cd "$ROOT" || exit 1
 
-# already running: just open another tab
-if curl -sf "$URL" >/dev/null && curl -sf localhost:8787/api/health >/dev/null; then open "$URL"; exit 0; fi
+up() { curl -sf "$URL" >/dev/null && curl -sf "$HEALTH" >/dev/null; }
+
+# The .app process must exit right away: a second click on a still-running, unresponsive bundle makes
+# macOS fail with "not responding" (-1712). So the click only detaches a --serve run and returns.
+if [ "$1" != --serve ]; then
+  if up; then open "$URL"; elif ! pgrep -f "MacOS/threadz --serve" >/dev/null; then nohup "$0" --serve >/dev/null 2>&1 & fi
+  exit 0
+fi
 
 exec >"$LOG" 2>&1
 fail() { osascript -e "display alert \"Threadz\" message \"$1 — see $LOG\""; exit 1; }
 
-bun install --frozen-lockfile || fail "bun install failed"
-bun run --cwd frontend build || fail "Build failed"
+[ -d node_modules ] || bun install --frozen-lockfile || fail "bun install failed"
 
-(cd frontend && exec bun run preview --port $PORT --strictPort) & PREVIEW=$!
+# ponytail: mtime check, not a commit hook: core.hooksPath is global here so repo hooks never fire, and this
+# also covers uncommitted edits (find's stderr counts as stale: a denied dir must not read as fresh). A broken WIP build falls back to the last good dist.
+fe=(frontend/src frontend/public frontend/index.html frontend/vite.config.ts frontend/package.json)
+if [ ! -f frontend/dist/index.html ] || [ -n "$(find "${fe[@]}" -newer frontend/dist/index.html -print -quit 2>&1)" ]; then
+  bun run --cwd frontend build || [ -f frontend/dist/index.html ] || fail "Build failed"
+fi
+
+curl -sf "$URL" >/dev/null || { (cd frontend && exec bun run preview --port $PORT --strictPort) & PREVIEW=$!; }
 trap 'kill $PREVIEW 2>/dev/null' EXIT
-(cd backend && THREADZ_QUIT_ON_CLOSE=1 exec bun server.ts) & BACKEND=$!
+curl -sf "$HEALTH" >/dev/null || { (cd backend && THREADZ_QUIT_ON_CLOSE=1 exec bun server.ts) & BACKEND=$!; }
 
-for _ in $(seq 50); do curl -sf "$URL" >/dev/null && break; sleep 0.2; done
-curl -sf "$URL" >/dev/null || fail "Preview server did not start"
+# open only once the backend answers, else the page boots into local mode
+for _ in $(seq 100); do up && break; sleep 0.2; done
+up || fail "Servers did not start"
 open "$URL"
-wait $BACKEND
+wait ${BACKEND:-}
