@@ -12,11 +12,15 @@ import type { Message, Thread } from "@/lib/types";
 import { useThread } from "./useThread";
 
 export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () => void }) => {
-  const { messages, unsynced, busy, error, addMessage, editMessage, ask } = useThread(threadId);
+  const { messages, unsynced, busy, error, gone, addMessage, editMessage, ask } = useThread(threadId);
   const local = useStatus().mode === "local";
   const [thread, setThread] = useState<Thread | null>(null);
+  const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
+  // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
+  const missing = gone || vanished;
 
   const onAsk = async (prompt: string, commit: boolean) => {
     setScratch(null);
@@ -31,7 +35,13 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
 
   // The title can change from the sidebar (rename) or from a pull.
   useEffect(() => {
-    const load = () => getThreadLocal(threadId).then((t) => setThread(t ?? null));
+    let seen = false;
+    const load = () =>
+      getThreadLocal(threadId).then((t) => {
+        seen ||= !!t;
+        setThread(t ?? null);
+        setVanished(seen && !t);
+      });
     load();
     return onChange(load);
   }, [threadId]);
@@ -41,6 +51,8 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [messages.length, scratch]);
+
+  if (missing) return <NotFound onBack={onBack} />;
 
   return (
     <div className="flex h-full flex-col">
@@ -94,6 +106,20 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
     </div>
   );
 };
+
+const NotFound = ({ onBack }: { onBack: () => void }) => (
+  <div className="h-full px-6 py-16 md:px-10">
+    <div className="mx-auto max-w-3xl">
+      <h1 className="font-serif text-2xl leading-tight tracking-tight">Thread not found</h1>
+      <p className="mt-2 font-serif text-lg italic text-muted-foreground">
+        It was deleted on another device, or isn't in this copy yet.
+      </p>
+      <Button size="sm" variant="ghost" className="-ml-2 mt-4" onClick={onBack}>
+        <ArrowLeft className="size-3.5" /> Back to the index
+      </Button>
+    </div>
+  </div>
+);
 
 const tiny = "font-mono text-[10px] text-muted-foreground";
 

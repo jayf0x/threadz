@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getThreadMessages } from "@/lib/db";
-import { errorMessage } from "@/lib/errors";
+import { ApiError, errorMessage } from "@/lib/errors";
 import { unsyncedMessageIds } from "@/lib/local";
 import { onChange, pullThread } from "@/lib/sync";
 import type { Message } from "@/lib/types";
@@ -13,29 +13,43 @@ export const useThread = (threadId: string | null) => {
   const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gone, setGone] = useState(false); // the active store says this thread does not exist
+  const loads = useRef(0);
 
+  // Reads overlap (every change signal starts one); only the newest may write, or an older,
+  // slower read could put stale messages back over fresh ones.
   const load = useCallback(async () => {
     if (!threadId) return;
-    setMessages(await getThreadMessages(threadId));
+    const mine = ++loads.current;
     // Notes only the device has (written while detached) are marked until they sync.
-    setUnsynced(await unsyncedMessageIds(threadId));
+    const [rows, pending] = await Promise.all([getThreadMessages(threadId), unsyncedMessageIds(threadId)]);
+    if (mine !== loads.current) return;
+    setMessages(rows);
+    setUnsynced(pending);
   }, [threadId]);
 
   const refresh = useCallback(async () => {
     if (!threadId) return;
     try {
       await pullThread(threadId);
+      setGone(false);
     } catch (e) {
-      setError(errorMessage(e));
+      if (e instanceof ApiError && e.status === 404) setGone(true);
+      else setError(errorMessage(e));
     }
   }, [threadId]);
 
   useEffect(() => {
     setMessages([]);
     setError(null);
+    setGone(false);
     load();
     refresh();
-    return onChange(load);
+    const off = onChange(load);
+    return () => {
+      loads.current++; // a read still in flight belongs to a thread we've left
+      off();
+    };
   }, [load, refresh]);
 
   // Add a message. `api` writes to main, or to the device copy when detached (switching
@@ -108,5 +122,5 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
-  return { messages, unsynced, busy, error, addMessage, editMessage, ask, refresh };
+  return { messages, unsynced, busy, error, gone, addMessage, editMessage, ask, refresh };
 };
