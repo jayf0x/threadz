@@ -725,7 +725,122 @@ describe("local mode (invariant: no data lost across sync)", () => {
   test("import rejects files that aren't backups, without touching the store", async () => {
     const before = await local.exportSnapshot();
     await expect(handoff.importBackup(new File(['{"nope":1}'], "x.json"))).rejects.toThrow("Not a Threadz backup");
+    const wrongTypes = {
+      version: 1,
+      threads: [{ id: "x", title: 5, createdAt: 1, updatedAt: 1, tags: [] }],
+      messages: [],
+    };
+    await expect(handoff.importBackup(new File([JSON.stringify(wrongTypes)], "x.json"))).rejects.toThrow(
+      "Not a Threadz backup",
+    );
+    await expect(handoff.importBackup(new File(["not json"], "x.json"))).rejects.toThrow("Not a Threadz backup");
     expect((await local.exportSnapshot()).threads).toHaveLength(before.threads.length);
+  });
+
+  // Replace global fetch for one test; always put it back.
+  const withFetch = async (fake: typeof fetch, fn: () => Promise<void>) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = fake;
+    try {
+      await fn();
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const lostReply = (urlPart: string): typeof fetch =>
+    (async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/api/health")) throw new TypeError("Failed to fetch"); // and the probe fails too: really offline
+      const res = await fetch_(input, init);
+      if (url.includes(urlPart) && init?.method === "POST") throw new TypeError("Failed to fetch"); // main got it, the reply died
+      return res;
+    }) as typeof fetch;
+  const fetch_ = globalThis.fetch;
+
+  test("GETs carry no content-type (no CORS preflight); an error body of JSON null is still an ApiError", async () => {
+    const seen: (string | null)[] = [];
+    await withFetch(
+      (async (_url, init) => {
+        seen.push(new Headers(init?.headers).get("content-type"));
+        return new Response("null", { status: 500, statusText: "Boom" });
+      }) as typeof fetch,
+      async () => {
+        await expect(remote.remoteApi.listThreads()).rejects.toMatchObject({ status: 500, message: "500 Boom" });
+        await expect(remote.remoteApi.createThread({ title: "x" })).rejects.toMatchObject({ status: 500 });
+      },
+    );
+    expect(seen).toEqual([null, "application/json"]);
+  });
+
+  test("a create whose reply is lost after main stored it does not double the seed note on retry", async () => {
+    modeLib.setMode("live");
+    let id = "";
+    await withFetch(lostReply("/messages"), async () => {
+      id = (await remote.api.createThread({ title: "__local__ seed-dedupe", seed: "only once" })).id;
+    });
+    expect(modeLib.getMode()).toBe("local"); // detached, retried on the device
+    await handoff.goLive();
+    expect(await contents(id)).toEqual(["only once"]);
+    await cleanUp(id);
+  });
+
+  test("detach() when already local leaves no stale 'main went away' flag for the next goLive", () => {
+    modeLib.setMode("local");
+    modeLib.detach();
+    expect(modeLib.takeDetached()).toBe(false);
+    modeLib.setMode("live");
+    modeLib.detach();
+    expect(modeLib.takeDetached()).toBe(true);
+    modeLib.setMode("live");
+  });
+
+  test("one failed probe never detaches a live app; two in a row do", async () => {
+    const status = await import("../frontend/src/lib/status");
+    modeLib.setMode("live");
+    expect(modeLib.replicaReady()).toBe(true);
+    await withFetch(
+      (async () => {
+        throw new TypeError("Failed to fetch");
+      }) as unknown as typeof fetch,
+      async () => {
+        await status.probe();
+        expect(modeLib.getMode()).toBe("live");
+        await status.probe();
+        expect(modeLib.getMode()).toBe("local");
+      },
+    );
+    modeLib.setMode("live");
+  });
+
+  test("a photo main permanently refuses is skipped and reported, stays dirty, and does not stop the sync", async () => {
+    const junk = Uint8Array.from({ length: 200 }, (_, i) => i); // not a JPEG: main answers 4xx
+    const hash = new Bun.CryptoHasher("sha256").update(junk).digest("hex");
+    await images.putImage(hash, new Blob([junk], { type: "image/jpeg" }), 1);
+    const t = await local.localApi.createThread({ title: "__local__ bad photo", seed: `![](img:${hash}#5x5)` });
+
+    const report = await handoff.syncNow();
+    expect(report.skippedImages).toBe(1);
+    expect((await images.dirtyImages()).map((r) => r.hash)).toEqual([hash]); // never deleted, never marked clean
+    expect(await contents(t.id)).toEqual([`![](img:${hash}#5x5)`]); // the note still went
+    await images.markImageClean(hash); // keep the shared store tidy for other tests
+    await cleanUp(t.id);
+  });
+
+  test("bytes from main are cached only when they hash to the name asked for", async () => {
+    const sync = await import("../frontend/src/lib/imageSync");
+    const good = Uint8Array.from({ length: 64 }, (_, i) => i * 3);
+    const goodHash = new Bun.CryptoHasher("sha256").update(good).digest("hex");
+    const badHash = "b".repeat(64); // main "answers" with bytes that are not this file
+    const answer = (bytes: Uint8Array) => (async () => new Response(bytes)) as unknown as typeof fetch;
+    modeLib.setMode("live");
+    URL.createObjectURL ??= () => "blob:test";
+
+    await withFetch(answer(good), async () => {
+      expect(await sync.resolveImage(badHash)).toBeNull();
+      expect(await images.getImage(badHash)).toBeUndefined();
+      expect(await sync.resolveImage(goodHash)).not.toBeNull();
+      expect(await images.getImage(goodHash)).toBeDefined();
+    });
   });
 });
 
