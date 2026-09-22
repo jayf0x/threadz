@@ -51,16 +51,17 @@ components → message menu → copy (without annotations) → annotations (exte
     server) mints B's id once, before the request, and reuses it on any retry — the same pattern `createThread`
     already uses for its client id, so a double tap or a retried request cannot create two copies. Message ids
     derive deterministically from B's id plus each original message's id, so the same call replayed produces the
-    same ids again instead of duplicating. Works offline; B syncs like any thread.
+    same ids again instead of duplicating (plain new/random ids otherwise — decided 2026-09-22: no provenance
+    tracking, see below). Works offline; B syncs like any thread.
   - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that
     copies at the last message *and* appends the typed text as B's next note, in the same call (not a follow-up
     request — a second call reopens the half-created-thread problem, and could lose the text if it failed). No
     always-visible Copy button next to Send, so no mistap while capturing. That menu is the same `Menu` primitive
     and takes future secondary actions.
-  - Not stored yet: `copiedFrom` / `forkedFrom` (per-message/per-thread provenance). See the open question below —
-    this is the one part of Copy that can't be added retroactively once threads have been copied without it.
-  - Tests: A untouched; B ids new and deterministic from a fixed input (so a retry reproduces them), `createdAt`
-    kept, images shared, a repeated call does not duplicate, live and local, an offline copy syncs.
+  - No `copiedFrom` / `forkedFrom` (decided, see below): a copy's origin is not recoverable later, and a copy will
+    look like an independent thread to search/trend-detection.
+  - Tests: A untouched; B ids new (a repeated call must not duplicate — reuse the client-minted id the same way
+    `createThread` does), `createdAt` kept, images shared, live and local, an offline copy syncs.
 - **Annotations.** A note attached to one message: text required (an image-only annotation counts as text — the
   content is markdown either way), images optional. Opened from the message menu in a popover holding a
   `MessageInput`; a message's existing annotations render as markdown, ordered by `(createdAt, id)`. Adding one
@@ -116,12 +117,9 @@ in `inspiration.md`, parked there, not planned.) Still
   version in `edits`, and two devices ticking different boxes offline would silently lose one tick (newest text
   wins). Independent of search; can be built any time.
 
-**Open before Copy is built:** should each copied message keep an inert, unexposed `copiedFrom` (and each copied
-thread a `forkedFrom`), so the derived layer can later collapse near-duplicates in search/trend-detection and draw
-a copy history? If yes, a readable derived id (e.g. `<newMessageId> = <B's thread id>~<original message id>`, the
-same style as `seedId`) recovers per-message provenance for free with no extra column, versus a random id with an
-explicit column. This can't be added retroactively for threads copied before it exists, so it has to be decided
-before Copy ships, not after.
+**Decided 2026-09-22:** no `copiedFrom` / `forkedFrom` provenance for Copy. Simpler now; a copy's origin cannot be
+recovered later if this turns out to matter (e.g. for collapsing near-duplicates once search/trend-detection
+exist).
 
 ## v2 features (deferred by design)
 
