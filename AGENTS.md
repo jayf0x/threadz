@@ -44,6 +44,11 @@ label — reserve text labels for actions without an obvious icon, or where the 
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
+- **Motion** (`motion/react`; `LazyMotion`/`domAnimation` wraps the app once in `App.tsx`, components use the
+  lean `m` component, not `motion`) is the app's animation library — the only case plain CSS transitions can't
+  cover is an element actually leaving the tree (`AnimatePresence`: `Popover`'s panel, a message list's exit).
+  Reach for it only there; hover states, color/opacity and similar stay plain CSS transitions. Don't add a
+  second animation library on top of it.
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty

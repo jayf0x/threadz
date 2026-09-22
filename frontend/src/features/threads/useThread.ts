@@ -33,7 +33,15 @@ export const useThread = (threadId: string | null) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gone, setGone] = useState(false); // the active store says this thread does not exist
+  const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
   const loads = useRef(0);
+  // Every `messages` update — initial history and every later change alike — flows through this
+  // same `load()`, so it's the one place that can tell "was already here" from "just showed up".
+  // The very first resolution (whatever it finds, even nothing) is the history load and seeds
+  // `seenIds` without flagging anything; only ids that appear afterwards go into `justAdded`, so a
+  // long thread's initial render never animates and a genuinely new/incoming message does.
+  const seenIds = useRef<Set<string>>(new Set());
+  const hydrated = useRef(false);
 
   // Reads overlap (every change signal starts one); only the newest may write, or an older,
   // slower read could put stale messages back over fresh ones.
@@ -48,10 +56,18 @@ export const useThread = (threadId: string | null) => {
       unsyncedAnnotationIds(threadId),
     ]);
     if (mine !== loads.current) return;
+    const additions: string[] = [];
+    for (const r of rows) {
+      if (seenIds.current.has(r.id)) continue;
+      seenIds.current.add(r.id);
+      if (hydrated.current) additions.push(r.id);
+    }
+    hydrated.current = true;
     setMessages(rows);
     setUnsynced(pending);
     setAnnotations(annos);
     setUnsyncedAnnotations(pendingAnnos);
+    if (additions.length) setJustAdded((prev) => new Set([...prev, ...additions]));
   }, [threadId]);
 
   const refresh = useCallback(async () => {
@@ -69,6 +85,9 @@ export const useThread = (threadId: string | null) => {
     setMessages([]);
     setError(null);
     setGone(false);
+    setJustAdded(new Set());
+    seenIds.current = new Set();
+    hydrated.current = false;
     load();
     refresh();
     const off = onChange(load);
@@ -226,6 +245,7 @@ export const useThread = (threadId: string | null) => {
     busy,
     error,
     gone,
+    justAdded,
     addMessage,
     editMessage,
     addAnnotation,

@@ -1,3 +1,4 @@
+import { domAnimation, LazyMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { ConnectionDialog } from "@/features/connection";
@@ -10,17 +11,20 @@ import { useStatus } from "@/lib/status";
 // The shell is keyed by mode: switching stores remounts every view so nothing
 // keeps rendering the other store's data. Drafts survive (useDraft); the dialog
 // lives outside the key so a sync's result stays on screen across the switch.
+// `LazyMotion` + the `m` component (used by Popover/ThreadView/Composer) load only the
+// fade/scale/exit feature set instead of Motion's full bundle (which also carries drag and
+// layout animation code this app never uses) — one provider up here covers all of them.
 export const App = () => {
   const { mode } = useStatus();
   const [selected, setSelected] = useState<string | null>(null); // survives a mode switch: same thread, other store
   return (
-    <>
+    <LazyMotion features={domAnimation}>
       {mode === "local" && (
         <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
       )}
       <Shell key={mode} selected={selected} setSelected={setSelected} />
       <ConnectionDialog />
-    </>
+    </LazyMotion>
   );
 };
 

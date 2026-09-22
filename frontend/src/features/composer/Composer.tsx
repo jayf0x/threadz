@@ -1,4 +1,5 @@
 import { Copy, Loader2, Mic, MoreHorizontal, Plus, Send, Square } from "lucide-react";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
@@ -58,6 +59,7 @@ export const Composer = ({
   const [commit, setCommit] = useState(true);
   const [copying, setCopying] = useState(false);
   const input = useRef<MessageInputHandle>(null);
+  const reduceMotion = useReducedMotion();
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
   // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,
@@ -104,27 +106,36 @@ export const Composer = ({
 
   return (
     <div className="border-t border-border bg-card">
-      {voice.recovery && (
-        <div className="rise flex items-center justify-between gap-3 border-b border-primary bg-accent px-6 py-2 md:px-10">
-          <span className="text-sm">
-            Unfinished recording — {voice.recovery.lineCount} line{voice.recovery.lineCount === 1 ? "" : "s"} recovered
-          </span>
-          <div className="flex gap-1.5">
-            <Button
-              size="sm"
-              onClick={async () => {
-                const text = await voice.recover();
-                if (text) insert(text);
-              }}
-            >
-              Recover
-            </Button>
-            <Button size="sm" variant="ghost" onClick={voice.dismissRecovery}>
-              Discard
-            </Button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {voice.recovery && (
+          <m.div
+            initial={reduceMotion ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6, transition: { duration: 0.15, ease: "easeIn" } }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex items-center justify-between gap-3 border-b border-primary bg-accent px-6 py-2 md:px-10"
+          >
+            <span className="text-sm">
+              Unfinished recording — {voice.recovery.lineCount} line{voice.recovery.lineCount === 1 ? "" : "s"}{" "}
+              recovered
+            </span>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const text = await voice.recover();
+                  if (text) insert(text);
+                }}
+              >
+                Recover
+              </Button>
+              <Button size="sm" variant="ghost" onClick={voice.dismissRecovery}>
+                Discard
+              </Button>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
 
       <div className="mx-auto max-w-3xl px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-10">
         <MessageInput

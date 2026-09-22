@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { ArrowLeft, Check, CloudOff, Copy, Mic, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
+import { AnimatePresence, m as Motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -31,6 +32,7 @@ export const ThreadView = ({
     busy,
     error,
     gone,
+    justAdded,
     addMessage,
     editMessage,
     addAnnotation,
@@ -127,6 +129,7 @@ export const ThreadView = ({
               message={m}
               pending={unsynced.has(m.id)}
               busy={busy}
+              isNew={justAdded.has(m.id)}
               onEdit={(text) => editMessage(m.id, text)}
               onCopyThread={() => copyThreadFrom(m.id)}
               note={noteByMessage.get(m.id)}
@@ -137,17 +140,25 @@ export const ThreadView = ({
             />
           ))}
 
-          {scratch && (
-            <div className="mt-4 border border-dashed border-border p-4">
-              <Eyebrow className="flex items-center justify-between">
-                Scratch — not saved
-                <button type="button" aria-label="Dismiss scratch answer" onClick={() => setScratch(null)}>
-                  <X className="size-3.5" />
-                </button>
-              </Eyebrow>
-              <MarkdownEditor readOnly value={scratch} className="[--md-padding:0.5rem_0_0]" />
-            </div>
-          )}
+          <AnimatePresence>
+            {scratch && (
+              <Motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="mt-4 border border-dashed border-border p-4"
+              >
+                <Eyebrow className="flex items-center justify-between">
+                  Scratch — not saved
+                  <button type="button" aria-label="Dismiss scratch answer" onClick={() => setScratch(null)}>
+                    <X className="size-3.5" />
+                  </button>
+                </Eyebrow>
+                <MarkdownEditor readOnly value={scratch} className="[--md-padding:0.5rem_0_0]" />
+              </Motion.div>
+            )}
+          </AnimatePresence>
           <div ref={end} />
         </div>
       </div>
@@ -190,6 +201,7 @@ const EntryRow = ({
   message: m,
   pending,
   busy,
+  isNew,
   onEdit,
   onCopyThread,
   note,
@@ -201,6 +213,7 @@ const EntryRow = ({
   message: Message;
   pending: boolean;
   busy: boolean;
+  isNew: boolean; // appended (or synced in) during this session — vs. part of the history load
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
   note: Annotation | undefined; // one per message, DB-enforced
@@ -221,6 +234,7 @@ const EntryRow = ({
   const [noteText, setNoteText] = useState(note?.content ?? "");
   const editor = useRef<MarkdownEditorHandle>(null);
   const noteEditor = useRef<MarkdownEditorHandle>(null);
+  const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
   const { attach: noteAttach, error: noteImageError } = useImageAttach(noteEditor);
   const mine = m.role === "user";
@@ -272,7 +286,15 @@ const EntryRow = ({
   };
 
   return (
-    <article className="group border-b border-rule py-4">
+    <Motion.article
+      className="group border-b border-rule py-4"
+      // `initial={false}` starts a history-loaded row already in its resting state — only a
+      // message that showed up after the fact (a note you just added, one that synced in) gets
+      // the little rise-in; a long thread's first render never animates.
+      initial={isNew && !reduceMotion ? { opacity: 0, y: 8 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+    >
       {!mine && <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-primary">Claude</p>}
 
       {editing ? (
@@ -474,6 +496,6 @@ const EntryRow = ({
           </div>
         </div>
       )}
-    </article>
+    </Motion.article>
   );
 };

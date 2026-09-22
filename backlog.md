@@ -3,40 +3,6 @@
 Open items only. Resolved items live in the git history; deliberate scope choices are in `README.md`; ideas that are
 not committed to yet are in `inspiration.md`. What is left is v1 work, v2, or can't be settled without a real phone.
 
-## Now — pre-v2 polish (2026-09-22)
-
-Feedback on the annotations/copy-thread round, plus a few items pulled forward from `inspiration.md`. Decided calls
-made here (no further sign-off needed): annotations become **one per message** (upsert, not append — it's a small
-note, not a sub-thread) and are **editable and deletable**; the visible word for them changes to **"Note"**, the
-backend table/API keep the name `annotation` (not worth a rename); icon-over-text on primary actions is now a
-standing convention (AGENTS.md); no reference/citation feature exists yet and none is being built now (parked in
-`inspiration.md`'s "Annotation extensions" / "Staleness citations" for v2).
-
-**Notes (annotations) are done**, backend and UI: one per message (DB-enforced unique index; a second create folds
-into an edit), its own `DELETE` route, and `useThread.ts`'s `addAnnotation`/`editAnnotation`/`deleteAnnotation` all
-wired up. In `ThreadView.tsx`'s `EntryRow`, a note is a quiet `StickyNote` icon next to the message's own ⋯ menu —
-nothing shown until hover if there's no note yet, a muted-tinted icon if there is — that expands inline into a
-compact editor with a CSS grid-rows transition (no new motion dependency; the next wave's animation library can
-replace this if it wants to). Edit and delete (with a confirm, "no tombstone" per the API table) live in the
-expanded view; the message-actions menu lost its old "Annotate" entry now that the icon is always there to open.
-
-- **PWA can't reach a LAN backend.** `BACKEND_URL` (`lib/config.ts`) is computed once at load from
-  `location.hostname` — correct if the page was ever loaded from the Mac's LAN IP, wrong if someone opened
-  `localhost:5173` on the phone itself (which then means "this phone", not the Mac) and installed from there.
-  Add a device-only **Backend URL** field in Settings (`lib/settings.ts`, `SettingsPanel.tsx`) that overrides the
-  computed default; `api.ts` reads it per-request, not once at import time. Document in README under "Reach the
-  backend + Ollama from the phone".
-- **Edit mode can't remove markdown formatting.** `MarkdownEditor` (`features/editor/`) is a WYSIWYG surface
-  (Milkdown Crepe) everywhere, including message-edit. There's no way to select "**bold**" and see the `**` to
-  delete them. Give `MarkdownEditor` a raw mode — plain textarea bound to the same markdown string, same handle
-  contract (`getMarkdown`/`setMarkdown`/`insertAtCaret`/`insertImage` as a text-insert) — and use it for editing an
-  existing message. Build it generically enough that annotation-edit (below) can reuse it.
-- **Motion.** Backend is fine as-is; the frontend reads static next to what the redesigned notes UI needs to feel
-  like. Add a small animation library (research React Spring vs. Motion/Framer Motion vs. GSAP vs. plain CSS
-  transitions first — several already cover this without a new dependency) and apply restrained, subtle motion to
-  the popover, the notes UI and message entries. Don't turn this into a design-system rewrite; touch the existing
-  large views/components, not every primitive.
-
 ## Next — v1
 
 Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps, stay 100% local.

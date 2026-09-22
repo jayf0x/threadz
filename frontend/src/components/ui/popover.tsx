@@ -1,3 +1,4 @@
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
   cloneElement,
@@ -66,6 +67,7 @@ export const Popover = ({ trigger, children, align = "start", className }: Popov
   const panelRef = useRef<HTMLDivElement>(null);
   const phone = useIsPhone();
   const panelId = useId();
+  const reduceMotion = useReducedMotion();
 
   const close = () => setOpen(false);
 
@@ -140,40 +142,69 @@ export const Popover = ({ trigger, children, align = "start", className }: Popov
 
   const content = typeof children === "function" ? children({ close }) : children;
 
+  // Enter is a touch slower than exit (ease-out vs ease-in) — a common feel for UI chrome: it
+  // arrives with a little give, then gets out of the way promptly. `reduceMotion` collapses both
+  // to an instant opacity swap instead of skipping the animation outright, so the panel still
+  // reads as appearing/disappearing rather than just popping (AnimatePresence needs *something*
+  // to animate to know when it's safe to unmount).
+  const enter = reduceMotion ? { duration: 0.01 } : { duration: 0.16, ease: "easeOut" as const };
+  const exit = reduceMotion ? { duration: 0.01 } : { duration: 0.12, ease: "easeIn" as const };
+
   return (
     <>
       {clonedTrigger}
-      {open &&
-        createPortal(
-          phone ? (
-            <>
-              <div aria-hidden className="fixed inset-0 z-50 bg-foreground/20" onClick={close} />
-              <div
+      <AnimatePresence>
+        {open &&
+          createPortal(
+            phone ? (
+              <>
+                <m.div
+                  key="backdrop"
+                  aria-hidden
+                  className="fixed inset-0 z-50 bg-foreground/20"
+                  onClick={close}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, transition: enter }}
+                  exit={{ opacity: 0, transition: exit }}
+                />
+                <m.div
+                  key="sheet"
+                  id={panelId}
+                  ref={panelRef}
+                  tabIndex={-1}
+                  className={cn(
+                    "fixed inset-x-0 bottom-0 z-50 max-h-[70dvh] overflow-y-auto rounded-t-lg border-t border-border",
+                    "bg-card pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg outline-none",
+                    className,
+                  )}
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0, transition: enter }}
+                  exit={{ y: "100%", transition: exit }}
+                >
+                  {content}
+                </m.div>
+              </>
+            ) : (
+              <m.div
+                key="panel"
                 id={panelId}
                 ref={panelRef}
                 tabIndex={-1}
+                style={{ position: "fixed", ...style }}
                 className={cn(
-                  "fixed inset-x-0 bottom-0 z-50 max-h-[70dvh] overflow-y-auto rounded-t-lg border-t border-border",
-                  "bg-card pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg outline-none",
+                  "z-50 min-w-40 rounded-md border border-border bg-card shadow-lg outline-none",
                   className,
                 )}
+                initial={{ opacity: 0, scale: 0.96, y: -4 }}
+                animate={{ opacity: 1, scale: 1, y: 0, transition: enter }}
+                exit={{ opacity: 0, scale: 0.96, y: -4, transition: exit }}
               >
                 {content}
-              </div>
-            </>
-          ) : (
-            <div
-              id={panelId}
-              ref={panelRef}
-              tabIndex={-1}
-              style={{ position: "fixed", ...style }}
-              className={cn("z-50 min-w-40 rounded-md border border-border bg-card shadow-lg outline-none", className)}
-            >
-              {content}
-            </div>
-          ),
-          document.body,
-        )}
+              </m.div>
+            ),
+            document.body,
+          )}
+      </AnimatePresence>
     </>
   );
 };
