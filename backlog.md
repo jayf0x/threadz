@@ -97,18 +97,11 @@ components → message menu → copy (without annotations) → annotations (exte
     `gcDeviceImages`) read only `messages.content`/`edits` today — an image that only appears in an annotation
     would be collected as an orphan. Both need to scan annotation content/edits too, and annotations need to be
     kept in trash the way messages are.
-- **My auto-name only tries once.** `autoTitle` (`titles.ts`) only fires from the thread's first note; a short one
-  like "call dentist" leaves it `Thread: 004` forever. Retry on later notes too, while the title is still the
-  placeholder.
-- **Capture without a title, the rest.** `+` / `n` now makes `Thread: NNN` and opens it, and yatefca names it from
-  the first note. Pressing `+` and walking away leaves an empty `Thread: NNN` behind: instead of an inbox (dropped —
-  see "no folders, no streams" in `inspiration.md`), `+` / `n` / the deep link should reuse the newest untouched
-  placeholder thread (title still the auto-generated `Thread: NNN`, no notes) instead of making another one. (An
-inbox / stream-first home was floated and explicitly rejected as unnecessary complexity — see "Stream-first home"
-in `inspiration.md`, parked there, not planned.) Still
-  missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused composer —
-  note for the real-phone list: iOS will not raise the keyboard from a programmatic focus outside a tap, so a deep
-  link alone may land you in the thread with the keyboard still closed.
+- **Capture without a title, the rest.** `+` / `n` makes `Thread: NNN`, opens it, retries auto-naming it from every
+  note (not just the first) until it sticks, and reuses an empty untouched placeholder instead of piling up another
+  — done. Still missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused
+  composer — note for the real-phone list: iOS will not raise the keyboard from a programmatic focus outside a tap,
+  so a deep link alone may land you in the thread with the keyboard still closed.
 - **Search.** Search is a literal `LIKE` (`db.ts`): no ranking. SQLite (Bun's bundled 3.43.2) has FTS5, but its
   default `unicode61` tokenizer only matches whole tokens — confirmed: it finds 0 hits for `izing` against
   "resizing", where today's `LIKE` matches. Use the `trigram` tokenizer instead, which keeps mid-word matching (1
