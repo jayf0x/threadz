@@ -11,19 +11,12 @@ Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now
 AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — see `.env.example`), `ThreadRow`/search
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
-The remaining four entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`,
-`Composer`) — build in this order, one at a time, so parallel work doesn't collide: shared components → message
-menu → copy (without annotations) → annotations (extends copy).
+`Popover` and `Menu` (`components/ui/`) and a shared `MessageInput` (editor + draft + image attach + send, keyed
+per target) are built and not yet wired into anything; `Composer` already wraps `MessageInput`. The remaining three
+entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`) — build in this
+order, one at a time, so parallel work doesn't collide: message menu → copy (without annotations) → annotations
+(extends copy).
 
-- **Shared components** (needed by the next three entries).
-  - `Popover` and `Menu` primitives in `components/ui/`: outside tap and Esc close them, keyboard reachable, usable
-    on touch, positioned via a portal or fixed positioning (not inline, or the thread pane's scroll clips them), a
-    bottom sheet on phones. Implementation is the developer's call; touch behaviour only really checks out on a
-    real phone (see "Blocked on a real phone").
-  - `MessageInput`: the composer's editor, draft, image attach and send, extracted from `Composer.tsx` into a
-    reusable component and hook with minor adjustments. `Composer` wraps it and keeps voice dictation and Ask. The
-    draft key is per target (a thread, or a message for an annotation). No dictation in the annotation input for
-    now: the mic engine is one shared session.
 - **Message menu.** One ⋯ button per message holds every secondary action: Annotate, Copy thread from here, and the
   existing per-message actions that belong there (edit). Always visible on touch, on hover on desktop (the rule the
   thread-row actions already use); no row of icons per message. Thread-row actions (rename, regenerate title,
