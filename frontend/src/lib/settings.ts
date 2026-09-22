@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 // Device-local preferences. (The voice model keeps its own store, lib/voice/engine.ts.)
-export type Settings = { autoName: boolean };
+// backendUrl: null = auto-detect (see lib/config.ts); a string overrides it, for a phone that
+// installed the PWA from `localhost` and can otherwise never reach the Mac again.
+export type Settings = { autoName: boolean; backendUrl: string | null };
 
 const KEY = "threadz.settings";
-const DEFAULTS: Settings = { autoName: true };
+const DEFAULTS: Settings = { autoName: true, backendUrl: null };
 
 const read = (): Settings => {
   try {
@@ -12,6 +14,10 @@ const read = (): Settings => {
     const stored = raw && typeof raw === "object" ? raw : {};
     return {
       autoName: "autoName" in stored && typeof stored.autoName === "boolean" ? stored.autoName : DEFAULTS.autoName,
+      backendUrl:
+        "backendUrl" in stored && (typeof stored.backendUrl === "string" || stored.backendUrl === null)
+          ? stored.backendUrl
+          : DEFAULTS.backendUrl,
     };
   } catch {
     return DEFAULTS;

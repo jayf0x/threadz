@@ -71,6 +71,12 @@ launchctl setenv OLLAMA_HOST "0.0.0.0:11434"   # then quit & reopen Ollama.app
 (Only needed if `THREADZ_METADATA=1` — metadata/embeddings then run backend→Ollama; the phone
 always talks only to the backend.)
 
+The computed backend URL is baked in at page load from `location.hostname`, so it's only right if the
+page was loaded from the Mac's address. Opening `http://localhost:5173` on the phone itself and installing
+from there points the installed app at itself, permanently — there is no fix by reinstalling. **Settings →
+Backend URL** is the escape hatch: a device-only override (`localStorage`, never synced) that every request
+reads fresh, so pointing it at the Mac's LAN IP or Tailscale address fixes it without reinstalling.
+
 ## Publish to GitHub Pages
 
 Publishes a static, local-only build of the app to <https://jayf0x.github.io/threadz/>.
@@ -205,8 +211,9 @@ name you typed.
 
 ### Settings
 
-The gear in the sidebar footer flips the sidebar to Settings: the auto-name switch and the speech model. They are per
-device (`localStorage`), never synced.
+The gear in the sidebar footer flips the sidebar to Settings: the auto-name switch, a Backend URL override (see
+"Reach the backend + Ollama from the phone"; hidden on a `VITE_LOCAL` build with no backend to point at), and the
+speech model. They are per device (`localStorage`), never synced.
 
 ### Photos in notes
 

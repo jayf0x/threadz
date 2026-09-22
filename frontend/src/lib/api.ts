@@ -1,11 +1,11 @@
-import { BACKEND_URL } from "./config";
+import { getBackendUrl } from "./config";
 import { ApiError } from "./errors";
 import { localApi, seedId } from "./local";
 import { detach, getMode, replicaReady } from "./mode";
 import type { Annotation, Head, Message, SyncPayload, SyncResult, Thread } from "./types";
 
 const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(BACKEND_URL + path, {
+  const res = await fetch(getBackendUrl() + path, {
     ...init,
     // Only requests with a body declare one: on a GET it would turn every read into a CORS preflight.
     headers: { ...(init?.body ? { "content-type": "application/json" } : {}), ...(init?.headers || {}) },
@@ -108,7 +108,7 @@ export const postSync = (payload: SyncPayload) =>
 
 // Images are raw bytes, one immutable file per hash (see lib/imageSync.ts).
 export const putImageRemote = async (hash: string, blob: Blob) => {
-  const res = await fetch(`${BACKEND_URL}/api/images/${hash}`, {
+  const res = await fetch(`${getBackendUrl()}/api/images/${hash}`, {
     method: "PUT",
     headers: { "content-type": "image/jpeg" },
     body: blob,
@@ -117,7 +117,7 @@ export const putImageRemote = async (hash: string, blob: Blob) => {
 };
 
 export const fetchImageRemote = async (hash: string) => {
-  const res = await fetch(`${BACKEND_URL}/api/images/${hash}`);
+  const res = await fetch(`${getBackendUrl()}/api/images/${hash}`);
   if (!res.ok) throw new ApiError(res.status, `image ${res.status}`);
   return res.blob();
 };
