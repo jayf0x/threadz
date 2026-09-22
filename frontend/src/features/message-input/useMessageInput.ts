@@ -37,5 +37,14 @@ export const useMessageInput = (draftKey: string, busy: boolean, onSubmit: (text
     if (!editor.current?.insertAtCaret(text)) setDraft((d) => (d ? `${d} ${text}` : text));
   };
 
-  return { draft, setDraft, editor, attach, imageError, submit, insertAtCaret };
+  // Peek at the current text without sending it — for a sibling action (composer's "copy
+  // thread from here") that delivers it a different way. `clear` only runs on that action's
+  // own success, so a failure leaves the draft exactly as typed.
+  const getText = () => (editor.current?.getMarkdown() ?? draft).trim();
+  const clear = () => {
+    editor.current?.setMarkdown("");
+    setDraft("");
+  };
+
+  return { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear };
 };

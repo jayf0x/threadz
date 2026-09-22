@@ -525,6 +525,85 @@ describe("POST /api/sync (invariant: a device's work lands atomically, after a b
   });
 });
 
+describe("POST /api/threads/:id/copy (invariant: A untouched, B is new ids on a client-minted thread id)", () => {
+  const post = (path: string, body: unknown) =>
+    fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+
+  test("copies up to N with new ids, keeps createdAt and an image reference, A stays as-is, a replay doesn't duplicate", async () => {
+    const a = createThread("copy-a", "Original thread");
+    const past = Date.now() - 100_000;
+    const m1 = appendMessage({
+      id: crypto.randomUUID(),
+      threadId: a.id,
+      role: "user",
+      content: "first",
+      createdAt: past,
+    });
+    const hash = "c".repeat(64);
+    const m2 = appendMessage({
+      id: crypto.randomUUID(),
+      threadId: a.id,
+      role: "user",
+      content: `look ![](img:${hash}#4x3)`,
+    });
+    const m3 = appendMessage({ id: crypto.randomUUID(), threadId: a.id, role: "user", content: "after the cut" });
+
+    const newThreadId = crypto.randomUUID();
+    const res = await post(`/api/threads/${a.id}/copy`, { newThreadId, uptoMessageId: m2.message.id });
+    expect(res.thread.title).toBe("Copy: Original thread");
+    expect(res.thread.description).toBeNull();
+    expect(res.thread.tags).toEqual([]);
+    expect(res.messages.map((m: { content: string }) => m.content)).toEqual(["first", `look ![](img:${hash}#4x3)`]);
+    expect(res.messages[0].createdAt).toBe(past);
+    const copiedIds = res.messages.map((m: { id: string }) => m.id);
+    expect(copiedIds).not.toContain(m1.message.id);
+    expect(copiedIds).not.toContain(m2.message.id);
+
+    // A is untouched: still all three messages, with their original ids.
+    const stillA = await fetch(`${BASE}/api/threads/${a.id}`).then((r) => r.json());
+    expect(stillA.messages.map((m: { id: string }) => m.id)).toEqual([m1.message.id, m2.message.id, m3.message.id]);
+
+    // A replay with the same client-minted newThreadId is a no-op, not a duplicate.
+    const replay = await post(`/api/threads/${a.id}/copy`, { newThreadId, uptoMessageId: m2.message.id });
+    expect(replay.messages).toHaveLength(2);
+    const afterReplay = await fetch(`${BASE}/api/threads/${newThreadId}`).then((r) => r.json());
+    expect(afterReplay.messages).toHaveLength(2);
+
+    await fetch(`${BASE}/api/threads/${a.id}`, { method: "DELETE" });
+    await fetch(`${BASE}/api/threads/${newThreadId}`, { method: "DELETE" });
+  });
+
+  test("appends the composer's note as B's next message, in the same call", async () => {
+    const a = createThread("copy-note", "Source");
+    const m1 = appendMessage({ id: crypto.randomUUID(), threadId: a.id, role: "user", content: "only message" });
+    const newThreadId = crypto.randomUUID();
+    const res = await post(`/api/threads/${a.id}/copy`, {
+      newThreadId,
+      uptoMessageId: m1.message.id,
+      appendNote: { id: `note-${newThreadId}`, content: "typed while copying" },
+    });
+    expect(res.messages.map((m: { content: string }) => m.content)).toEqual(["only message", "typed while copying"]);
+    await fetch(`${BASE}/api/threads/${a.id}`, { method: "DELETE" });
+    await fetch(`${BASE}/api/threads/${newThreadId}`, { method: "DELETE" });
+  });
+
+  test("404s on an unknown source thread or a message that isn't in it", async () => {
+    const a = createThread("copy-404", "T");
+    expect((await fetch(`${BASE}/api/threads/ghost/copy`, { method: "POST" })).status).toBe(404);
+    const bad = await fetch(`${BASE}/api/threads/${a.id}/copy`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newThreadId: crypto.randomUUID(), uptoMessageId: "not-a-message" }),
+    });
+    expect(bad.status).toBe(404);
+    await fetch(`${BASE}/api/threads/${a.id}`, { method: "DELETE" });
+  });
+});
+
 // The device-side store. Invariant: nothing the user wrote on this device is ever lost —
 // not to a sync, a retry, a crash mid-sync, a delete on main, or main going away mid-write.
 describe("local mode (invariant: no data lost across sync)", () => {
@@ -584,6 +663,37 @@ describe("local mode (invariant: no data lost across sync)", () => {
       [2, "two"],
     ]);
     await cleanUp(t.id);
+  });
+
+  test("copyThread (local): new ids, createdAt/images kept, A untouched, a replay doesn't duplicate, and it syncs offline", async () => {
+    const a = await local.localApi.createThread({ title: "__local__ copy source" });
+    const past = Date.now() - 50_000;
+    const m1 = await local.localApi.appendMessage(a.id, { id: crypto.randomUUID(), content: "first", createdAt: past });
+    const hash = "d".repeat(64);
+    const m2 = await local.localApi.appendMessage(a.id, { id: crypto.randomUUID(), content: `![](img:${hash}#4x3)` });
+    await local.localApi.appendMessage(a.id, { id: crypto.randomUUID(), content: "after the cut" });
+
+    const newThreadId = crypto.randomUUID();
+    const copy = await local.localApi.copyThread(a.id, { newThreadId, uptoMessageId: m2.message.id });
+    expect(copy.thread.title).toBe("Copy: __local__ copy source");
+    expect(copy.thread.description).toBeNull();
+    expect(copy.messages.map((m) => m.content)).toEqual(["first", `![](img:${hash}#4x3)`]);
+    expect(copy.messages[0]?.createdAt).toBe(past);
+    const copiedIds = copy.messages.map((m) => m.id);
+    expect(copiedIds).not.toContain(m1.message.id);
+    expect(copiedIds).not.toContain(m2.message.id);
+
+    // A is untouched on the device.
+    expect(await localContents(a.id)).toEqual(["first", `![](img:${hash}#4x3)`, "after the cut"]);
+
+    // A replay with the same client-minted id is a no-op.
+    const replay = await local.localApi.copyThread(a.id, { newThreadId, uptoMessageId: m2.message.id });
+    expect(replay.messages).toHaveLength(2);
+
+    // Made entirely offline, B syncs to main like any other thread.
+    await handoff.syncNow();
+    expect((await contents(newThreadId)).sort()).toEqual(["first", `![](img:${hash}#4x3)`].sort());
+    await cleanUp(a.id, newThreadId);
   });
 
   test("sync sends threads, notes and original timestamps; a replay adds nothing; the device keeps its copy", async () => {

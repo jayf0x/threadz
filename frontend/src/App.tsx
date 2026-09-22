@@ -43,7 +43,11 @@ const Shell = ({ selected, setSelected }: { selected: string | null; setSelected
         />
       </aside>
       <main className={cn("min-h-0", !selected && "hidden lg:block")}>
-        {selected ? <ThreadView key={selected} threadId={selected} onBack={() => setSelected(null)} /> : <Blank />}
+        {selected ? (
+          <ThreadView key={selected} threadId={selected} onBack={() => setSelected(null)} onCopied={setSelected} />
+        ) : (
+          <Blank />
+        )}
       </main>
     </div>
   );

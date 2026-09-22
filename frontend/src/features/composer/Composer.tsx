@@ -1,8 +1,12 @@
-import { CornerDownLeft, Mic, Square } from "lucide-react";
+import { Copy, CornerDownLeft, Mic, MoreHorizontal, Square } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Menu } from "@/components/ui/menu";
 import { MessageInput, type MessageInputHandle } from "@/features/message-input";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { pullThreads } from "@/lib/sync";
+import type { Message } from "@/lib/types";
 import type { VoiceState } from "@/lib/voice/engine";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { VoiceMeter } from "./VoiceMeter";
@@ -33,21 +37,26 @@ const voiceStatus = (v: VoiceState): { text: string; tone: "error" | "ghost" | "
 // note/ask mode toggle and "keep exchange" checkbox. The parent only hears "add this" / "ask this".
 export const Composer = ({
   threadId,
+  messages,
   busy,
   canAsk,
   onNote,
   onAsk,
+  onCopied,
 }: {
   threadId: string;
+  messages: Message[]; // to find the last message "Copy thread from here" copies up to
   busy: boolean;
   canAsk: boolean; // Claude runs on the backend; in local mode the Ask toggle is not offered
   onNote: (text: string, meta: { voice: true } | null) => Promise<boolean>;
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
+  onCopied: (newThreadId: string) => void; // open the copy once it exists
 }) => {
   const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
   const mode = canAsk ? picked : "note";
   const [commit, setCommit] = useState(true);
+  const [copying, setCopying] = useState(false);
   const input = useRef<MessageInputHandle>(null);
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
@@ -66,6 +75,32 @@ export const Composer = ({
 
   const onSubmit = (text: string) =>
     mode === "note" ? onNote(text, fromVoice.current ? { voice: true } : null) : onAsk(text, commit);
+
+  const lastMessage = messages.at(-1);
+
+  // Copies A up to the last message and appends whatever's typed as B's next note, in the one
+  // call (see AGENTS.md / backlog: a second request here could lose the text if it failed). The
+  // draft is only cleared once the copy actually lands.
+  const copyThreadFromHere = async () => {
+    if (copying || !lastMessage) return;
+    setCopying(true);
+    try {
+      const text = input.current?.getText() ?? "";
+      const newThreadId = crypto.randomUUID();
+      const { thread } = await api.copyThread(threadId, {
+        newThreadId,
+        uptoMessageId: lastMessage.id,
+        appendNote: text ? { id: `note-${newThreadId}`, content: text } : undefined,
+      });
+      input.current?.clear();
+      await pullThreads();
+      onCopied(thread.id);
+    } catch {
+      // ponytail: no status line for this yet — a failed copy just leaves the draft untouched
+    } finally {
+      setCopying(false);
+    }
+  };
 
   return (
     <div className="border-t border-border bg-card">
@@ -170,6 +205,25 @@ export const Composer = ({
               {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
               {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
             </>
+          }
+          trailingActions={
+            lastMessage && (
+              <Menu
+                align="end"
+                items={[{ label: "Copy thread from here", icon: Copy, onClick: copyThreadFromHere }]}
+                trigger={
+                  <button
+                    type="button"
+                    aria-label="More actions"
+                    title="More actions"
+                    disabled={copying}
+                    className="rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring disabled:opacity-50"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </button>
+                }
+              />
+            )
           }
         />
       </div>

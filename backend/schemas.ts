@@ -63,3 +63,9 @@ export const AskThread = z.object({
   userMessageId: z.string().optional(),
   assistantMessageId: z.string().optional(),
 });
+
+export const CopyThread = z.object({
+  newThreadId: z.string().optional(),
+  uptoMessageId: z.string().optional(),
+  appendNote: z.object({ id: z.string(), content: z.string(), createdAt: z.number().optional() }).optional(),
+});

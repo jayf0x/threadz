@@ -9,6 +9,11 @@ export type MessageInputHandle = {
   /** Insert text at the caret (dictation, in the composer). No-op capability of its own here —
    * the composer owns voice; this just gives it somewhere to land. */
   insertAtCaret: (text: string) => void;
+  /** Current typed text, without sending or clearing it (the composer's "copy thread from here"
+   * reads this to carry it over as the copy's next note). */
+  getText: () => string;
+  /** Clears the draft — call only once whatever read it with `getText` has actually succeeded. */
+  clear: () => void;
 };
 
 type Status = { text: string; tone: "error" | "ghost" | "quiet" } | null;
@@ -28,6 +33,8 @@ export type MessageInputProps = {
   controls?: ReactNode;
   /** A status line to show instead of the image-attach error (the composer's voice status). */
   statusOverride?: Status;
+  /** Extra actions right beside the submit button (the composer's ⋯ menu). */
+  trailingActions?: ReactNode;
   className?: string;
   editorClassName?: string;
   handleRef?: Ref<MessageInputHandle>;
@@ -45,17 +52,18 @@ export const MessageInput = ({
   overlay,
   controls,
   statusOverride,
+  trailingActions,
   className,
   editorClassName,
   handleRef,
 }: MessageInputProps) => {
-  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret } = useMessageInput(
+  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear } = useMessageInput(
     draftKey,
     busy,
     onSubmit,
   );
 
-  useImperativeHandle(handleRef, () => ({ insertAtCaret }), [insertAtCaret]);
+  useImperativeHandle(handleRef, () => ({ insertAtCaret, getText, clear }), [insertAtCaret, getText, clear]);
 
   const send = async () => {
     const rest = await submit();
@@ -108,9 +116,12 @@ export const MessageInput = ({
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
         {controls}
-        <Button className="ml-auto" disabled={busy || !draft.trim()} onClick={send}>
-          {submitLabel}
-        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          <Button disabled={busy || !draft.trim()} onClick={send}>
+            {submitLabel}
+          </Button>
+          {trailingActions}
+        </div>
       </div>
     </div>
   );

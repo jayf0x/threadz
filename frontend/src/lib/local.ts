@@ -49,6 +49,10 @@ const getDB = () => {
 // agree on it: a create whose reply was lost and is retried here dedupes at sync instead of doubling the seed.
 export const seedId = (threadId: string) => `seed-${threadId}`;
 
+// Same discipline as `seedId`: a copied message's id is a pure function of (newThreadId,
+// originalId), so a retried copy call re-derives the same ids instead of duplicating.
+export const copyMessageId = (newThreadId: string, originalId: string) => `${newThreadId}:${originalId}`;
+
 const strip = <T extends Dirty>({ dirty, ...rest }: T): Omit<T, "dirty"> => rest;
 const notFound = () => new ApiError(404, "thread not found");
 
@@ -112,6 +116,64 @@ export const localApi: Api = {
     const thread = await db.get("threads", id);
     if (!thread) throw notFound();
     const messages = await db.getAllFromIndex("messages", "byThread", id);
+    return { thread: strip(thread), messages: messages.sort(bySeq).map(strip) };
+  },
+
+  // Same shape as the backend's copyThread: one transaction, idempotent on `newThreadId`, new
+  // message ids derived from it, original createdAt/edits/meta kept, description/tags/embedding
+  // left null (a freshly created thread's defaults).
+  copyThread: async (threadId, { newThreadId, uptoMessageId, appendNote }) => {
+    const db = await getDB();
+    const tx = db.transaction(["threads", "messages"], "readwrite");
+    const already = await tx.objectStore("threads").get(newThreadId);
+    if (already) {
+      const messages = await tx.objectStore("messages").index("byThread").getAll(newThreadId);
+      await tx.done;
+      return { thread: strip(already), messages: messages.sort(bySeq).map(strip) };
+    }
+
+    const source = await tx.objectStore("threads").get(threadId);
+    if (!source) throw notFound();
+    const all = (await tx.objectStore("messages").index("byThread").getAll(threadId)).sort(bySeq);
+    const cut = all.findIndex((m) => m.id === uptoMessageId);
+    if (cut < 0) throw new ApiError(404, "message not found");
+
+    const ts = Date.now();
+    const thread: LThread = {
+      id: newThreadId,
+      title: `Copy: ${source.title}`.slice(0, 200),
+      createdAt: ts,
+      updatedAt: ts,
+      renamedAt: null,
+      description: null,
+      tags: [],
+      hasEmbedding: false,
+      dirty: 1,
+    };
+    await tx.objectStore("threads").put(thread);
+
+    const toCopy = all.slice(0, cut + 1);
+    for (const m of toCopy) {
+      const copy: LMessage = { ...strip(m), id: copyMessageId(newThreadId, m.id), threadId: newThreadId, dirty: 1 };
+      await tx.objectStore("messages").put(copy);
+    }
+    const note = appendNote?.content.trim();
+    if (appendNote && note) {
+      const message: LMessage = {
+        id: appendNote.id,
+        threadId: newThreadId,
+        role: "user",
+        content: note,
+        createdAt: ts,
+        seq: toCopy.length + 1,
+        meta: null,
+        dirty: 1,
+      };
+      await tx.objectStore("messages").put(message);
+    }
+    await tx.done;
+
+    const messages = await db.getAllFromIndex("messages", "byThread", newThreadId);
     return { thread: strip(thread), messages: messages.sort(bySeq).map(strip) };
   },
 

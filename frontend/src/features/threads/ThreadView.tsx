@@ -1,27 +1,52 @@
 import { format } from "date-fns";
-import { ArrowLeft, CloudOff, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
+import { ArrowLeft, CloudOff, Copy, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { Composer } from "@/features/composer";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
+import { api } from "@/lib/api";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
-import { onChange } from "@/lib/sync";
+import { onChange, pullThreads } from "@/lib/sync";
 import type { Message, Thread } from "@/lib/types";
 import { useThread } from "./useThread";
 
-export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () => void }) => {
+export const ThreadView = ({
+  threadId,
+  onBack,
+  onCopied,
+}: {
+  threadId: string;
+  onBack: () => void;
+  onCopied: (newThreadId: string) => void; // open the copy once it exists
+}) => {
   const { messages, unsynced, busy, error, gone, addMessage, editMessage, ask } = useThread(threadId);
   const local = useStatus().mode === "local";
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
+
+  // "Copy thread from here": B is A up to and including this message. A is never touched.
+  const copyThreadFrom = async (uptoMessageId: string) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      const { thread: copy } = await api.copyThread(threadId, { newThreadId: crypto.randomUUID(), uptoMessageId });
+      await pullThreads();
+      onCopied(copy.id);
+    } catch {
+      // ponytail: no status line for this yet — a failed copy just does nothing, nothing was touched
+    } finally {
+      setCopying(false);
+    }
+  };
 
   const onAsk = async (prompt: string, commit: boolean) => {
     setScratch(null);
@@ -85,6 +110,7 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
               pending={unsynced.has(m.id)}
               busy={busy}
               onEdit={(text) => editMessage(m.id, text)}
+              onCopyThread={() => copyThreadFrom(m.id)}
             />
           ))}
 
@@ -103,7 +129,15 @@ export const ThreadView = ({ threadId, onBack }: { threadId: string; onBack: () 
         </div>
       </div>
 
-      <Composer threadId={threadId} busy={busy} canAsk={!local} onNote={addMessage} onAsk={onAsk} />
+      <Composer
+        threadId={threadId}
+        messages={messages}
+        busy={busy}
+        canAsk={!local}
+        onNote={addMessage}
+        onAsk={onAsk}
+        onCopied={onCopied}
+      />
     </div>
   );
 };
@@ -132,11 +166,13 @@ const EntryRow = ({
   pending,
   busy,
   onEdit,
+  onCopyThread,
 }: {
   message: Message;
   pending: boolean;
   busy: boolean;
   onEdit: (text: string) => Promise<boolean>;
+  onCopyThread: () => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.content);
@@ -154,8 +190,11 @@ const EntryRow = ({
     setText(m.content);
     setEditing(true);
   };
-  // Extend this array (not the JSX) for "Copy thread from here" and "Annotate" as they land.
-  const menuItems: MenuItem[] = [{ label: "Edit", icon: Pencil, onClick: startEdit }];
+  // Extend this array (not the JSX) for "Annotate" as it lands.
+  const menuItems: MenuItem[] = [
+    { label: "Edit", icon: Pencil, onClick: startEdit },
+    { label: "Copy thread from here", icon: Copy, onClick: onCopyThread },
+  ];
 
   return (
     <article className="group border-b border-rule py-4">

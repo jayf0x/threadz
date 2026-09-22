@@ -60,6 +60,17 @@ export const remoteApi = {
       body: JSON.stringify(body),
     }),
 
+  // B is a copy of A from its first message up to `uptoMessageId`. `newThreadId` is the client-minted
+  // id (see `api.copyThread` below); idempotent on it, like `createThread`.
+  copyThread: (
+    threadId: string,
+    body: { newThreadId: string; uptoMessageId: string; appendNote?: { id: string; content: string } },
+  ) =>
+    req<{ thread: Thread; messages: Message[] }>(`/api/threads/${threadId}/copy`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // NOTE: GET /api/threads/:id/related exists on the backend but is a v2 feature —
   // deliberately not surfaced in the UI (embedding similarity wasn't giving
   // meaningful results at this scale). Wire a client method here when v2 revisits it.
@@ -138,6 +149,15 @@ export const api: Api = {
       () => remoteApi.getThread(id),
       () => localApi.getThread(id),
     ),
+  // Same client-minted-id discipline as createThread: mint newThreadId once here, reuse it on the
+  // local fallback within this call, so a live→local handoff mid-copy can't leave two threads.
+  copyThread: (threadId, { newThreadId, ...rest }) => {
+    const b = { ...rest, newThreadId: newThreadId ?? crypto.randomUUID() };
+    return via(
+      () => remoteApi.copyThread(threadId, b),
+      () => localApi.copyThread(threadId, b),
+    );
+  },
   renameThread: (id, title) =>
     via(
       () => remoteApi.renameThread(id, title),

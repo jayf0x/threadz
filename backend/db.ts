@@ -141,6 +141,59 @@ export const appendMessage = (msg: {
   return { message, inserted: true };
 };
 
+// Deterministic per-copy id: same (newThreadId, originalId) always derives the same message id, so
+// a retried copy call (same client-minted newThreadId) re-derives identical ids instead of duplicating.
+export const copyMessageId = (newThreadId: string, originalId: string) => `${newThreadId}:${originalId}`;
+
+// Copies `sourceId` from its first message up to and including `uptoId` into a brand-new thread
+// `newId` (new message ids, original `createdAt`/edits/meta kept, description/tags/embedding stay
+// null). One transaction: the thread, every copied message and the optional appended note land
+// together or not at all. Idempotent on `newId` — a retry with the same id returns what's already
+// there instead of duplicating. Returns null if the source thread or `uptoId` doesn't exist.
+export const copyThread = db.transaction(
+  (
+    newId: string,
+    sourceId: string,
+    uptoId: string,
+    appendNote?: { id: string; content: string; createdAt?: number },
+  ): { thread: ThreadRow; messages: MessageRow[] } | null => {
+    const already = getThread(newId);
+    if (already) return { thread: already, messages: getMessages(newId) };
+
+    const source = getThread(sourceId);
+    if (!source) return null;
+    const all = getMessages(sourceId);
+    const cut = all.findIndex((m) => m.id === uptoId);
+    if (cut < 0) return null;
+
+    const ts = now();
+    const title = `Copy: ${source.title}`.slice(0, 200);
+    db.query("INSERT INTO threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)").run(newId, title, ts, ts);
+
+    const toCopy = all.slice(0, cut + 1);
+    for (const m of toCopy) {
+      db.query(
+        "INSERT INTO messages (id, thread_id, role, content, created_at, seq, meta, edited_at, edits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(copyMessageId(newId, m.id), newId, m.role, m.content, m.created_at, m.seq, m.meta, m.edited_at, m.edits);
+    }
+
+    const note = appendNote?.content.trim();
+    if (appendNote && note) {
+      db.query("INSERT INTO messages (id, thread_id, role, content, created_at, seq) VALUES (?, ?, ?, ?, ?, ?)").run(
+        appendNote.id,
+        newId,
+        "user",
+        note,
+        clampTs(appendNote.createdAt),
+        toCopy.length + 1,
+      );
+    }
+    db.query("UPDATE threads SET updated_at = ? WHERE id = ?").run(now(), newId);
+
+    return { thread: getThread(newId)!, messages: getMessages(newId) };
+  },
+);
+
 export const setMetadata = (threadId: string, description: string, tags: string[], embedding: Float32Array) => {
   db.query("UPDATE threads SET description = ?, tags = ?, embedding = ? WHERE id = ?").run(
     description,

@@ -5,6 +5,7 @@ import {
   appendMessage,
   applySync,
   backupDb,
+  copyThread,
   createThread,
   deleteThread,
   editMessage,
@@ -21,7 +22,7 @@ import {
 import { collectOrphanImages, imageFile, saveImage } from "./images";
 import { generateMetadata, metadataEnabled, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
-import { AppendMessage, AskThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
+import { AppendMessage, AskThread, CopyThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -199,6 +200,22 @@ const server = Bun.serve({
         requireThread(p.id);
         deleteThread(p.id);
         return json({ ok: true });
+      }),
+    },
+
+    // A B copy of A from its first message up to and including `uptoMessageId`. `newThreadId` is
+    // minted by the client, once, so a retry (or a double tap) replays the same id and this is a
+    // no-op the second time. A never changes.
+    "/api/threads/:id/copy": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      POST: wrap(async (req, p) => {
+        requireThread(p.id);
+        const body = await readBody(req, CopyThread);
+        if (!body.newThreadId || !body.uptoMessageId)
+          throw new HttpError(400, "newThreadId and uptoMessageId are required");
+        const result = copyThread(body.newThreadId, p.id, body.uptoMessageId, body.appendNote);
+        if (!result) throw new HttpError(404, "message not found");
+        return json({ thread: threadJson(result.thread), messages: result.messages.map(messageJson) }, 201);
       }),
     },
 
