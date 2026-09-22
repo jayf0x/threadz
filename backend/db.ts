@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 CREATE INDEX IF NOT EXISTS idx_annotations_thread ON annotations(thread_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_message ON annotations(message_id);
+-- One annotation per message. NOT created here: an existing database can already violate it (see
+-- dedupeDuplicateAnnotations below), so the unique index is created separately, after that cleanup runs.
 `;
 
 export type ThreadRow = {
@@ -83,6 +85,31 @@ export const DB_PATH = process.env.THREADZ_DB || "threadz.sqlite";
 export const db = new Database(DB_PATH, { create: true });
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 db.exec(SCHEMA);
+
+// One annotation per message, enforced by the DB (a unique index), not app code. A database from
+// before this rule shipped can already have more than one row for the same message_id — creating a
+// UNIQUE index against data that already violates it throws at startup, so dedupe first: for any
+// message_id with more than one row, keep the most recently edited one (edited_at ?? created_at) and
+// drop the rest. Their content is lost — an accepted, one-time consequence of moving to "one note per
+// message". Runs every boot; it's a cheap no-op once there are no duplicates left.
+// Takes a `Database` parameter (default: the module's own) so tests can exercise it against a
+// throwaway db file seeded with a pre-existing violation, without disturbing the real one.
+export const dedupeDuplicateAnnotations = (database: Database = db) => {
+  const dupes = database
+    .query<{ message_id: string }, []>("SELECT message_id FROM annotations GROUP BY message_id HAVING COUNT(*) > 1")
+    .all();
+  for (const { message_id } of dupes) {
+    const rows = database
+      .query<{ id: string; created_at: number; edited_at: number | null }, [string]>(
+        "SELECT id, created_at, edited_at FROM annotations WHERE message_id = ?",
+      )
+      .all(message_id);
+    const keep = rows.reduce((a, b) => ((b.edited_at ?? b.created_at) > (a.edited_at ?? a.created_at) ? b : a));
+    for (const r of rows) if (r.id !== keep.id) database.query("DELETE FROM annotations WHERE id = ?").run(r.id);
+  }
+};
+dedupeDuplicateAnnotations();
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_one_per_message ON annotations(message_id)");
 
 // Databases made before edit/rename existed: add the columns once.
 const addColumn = (table: string, col: string, type: string) => {
@@ -322,6 +349,8 @@ export const editMessage = (id: string, incoming: Version[]) => {
 
 // --- annotations ---
 
+const isUniqueConstraintError = (err: unknown) => err instanceof Error && /UNIQUE constraint failed/i.test(err.message);
+
 // Idempotent create, exactly like `appendMessage`: client UUID is the primary key.
 export const appendAnnotation = (a: {
   id: string;
@@ -333,13 +362,25 @@ export const appendAnnotation = (a: {
   const existing = getAnnotation(a.id);
   if (existing) return { annotation: existing, inserted: false };
   const ts = clampTs(a.createdAt);
-  db.query("INSERT INTO annotations (id, thread_id, message_id, content, created_at) VALUES (?, ?, ?, ?, ?)").run(
-    a.id,
-    a.threadId,
-    a.messageId,
-    a.content,
-    ts,
-  );
+  try {
+    db.query("INSERT INTO annotations (id, thread_id, message_id, content, created_at) VALUES (?, ?, ?, ?, ?)").run(
+      a.id,
+      a.threadId,
+      a.messageId,
+      a.content,
+      ts,
+    );
+  } catch (err) {
+    // idx_annotations_one_per_message refused a second row for this message_id. This only realistically
+    // happens when two offline devices each annotate the same message before either has synced — rare at
+    // personal scale, not worth a real multi-writer merge. Fold the incoming content in as a new edit onto
+    // the row that got there first; the losing device's local annotation id is simply orphaned there until
+    // its next pull reconciles it away (see local.ts).
+    if (!isUniqueConstraintError(err)) throw err;
+    const winner = getAnnotationsForMessage(a.messageId)[0];
+    if (!winner) throw err; // shouldn't happen, but never swallow a real error
+    return { annotation: editAnnotation(winner.id, [{ content: a.content, at: ts }])!, inserted: false };
+  }
   db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(ts, a.threadId);
   return { annotation: getAnnotation(a.id)!, inserted: true };
 };
@@ -360,6 +401,17 @@ export const editAnnotation = (id: string, incoming: Version[]) => {
   );
   db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(current.at, a.thread_id);
   return getAnnotation(id)!;
+};
+
+// Hard delete. Unlike a message, an annotation is a small note with no append-only requirement — the
+// whole point of "one note per message" is that it's genuinely removable, so no tombstone/edit-history
+// is kept for the deleted row itself.
+export const deleteAnnotation = (id: string) => {
+  const a = getAnnotation(id);
+  if (!a) return null;
+  db.query("DELETE FROM annotations WHERE id = ?").run(id);
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(now(), a.thread_id);
+  return a;
 };
 
 export const threadEmbeddings = () =>
@@ -508,6 +560,21 @@ export const applySync = db.transaction((p: SyncPayload) => {
     if (r.inserted) appended++;
     if (a.editedAt) editAnnotation(a.id, [...(a.edits ?? []), { content: a.content, at: a.editedAt }]);
     touched.add(a.threadId);
+  }
+  // Annotation deletes, at row granularity: mirrors the thread-delete loop above exactly, just scoped
+  // to one annotation instead of a whole thread. `baseVersion` is the device's last-known edited_at ??
+  // created_at for that row — "content wins", so a delete only lands if nobody touched it since.
+  for (const d of p.annotationDeletes ?? []) {
+    const a = getAnnotation(d.id);
+    if (!a) {
+      deleted.push(d.id); // already gone — idempotent, same as a replayed thread delete
+      continue;
+    }
+    touched.add(a.thread_id);
+    if ((a.edited_at ?? a.created_at) === d.baseVersion) {
+      deleteAnnotation(d.id);
+      deleted.push(d.id);
+    } else kept.push(d.id); // edited since the device last saw it — the note survives
   }
   for (const d of p.deletes) {
     const t = getThread(d.id);

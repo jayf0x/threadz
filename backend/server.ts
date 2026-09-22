@@ -10,9 +10,11 @@ import {
   backupDb,
   copyThread,
   createThread,
+  deleteAnnotation,
   deleteThread,
   editAnnotation,
   editMessage,
+  getAnnotation,
   getAnnotations,
   getMessage,
   getMessages,
@@ -150,7 +152,15 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req) => {
         const payload = await readBody(req, SyncPayload);
-        if (payload.threads.length + payload.messages.length + payload.deletes.length > 0) backupDb();
+        if (
+          payload.threads.length +
+            payload.messages.length +
+            payload.annotations.length +
+            payload.deletes.length +
+            payload.annotationDeletes.length >
+          0
+        )
+          backupDb();
         const { touched, ...result } = applySync(payload);
         for (const id of touched) refreshMetadata(id);
         return json({ ...result, ...heads() });
@@ -310,6 +320,17 @@ const server = Bun.serve({
         const annotation = editAnnotation(p.aid, [{ content: body.content.trim(), at }]);
         if (!annotation || annotation.thread_id !== p.id) throw new HttpError(404, "annotation not found");
         return json({ annotation: annotationJson(annotation) });
+      }),
+      // Unconditional delete, like live `DELETE /api/threads/:id` — conflict resolution ("content
+      // wins") is a sync concept (see /api/sync's annotationDeletes), not something a live device-to-
+      // main call needs. Ownership is checked BEFORE deleting (not delete-then-check like the PATCH
+      // above) so a mismatched :id/:aid pair can never remove a row that belongs to another thread.
+      DELETE: wrap((_req, p) => {
+        requireThread(p.id);
+        const annotation = getAnnotation(p.aid);
+        if (!annotation || annotation.thread_id !== p.id) throw new HttpError(404, "annotation not found");
+        deleteAnnotation(p.aid);
+        return json({ ok: true });
       }),
     },
 

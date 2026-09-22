@@ -16,6 +16,11 @@ type Dirty = { dirty: 0 | 1 };
 type LThread = Thread & Dirty;
 type LMessage = Message & Dirty;
 type LAnnotation = Annotation & Dirty;
+// A pending "delete this annotation" request, queued for the next sync's `annotationDeletes`.
+// `baseVersion` is this device's last-known editedAt ?? createdAt for the row — the same idea as a
+// thread's `base` hash, just scoped to one annotation. The row itself is removed from `annotations`
+// immediately (a note needs no tombstone); this is only bookkeeping for the sync round-trip.
+type AnnotationDelete = { id: string; threadId: string; baseVersion: number };
 type Trashed = {
   id: string;
   thread: Thread;
@@ -29,6 +34,7 @@ interface LocalDB extends DBSchema {
   threads: { key: string; value: LThread; indexes: { dirty: number } };
   messages: { key: string; value: LMessage; indexes: { byThread: string; dirty: number } };
   annotations: { key: string; value: LAnnotation; indexes: { byThread: string; byMessage: string; dirty: number } };
+  annotationDeletes: { key: string; value: AnnotationDelete };
   trash: { key: string; value: Trashed; indexes: { dirty: number } };
   backups: { key: number; value: Backup };
   base: { key: string; value: { id: string; hash: string } };
@@ -37,7 +43,7 @@ interface LocalDB extends DBSchema {
 let dbp: Promise<IDBPDatabase<LocalDB>> | null = null;
 
 const getDB = () => {
-  dbp ??= openDB<LocalDB>("threadz-local", 3, {
+  dbp ??= openDB<LocalDB>("threadz-local", 4, {
     upgrade(db, old) {
       if (old < 1) {
         db.createObjectStore("threads", { keyPath: "id" }).createIndex("dirty", "dirty");
@@ -54,6 +60,7 @@ const getDB = () => {
         a.createIndex("byMessage", "messageId");
         a.createIndex("dirty", "dirty");
       }
+      if (old < 4) db.createObjectStore("annotationDeletes", { keyPath: "id" });
     },
   });
   return dbp;
@@ -358,19 +365,38 @@ export const localApi: Api = {
     await tx.done;
     return { annotation: strip(annotation) };
   },
+
+  // No tombstone needed (unlike a thread): remove the row now, and queue a pending delete request
+  // (its last-known version, as `baseVersion`) for the next sync to carry to main. If main since
+  // changed the annotation, the sync refuses the delete and `mergeRemoteThread` brings it back —
+  // same "content wins" shape as a thread delete, just at row granularity.
+  deleteAnnotation: async (threadId, id) => {
+    const db = await getDB();
+    const tx = db.transaction(["threads", "annotations", "annotationDeletes"], "readwrite");
+    const thread = await tx.objectStore("threads").get(threadId);
+    const old = await tx.objectStore("annotations").get(id);
+    if (!thread || !old || old.threadId !== threadId) throw notFound();
+    await tx.objectStore("annotations").delete(id);
+    await tx.objectStore("annotationDeletes").put({ id, threadId, baseVersion: old.editedAt ?? old.createdAt });
+    const at = Date.now();
+    await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, at) });
+    await tx.done;
+    return { ok: true as const };
+  },
 };
 
 // --- sync bookkeeping ---------------------------------------------------------
 
 export const countUnsynced = async (): Promise<Unsynced> => {
   const db = await getDB();
-  const [threads, messages, annotations, deletions] = await Promise.all([
+  const [threads, messages, annotations, trashed, annotationDeletes] = await Promise.all([
     db.countFromIndex("threads", "dirty", 1),
     db.countFromIndex("messages", "dirty", 1),
     db.countFromIndex("annotations", "dirty", 1),
     db.countFromIndex("trash", "dirty", 1),
+    db.count("annotationDeletes"), // every row here is, by construction, a pending deletion
   ]);
-  return { threads, messages, annotations, deletions };
+  return { threads, messages, annotations, deletions: trashed + annotationDeletes };
 };
 
 export const unsyncedMessageIds = async (threadId: string) => {
@@ -396,6 +422,7 @@ export const unsyncedBatch = async () => {
     threads: await db.getAllFromIndex("threads", "dirty", 1),
     messages,
     annotations,
+    annotationDeletes: await db.getAll("annotationDeletes"),
     trash: await db.getAllFromIndex("trash", "dirty", 1),
   };
 };
@@ -417,7 +444,7 @@ type Batch = Awaited<ReturnType<typeof unsyncedBatch>>;
 // `missing`/`kept` rows stay dirty too.
 export const commitPush = async (sent: Batch, r: SyncResult) => {
   const db = await getDB();
-  const tx = db.transaction(["threads", "messages", "annotations", "trash", "base"], "readwrite");
+  const tx = db.transaction(["threads", "messages", "annotations", "annotationDeletes", "trash", "base"], "readwrite");
   const missing = new Set(r.missing);
   for (const t of sent.threads) {
     const row = await tx.objectStore("threads").get(t.id);
@@ -439,6 +466,12 @@ export const commitPush = async (sent: Batch, r: SyncResult) => {
     if (r.deleted.includes(x.id)) await tx.objectStore("base").delete(x.id);
     // r.kept: main changed since our base. Leave base stale — the next pull sees the mismatch and resurrects the thread.
   }
+  // r.deleted: main dropped the row (or already had, idempotent) — the pending request is done.
+  // r.kept: main changed the annotation since our baseVersion — drop the pending request too (the
+  // delete never applies), so the very next merge of this thread is free to bring the row back
+  // instead of this stale record blocking it forever.
+  for (const d of sent.annotationDeletes)
+    if (r.deleted.includes(d.id) || r.kept.includes(d.id)) await tx.objectStore("annotationDeletes").delete(d.id);
   await tx.done;
 };
 
@@ -481,7 +514,12 @@ export const mergeRemoteThread = async (
   hash: string | undefined,
 ) => {
   const db = await getDB();
-  const tx = db.transaction(["threads", "messages", "annotations", "trash", "base"], "readwrite");
+  const tx = db.transaction(["threads", "messages", "annotations", "annotationDeletes", "trash", "base"], "readwrite");
+  // Annotations this device is already mid-deleting: don't let main's (still current, pre-sync) copy
+  // resurrect them before that delete gets a chance to reach main.
+  const pendingDeletes = new Set(
+    (await tx.objectStore("annotationDeletes").getAll()).filter((d) => d.threadId === thread.id).map((d) => d.id),
+  );
   const trashed = await tx.objectStore("trash").get(thread.id);
   if (trashed) await tx.objectStore("trash").delete(thread.id);
   const have = await tx.objectStore("threads").get(thread.id);
@@ -514,6 +552,7 @@ export const mergeRemoteThread = async (
   }
   // Annotations union exactly like messages: their own rows, merged the same way.
   for (const a of annotations) {
+    if (pendingDeletes.has(a.id)) continue; // we're deleting this locally; don't bring it back mid-flight
     const mine = await tx.objectStore("annotations").get(a.id);
     if (!mine) {
       await tx.objectStore("annotations").put({ ...a, dirty: 0 });
@@ -533,6 +572,14 @@ export const mergeRemoteThread = async (
   for (const a of trashed?.annotations ?? []) {
     if (!mainAnnotationIds.has(a.id) && !(await tx.objectStore("annotations").get(a.id)))
       await tx.objectStore("annotations").put({ ...a, dirty: 1 }); // our annotations from before the delete
+  }
+  // main is the authoritative list for this thread right now: an annotation we hold that main no
+  // longer has, that we didn't just add above and aren't mid-deleting ourselves, was deleted by
+  // another device — follow (no tombstone needed). A dirty one is content-wins: keep it; the next
+  // push re-creates it on main as an ordinary append (or folds into a race winner — see appendAnnotation).
+  for (const mine of await tx.objectStore("annotations").index("byThread").getAll(thread.id)) {
+    if (!mainAnnotationIds.has(mine.id) && !mine.dirty && !pendingDeletes.has(mine.id))
+      await tx.objectStore("annotations").delete(mine.id);
   }
   if (hash) await tx.objectStore("base").put({ id: thread.id, hash });
   await tx.done;

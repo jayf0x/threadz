@@ -92,6 +92,9 @@ export type SyncPayload = {
     edits: Version[];
   }[];
   deletes: { id: string; baseHash: string }[];
+  // Same idea as `deletes`, scoped to one annotation: `baseVersion` is the device's last-known
+  // editedAt ?? createdAt for that row.
+  annotationDeletes: { id: string; baseVersion: number }[];
 };
 
 export type SyncResult = Head & {

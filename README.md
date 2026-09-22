@@ -153,6 +153,7 @@ Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type 
 | DELETE | `/api/threads/:id` | delete thread + messages |
 | PATCH | `/api/threads/:id/messages/:mid` | edit `{ content }`; the old text is appended to `edits` |
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
+| DELETE | `/api/threads/:id/annotations/:aid` | delete a note for good — no tombstone, unlike a message |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
 | POST | `/api/threads/:id/metadata` | force regen tags/description/embedding — **v2, off by default**; 503 unless `THREADZ_METADATA=1` |
 | PUT | `/api/images/:hash` | store a photo: raw JPEG bytes, `:hash` = its sha256 hex. The body is re-hashed and must be a JPEG (magic bytes) ≤ 8MB, else 400/415/413. Idempotent: a replay changes nothing (`{ ok, stored }`) |
@@ -187,7 +188,9 @@ the pill for the connection dialog.
 - **Conflicts** are resolved without asking; whichever side has content wins, so a delete never
   destroys the other side's edits. Deleted on main + untouched here → removed here (copy kept).
   Deleted on main + edited here → kept and re-sent. Deleted here + edited on main → brought back.
-  Notes merge by id (append-only), so they never conflict. The dialog reports what happened.
+  Notes merge by id (append-only), so they never conflict. A note (annotation) *can* be deleted —
+  one per message, own delete endpoint — and that delete is versioned the same way: refused (content
+  kept) if the note changed since this device last saw it. The dialog reports what happened.
 - **Data safety.** The device store is never cleared wholesale; pending rows are flagged `dirty`
   until main acknowledged them; a delete keeps a copy in `trash`; a rolling safety copy is taken
   before every sync; drafts persist per thread. **Export/Import** writes/reads a JSON backup

@@ -86,6 +86,10 @@ export const remoteApi = {
       body: JSON.stringify({ content }),
     }),
 
+  // Unconditional on the live path (conflict resolution is a sync concept, see SyncPayload.annotationDeletes).
+  deleteAnnotation: (threadId: string, id: string) =>
+    req<{ ok: true }>(`/api/threads/${threadId}/annotations/${id}`, { method: "DELETE" }),
+
   // NOTE: GET /api/threads/:id/related exists on the backend but is a v2 feature —
   // deliberately not surfaced in the UI (embedding similarity wasn't giving
   // meaningful results at this scale). Wire a client method here when v2 revisits it.
@@ -207,5 +211,10 @@ export const api: Api = {
     via(
       () => remoteApi.editAnnotation(threadId, id, content),
       () => localApi.editAnnotation(threadId, id, content),
+    ),
+  deleteAnnotation: (threadId, id) =>
+    via(
+      () => remoteApi.deleteAnnotation(threadId, id),
+      () => localApi.deleteAnnotation(threadId, id),
     ),
 };

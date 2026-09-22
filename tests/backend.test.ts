@@ -38,7 +38,11 @@ const {
   copyThread,
   createThread,
   db,
+  dedupeDuplicateAnnotations,
+  editAnnotation,
+  getAnnotation,
   getAnnotations,
+  getAnnotationsForMessage,
   getMessages,
   getThread,
   threadEmbeddings,
@@ -250,7 +254,7 @@ describe("images (invariant: immutable files on main, outside SQLite, snapshots 
     const t = createThread("gc-t", "gc thread");
     appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: `![](img:${hUsed}#4x3)` });
     const m = crypto.randomUUID();
-    appendMessage({ id: m, threadId: t.id, role: "user", content: "first ![](img:" + hEdited + "#4x3)" });
+    appendMessage({ id: m, threadId: t.id, role: "user", content: `first ![](img:${hEdited}#4x3)` });
     db.query("UPDATE messages SET content = 'rewritten', edits = ? WHERE id = ?").run(
       JSON.stringify([{ content: `first ![](img:${hEdited}#4x3)`, at: 1 }]),
       m,
@@ -770,6 +774,137 @@ describe("annotations (invariant: own row, same fields as a message minus role, 
     expect(exists(join(IMAGES_DIR, hash))).toBe(true); // still referenced, from the annotation
     db.query("DELETE FROM threads WHERE id = ?").run(t.id);
   });
+
+  test("one annotation per message: a second create for the same message folds into an edit, not a second row", async () => {
+    const t = createThread(crypto.randomUUID(), "one-per-message");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "base" });
+    const first = await post(`/api/threads/${t.id}/messages/${message.id}/annotations`, {
+      id: crypto.randomUUID(),
+      content: "first note",
+    });
+    expect(first.inserted).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 5)); // distinct `at` from the first create
+    // A different client id, as if a second offline device independently annotated the same message.
+    const second = await post(`/api/threads/${t.id}/messages/${message.id}/annotations`, {
+      id: crypto.randomUUID(),
+      content: "second note",
+    });
+    expect(second.inserted).toBe(false); // folded onto the row that won the race, not a new one
+    expect(second.annotation.id).toBe(first.annotation.id);
+    expect(second.annotation.content).toBe("second note");
+    expect(second.annotation.edits.map((v: { content: string }) => v.content)).toEqual(["first note"]);
+    expect(getAnnotationsForMessage(message.id)).toHaveLength(1); // still exactly one row
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("DELETE removes an annotation for good; 404s for an unknown id or one addressed via a different thread", async () => {
+    const t = createThread(crypto.randomUUID(), "delete-live");
+    const other = createThread(crypto.randomUUID(), "delete-live-other");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "base" });
+    const created = await post(`/api/threads/${t.id}/messages/${message.id}/annotations`, {
+      id: crypto.randomUUID(),
+      content: "gone soon",
+    });
+    const del = (path: string) => fetch(`${BASE}${path}`, { method: "DELETE" });
+
+    // Right annotation, wrong thread in the URL: 404, and the row must survive untouched.
+    const wrongThread = await del(`/api/threads/${other.id}/annotations/${created.annotation.id}`);
+    expect(wrongThread.status).toBe(404);
+    expect(getAnnotation(created.annotation.id)).toBeTruthy();
+
+    expect((await del(`/api/threads/${t.id}/annotations/${crypto.randomUUID()}`)).status).toBe(404);
+
+    const ok = await del(`/api/threads/${t.id}/annotations/${created.annotation.id}`);
+    expect(ok.status).toBe(200);
+    expect(getAnnotation(created.annotation.id)).toBeFalsy();
+    expect((await del(`/api/threads/${t.id}/annotations/${created.annotation.id}`)).status).toBe(404); // already gone
+
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+    await fetch(`${BASE}/api/threads/${other.id}`, { method: "DELETE" });
+  });
+
+  test("sync annotationDeletes: a matching baseVersion deletes; a stale one is refused and the newer content survives", async () => {
+    const sync = (body: unknown) =>
+      fetch(`${BASE}/api/sync`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+    const t = createThread(crypto.randomUUID(), "sync-annotation-delete");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "base" });
+    const aid = crypto.randomUUID();
+    const created = appendAnnotation({ id: aid, threadId: t.id, messageId: message.id, content: "will be deleted" });
+    const staleBaseVersion = created.annotation.created_at; // never edited yet, so createdAt is its version
+
+    await new Promise((r) => setTimeout(r, 5));
+    editAnnotation(aid, [{ content: "edited on main first", at: Date.now() }]);
+
+    const stale = await sync({
+      threads: [],
+      messages: [],
+      annotations: [],
+      deletes: [],
+      annotationDeletes: [{ id: aid, baseVersion: staleBaseVersion }],
+    });
+    expect(stale.kept).toEqual([aid]); // content wins: the edit is newer than what the device last saw
+    expect(getAnnotation(aid)?.content).toBe("edited on main first");
+
+    const current = getAnnotation(aid)!;
+    const ok = await sync({
+      threads: [],
+      messages: [],
+      annotations: [],
+      deletes: [],
+      annotationDeletes: [{ id: aid, baseVersion: current.edited_at! }],
+    });
+    expect(ok.deleted).toEqual([aid]);
+    expect(getAnnotation(aid)).toBeFalsy();
+
+    // A replay (or a delete for a row that's already gone) is idempotent, not an error.
+    const replay = await sync({
+      threads: [],
+      messages: [],
+      annotations: [],
+      deletes: [],
+      annotationDeletes: [{ id: aid, baseVersion: 0 }],
+    });
+    expect(replay.deleted).toEqual([aid]);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("startup dedupe: keeps only the most recently edited annotation per message, so the unique index can then be created", async () => {
+    // A pre-existing violation can only be reproduced on a table that doesn't have the unique index yet —
+    // this server's own db already does — so this exercises the real dedupe function against a throwaway file.
+    const { Database: RawDatabase } = await import("bun:sqlite");
+    const raw = new RawDatabase(":memory:");
+    raw.exec(`CREATE TABLE annotations (
+      id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, content TEXT NOT NULL,
+      created_at INTEGER NOT NULL, edited_at INTEGER, edits TEXT
+    )`);
+    const mid = "shared-message";
+    raw
+      .query(
+        "INSERT INTO annotations (id, thread_id, message_id, content, created_at, edited_at) VALUES ('older', 't', ?, 'older, never edited', 100, NULL)",
+      )
+      .run(mid);
+    raw
+      .query(
+        "INSERT INTO annotations (id, thread_id, message_id, content, created_at, edited_at) VALUES ('newer-edited', 't', ?, 'edited later', 50, 200)",
+      )
+      .run(mid);
+    raw
+      .query(
+        "INSERT INTO annotations (id, thread_id, message_id, content, created_at) VALUES ('unrelated', 't', 'other-message', 'unrelated', 1)",
+      )
+      .run();
+
+    dedupeDuplicateAnnotations(raw);
+    expect(() => raw.exec("CREATE UNIQUE INDEX idx_test_one_per_message ON annotations(message_id)")).not.toThrow();
+    expect(raw.query("SELECT id FROM annotations WHERE message_id = ?").all(mid)).toEqual([{ id: "newer-edited" }]);
+    expect(raw.query("SELECT id FROM annotations").all()).toHaveLength(2); // the unrelated row is untouched
+    raw.close();
+  });
 });
 
 // The device-side store. Invariant: nothing the user wrote on this device is ever lost —
@@ -990,6 +1125,53 @@ describe("local mode (invariant: no data lost across sync)", () => {
     const main = await mainGet(t.id).then((r) => r.json());
     expect(main.annotations.map((x: { content: string }) => x.content)).toEqual(["my annotation"]);
     expect((await local.countUnsynced()).annotations).toBe(0);
+    await cleanUp(t.id);
+  });
+
+  test("an annotation deleted offline is gone locally at once (no tombstone) and the delete reaches main on the next sync", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ delete-annotation", seed: "base note" });
+    await handoff.syncNow();
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+    const a = await local.localApi.appendAnnotation(t.id, m.id, {
+      id: crypto.randomUUID(),
+      content: "will be deleted",
+    });
+    await handoff.syncNow(); // both sides agree on it first
+
+    await local.localApi.deleteAnnotation(t.id, a.annotation.id);
+    expect((await local.localApi.getThread(t.id)).annotations).toEqual([]); // gone here right away
+    expect((await local.countUnsynced()).deletions).toBeGreaterThan(0);
+
+    await handoff.syncNow();
+    const second = await handoff.syncNow(); // replay: nothing left to send
+    expect(second.pushed).toBe(0);
+    const main = await mainGet(t.id).then((r) => r.json());
+    expect(main.annotations).toEqual([]);
+    expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, annotations: 0, deletions: 0 });
+    await cleanUp(t.id);
+  });
+
+  test("annotation delete vs. main's edit: refused (content wins), and the device ends up with main's newer text, not stuck pending forever", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ delete-vs-edit-annotation", seed: "base note" });
+    await handoff.syncNow();
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+    const a = await local.localApi.appendAnnotation(t.id, m.id, { id: crypto.randomUUID(), content: "original" });
+    await handoff.syncNow(); // both sides agree on "original"
+
+    await local.localApi.deleteAnnotation(t.id, a.annotation.id); // queued locally; main not told yet
+    await new Promise((r) => setTimeout(r, 5));
+    await fetch(`${BASE}/api/threads/${t.id}/annotations/${a.annotation.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "edited on main first" }),
+    });
+
+    await handoff.syncNow();
+    const survivor = await local.localApi.getThread(t.id);
+    expect(survivor.annotations.map((x) => x.content)).toEqual(["edited on main first"]); // brought back, not deleted
+    const main = await mainGet(t.id).then((r) => r.json());
+    expect(main.annotations.map((x: { content: string }) => x.content)).toEqual(["edited on main first"]);
+    expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, annotations: 0, deletions: 0 }); // not stuck
     await cleanUp(t.id);
   });
 

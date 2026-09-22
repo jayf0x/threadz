@@ -66,7 +66,12 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
       const baseHash = base[x.id];
       return baseHash ? [{ id: x.id, baseHash }] : [];
     });
-    const pending = batch.threads.length + batch.messages.length + batch.annotations.length + batch.trash.length;
+    const pending =
+      batch.threads.length +
+      batch.messages.length +
+      batch.annotations.length +
+      batch.annotationDeletes.length +
+      batch.trash.length;
 
     // Photos first: a note should not reach main ahead of its image. One main refuses is skipped, not fatal.
     for (const hash of (await pushImages()).skipped) refused.add(hash);
@@ -99,6 +104,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
           editedAt: a.editedAt ?? null,
           edits: a.edits ?? [],
         })),
+        annotationDeletes: batch.annotationDeletes.map((d) => ({ id: d.id, baseVersion: d.baseVersion })),
         deletes,
       });
       await commitPush(batch, result);

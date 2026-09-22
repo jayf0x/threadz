@@ -49,6 +49,9 @@ export const SyncPayload = z.object({
     .default([]),
   // Delete only if the thread is still exactly what the device last saw (`baseHash`).
   deletes: z.array(z.object({ id: z.string(), baseHash: z.string() })).default([]),
+  // Same idea as `deletes`, scoped to one annotation: `baseVersion` is the device's last-known
+  // editedAt ?? createdAt for that row.
+  annotationDeletes: z.array(z.object({ id: z.string(), baseVersion: z.number() })).default([]),
 });
 export type SyncPayload = z.infer<typeof SyncPayload>;
 

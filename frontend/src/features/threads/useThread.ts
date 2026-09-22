@@ -152,12 +152,37 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
-  // Add an annotation to a message. Its own row, not part of the message's dirty flag — same
-  // success contract as addMessage/editMessage.
+  // Edit an existing annotation's content, keeping history (same contract as editMessage).
+  const editAnnotation = useCallback(
+    async (id: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!threadId || !text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await api.editAnnotation(threadId, id, text);
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+      await pullThread(threadId).catch(() => {});
+      return true;
+    },
+    [threadId],
+  );
+
+  // Add a note to a message — or, when the backend's one-per-message constraint would refuse a
+  // second row (this device already knows about one for this message), fold the text in as an edit
+  // onto it instead. Belt-and-suspenders: keeps normal use from ever hitting the DB constraint path,
+  // which a stale UI or two offline devices could still reach (see db.ts's appendAnnotation).
   const addAnnotation = useCallback(
     async (messageId: string, content: string): Promise<boolean> => {
       const text = content.trim();
       if (!threadId || !text) return false;
+      const existing = annotations.find((a) => a.messageId === messageId);
+      if (existing) return editAnnotation(existing.id, text);
       setBusy(true);
       setError(null);
       try {
@@ -171,17 +196,16 @@ export const useThread = (threadId: string | null) => {
       await pullThread(threadId).catch(() => {}); // the write already succeeded even if the refresh fails
       return true;
     },
-    [threadId],
+    [threadId, annotations, editAnnotation],
   );
 
-  const editAnnotation = useCallback(
-    async (id: string, content: string): Promise<boolean> => {
-      const text = content.trim();
-      if (!threadId || !text) return false;
+  const deleteAnnotation = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!threadId) return false;
       setBusy(true);
       setError(null);
       try {
-        await api.editAnnotation(threadId, id, text);
+        await api.deleteAnnotation(threadId, id);
       } catch (e) {
         setError(errorMessage(e));
         return false;
@@ -206,6 +230,7 @@ export const useThread = (threadId: string | null) => {
     editMessage,
     addAnnotation,
     editAnnotation,
+    deleteAnnotation,
     ask,
     refresh,
   };
