@@ -13,7 +13,27 @@ import {
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 
-type Align = "start" | "end";
+export type Align = "start" | "end";
+
+// Conservative fallback for the "will it fit below?" check before the panel has painted once
+// (so its real height can be measured). Most menus are well under this.
+const MIN_PANEL_HEIGHT = 200;
+
+/** Pure, so it's testable without a DOM: bottom-anchors (opens upward) instead of top-anchoring
+ * when the trigger is close enough to the bottom of the viewport that the panel wouldn't fit
+ * below it. Horizontal clamping is unchanged. */
+export const computePopoverPosition = (
+  align: Align,
+  rect: Pick<DOMRect, "top" | "bottom" | "left" | "right">,
+  panelHeight: number,
+  viewport: { width: number; height: number },
+): CSSProperties => {
+  const spaceBelow = viewport.height - rect.bottom;
+  const vertical = spaceBelow < panelHeight ? { bottom: viewport.height - rect.top + 6 } : { top: rect.bottom + 6 };
+  const horizontal =
+    align === "end" ? { right: Math.max(8, viewport.width - rect.right) } : { left: Math.max(8, rect.left) };
+  return { ...vertical, ...horizontal };
+};
 
 export type PopoverTrigger = {
   onClick?: (e: MouseEvent) => void;
@@ -52,10 +72,9 @@ export const Popover = ({ trigger, children, align = "start", className }: Popov
   const reposition = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const panelHeight = panelRef.current?.getBoundingClientRect().height ?? MIN_PANEL_HEIGHT;
     setStyle(
-      align === "end"
-        ? { top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) }
-        : { top: rect.bottom + 6, left: Math.max(8, rect.left) },
+      computePopoverPosition(align, rect, panelHeight, { width: window.innerWidth, height: window.innerHeight }),
     );
   };
 
