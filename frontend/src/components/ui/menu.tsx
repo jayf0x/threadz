@@ -1,7 +1,7 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { cn } from "@/lib/cn";
-import { Popover, type PopoverTrigger } from "./popover";
 
 export type MenuItem = {
   label: string;
@@ -11,38 +11,44 @@ export type MenuItem = {
 };
 
 export type MenuProps = {
-  trigger: ReactElement<PopoverTrigger>;
+  trigger: ReactElement;
   items: MenuItem[];
   align?: "start" | "end";
   className?: string;
 };
 
-/** A list of actions behind a trigger, built on `Popover` — its outside-click/Escape/portal/bottom-sheet
- * behaviour applies unchanged. Enter/Space activates an item (native `<button>`); Escape closes. */
-export const Menu = ({ trigger, items, align, className }: MenuProps) => (
-  <Popover trigger={trigger} align={align} className={className}>
-    {({ close }) => (
-      <div role="menu" className="flex flex-col py-1">
+// A list of actions behind a trigger. Built on Radix's DropdownMenu, not a hand-rolled popover:
+// positioning (flips/shifts to stay on screen), the portal, outside-click, Escape, and focus
+// management are all Radix's — a hand-rolled version of exactly this broke twice in one week
+// (see AGENTS.md's Motion/primitives note). Selecting an item closes the menu on its own.
+export const Menu = ({ trigger, items, align = "start", className }: MenuProps) => (
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
+    <DropdownMenu.Portal>
+      <DropdownMenu.Content
+        align={align}
+        sideOffset={6}
+        collisionPadding={8}
+        className={cn(
+          "z-50 min-w-40 overflow-hidden rounded-md border border-border bg-card py-1 shadow-lg outline-none",
+          className,
+        )}
+      >
         {items.map((item) => (
-          <button
+          <DropdownMenu.Item
             key={item.label}
-            type="button"
-            role="menuitem"
+            onSelect={item.onClick}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 text-left text-sm outline-none",
-              "hover:bg-accent focus-visible:bg-accent",
+              "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm outline-none",
+              "hover:bg-accent focus-visible:bg-accent data-[highlighted]:bg-accent",
               item.destructive ? "text-destructive" : "text-foreground",
             )}
-            onClick={() => {
-              item.onClick();
-              close();
-            }}
           >
             {item.icon && <item.icon className="size-4" />}
             {item.label}
-          </button>
+          </DropdownMenu.Item>
         ))}
-      </div>
-    )}
-  </Popover>
+      </DropdownMenu.Content>
+    </DropdownMenu.Portal>
+  </DropdownMenu.Root>
 );

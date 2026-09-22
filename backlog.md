@@ -11,7 +11,8 @@ Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now
 AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — see `.env.example`), `ThreadRow`/search
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
-`Popover`, `Menu` and `MessageInput` are built; `Composer` wraps `MessageInput`. Each of your own notes has a ⋯
+`Menu` (Radix `@radix-ui/react-dropdown-menu`, decided 2026-09-23, see below) and `MessageInput` are built;
+`Composer` wraps `MessageInput`. Each of your own notes has a ⋯
 (`ThreadView.tsx`'s `EntryRow`) opening **Edit** or **Copy thread from here**, plus its own always-there `StickyNote`
 icon that expands a small inline note editor (add/edit/delete) — no separate "Annotate" menu entry any more. The
 composer has its own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next
@@ -35,6 +36,20 @@ thread's messages live or local alike, so no new backend endpoint was needed. Re
 beside the settings gear.
 
 v1 is closed out; what's left of it is real-phone-only — see "Blocked on a real phone" below.
+
+**Decided 2026-09-23:** hand-rolled `components/ui/popover.tsx` is gone, replaced by
+`@radix-ui/react-dropdown-menu` inside `components/ui/menu.tsx` (same `{trigger, items, align}` call shape, zero
+changes at either call site — `ThreadView.tsx`'s message-actions menu, `Composer.tsx`'s ⋯ menu). The custom
+positioning math had already needed one bug fix (didn't flip when it wouldn't fit below) and then broke
+completely in the next change (an `AnimatePresence`+`createPortal` ordering mistake made it not open at all) —
+two bugs in one hand-rolled component in one week is the signal to stop hand-rolling it. Also dropped: the
+phone-width "renders as a bottom sheet" branch (Radix's own collision handling keeps the menu on-screen at any
+width without it) and the open/close animation (Radix ships instant by default; animating a Radix primitive's
+mount needs `forceMount` + `AnimatePresence`, a separate integration not worth taking on for a small action
+list — see AGENTS.md). If a bottom-sheet-style menu is wanted later, `vaul` (Radix-based, the shadcn "Drawer")
+is the equivalent move, not a hand-rolled one. Nothing else in the app is hand-rolled the same way: the
+`ConnectionDialog`'s `<dialog>` and `components/ui/select.tsx`'s `<select>` are native elements already, not
+custom logic, so they weren't touched.
 
 **Decided 2026-09-22:** no `copiedFrom` / `forkedFrom` provenance for Copy. Simpler now; a copy's origin cannot be
 recovered later if this turns out to matter (e.g. for collapsing near-duplicates once search/trend-detection

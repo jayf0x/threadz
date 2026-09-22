@@ -44,11 +44,22 @@ label — reserve text labels for actions without an obvious icon, or where the 
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
+- **Menus, popovers, dropdowns, dialogs: a real primitives library, never hand-rolled.** `components/ui/menu.tsx`
+  wraps `@radix-ui/react-dropdown-menu` — positioning (flip/shift to stay on screen), the portal, outside-click,
+  Escape and focus management are Radix's, not ours. A hand-rolled popover (custom `getBoundingClientRect`
+  flip math, manual outside-click/focus-trap listeners) lived here before and broke twice in one week (open
+  wouldn't fit the viewport, then a later change made it not open at all). Reach for the matching `@radix-ui/react-*`
+  primitive first for anything popover/menu/dialog-shaped; write the positioning/focus/dismissal logic yourself
+  only if no primitive fits. (The native `<dialog>` in `ConnectionDialog` and the native `<select>` in
+  `components/ui/select.tsx` are the platform already covering this — leave those as they are, no library needed.)
 - **Motion** (`motion/react`; `LazyMotion`/`domAnimation` wraps the app once in `App.tsx`, components use the
   lean `m` component, not `motion`) is the app's animation library — the only case plain CSS transitions can't
-  cover is an element actually leaving the tree (`AnimatePresence`: `Popover`'s panel, a message list's exit).
-  Reach for it only there; hover states, color/opacity and similar stay plain CSS transitions. Don't add a
-  second animation library on top of it.
+  cover is an element actually leaving the tree (`AnimatePresence`: a new message's entrance, the voice-recovery
+  banner, the scratch-answer dismiss — see `ThreadView.tsx`/`Composer.tsx`). Reach for it only there; hover
+  states, color/opacity and similar stay plain CSS transitions. Don't add a second animation library on top of
+  it, and don't reach for it to animate a Radix primitive's open/close — that's a separate integration
+  (`forceMount` + `AnimatePresence`) with its own failure modes; the current menus ship with Radix's instant
+  default rather than take that on for a small action list.
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty
