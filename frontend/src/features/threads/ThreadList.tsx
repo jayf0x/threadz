@@ -8,16 +8,12 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusPill } from "@/features/connection";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
-import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { getThreadMessages, getThreads } from "@/lib/db";
 import { shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
-import { pullThreads } from "@/lib/sync";
-import type { Thread } from "@/lib/types";
+import { createOrReuseThread } from "./createOrReuseThread";
 import { ThreadRow } from "./ThreadRow";
-import { isPlaceholderTitle, nextTitle } from "./titles";
 import { useThreads } from "./useThreads";
 import { isSort, SORTS } from "./visibleThreads";
 
@@ -38,28 +34,14 @@ export const ThreadList = ({
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
   const search = useRef<HTMLInputElement>(null);
 
-  // No form: a thread exists the moment you ask for one, named by its number, and you land in it.
-  // But not a second empty one in a row: if the newest thread is still an untouched placeholder
-  // (auto-generated title, no notes yet), reuse it instead of leaving another behind.
+  // A thread exists the moment you ask for one, named by its number, and you land in it — no form.
   const create = useCallback(async () => {
     if (starting.current) return;
     starting.current = true;
     setCreating(true);
     setCreateError(null);
     try {
-      const existing = await getThreads();
-      const newest = existing.reduce<Thread | undefined>(
-        (best, t) => (!best || t.createdAt > best.createdAt ? t : best),
-        undefined,
-      );
-      if (newest && isPlaceholderTitle(newest.title) && (await getThreadMessages(newest.id)).length === 0) {
-        onOpen(newest.id);
-        return;
-      }
-      const title = nextTitle(existing.map((t) => t.title));
-      const thread = await api.createThread({ title });
-      await pullThreads();
-      onOpen(thread.id);
+      onOpen(await createOrReuseThread());
     } catch (e) {
       setCreateError(errorMessage(e));
     } finally {

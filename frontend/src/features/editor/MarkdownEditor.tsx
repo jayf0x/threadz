@@ -95,6 +95,10 @@ export const MarkdownEditor = ({
    * `onKeyDownCapture`, `placeholder`, `className` contract as the WYSIWYG surface, so any
    * caller can flip this on without other changes. */
   raw?: boolean;
+  /** Focus once mounted, as soon as the editor is actually ready to receive it (Crepe loads
+   * async — this waits for `crepe.create()`, it doesn't race it). A mount-time flag, not a
+   * live prop: re-focusing on every render would steal focus back mid-edit. */
+  autofocus?: boolean;
 }) =>
   raw ? (
     <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
@@ -126,6 +130,7 @@ const RawEditor = ({
   onKeyDownCapture,
   onImageFile,
   className,
+  autofocus,
 }: {
   value: string;
   onChange?: (markdown: string) => void;
@@ -135,11 +140,17 @@ const RawEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
   className?: string;
+  autofocus?: boolean;
 }) => {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Has the user ever put a caret in here? Until then a programmatic insert (e.g. the image
   // button, which deliberately doesn't steal focus) goes to the end, matching the WYSIWYG surface.
   const touchedRef = useRef(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-time only, `autofocus` is read once by design.
+  useEffect(() => {
+    if (autofocus) ref.current?.focus();
+  }, []);
 
   const spliceAtCaret = (text: string) => {
     const el = ref.current;
@@ -195,6 +206,7 @@ const CrepeEditor = ({
   onKeyDownCapture,
   onImageFile,
   className,
+  autofocus,
 }: {
   value: string;
   onChange?: (markdown: string) => void;
@@ -204,6 +216,7 @@ const CrepeEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
   className?: string;
+  autofocus?: boolean;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const loadedRef = useRef<Loaded | null>(null);
@@ -213,7 +226,7 @@ const CrepeEditor = ({
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
   // Mount-time inputs, read inside the async effect without becoming deps.
-  const initial = useRef({ value, placeholder });
+  const initial = useRef({ value, placeholder, autofocus });
   // What the props say right now, so an update that lands while Crepe is still loading isn't lost.
   const latest = useRef({ value, readOnly });
   latest.current = { value, readOnly };
@@ -290,6 +303,7 @@ const CrepeEditor = ({
         lastEmittedRef.current = now.value;
         crepe.editor.action(utils.replaceAll(now.value));
       }
+      if (initial.current.autofocus) crepe.editor.action((ctx: Ctx) => viewOf(ctx).focus());
       crepeRef.current = crepe;
       destroy = () => crepe.destroy();
       if (destroyed) destroy();

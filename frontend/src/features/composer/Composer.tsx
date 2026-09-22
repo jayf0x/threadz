@@ -44,6 +44,7 @@ export const Composer = ({
   onNote,
   onAsk,
   onCopied,
+  autofocus,
 }: {
   threadId: string;
   messages: Message[]; // to find the last message "Copy thread from here" copies up to
@@ -52,6 +53,8 @@ export const Composer = ({
   onNote: (text: string, meta: { voice: true } | null) => Promise<boolean>;
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
   onCopied: (newThreadId: string) => void; // open the copy once it exists
+  /** Land straight in a focused composer (a `/capture` deep link into a fresh thread). */
+  autofocus?: boolean;
 }) => {
   const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
@@ -143,6 +146,7 @@ export const Composer = ({
           draftKey={threadId}
           busy={busy}
           placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
+          autofocus={autofocus}
           onSubmit={onSubmit}
           onSubmitted={(rest) => {
             fromVoice.current = rest !== "";

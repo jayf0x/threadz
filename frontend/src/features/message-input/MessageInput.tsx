@@ -42,6 +42,9 @@ export type MessageInputProps = {
   className?: string;
   editorClassName?: string;
   handleRef?: Ref<MessageInputHandle>;
+  /** Focus the editor once it's ready (a `/capture` deep link landing straight in a fresh
+   * thread). Mount-time only — see `MarkdownEditor`'s `autofocus`. */
+  autofocus?: boolean;
 };
 
 // The composer's editor, draft, image attach and send — with nothing composer-specific (no voice,
@@ -62,6 +65,7 @@ export const MessageInput = ({
   className,
   editorClassName,
   handleRef,
+  autofocus,
 }: MessageInputProps) => {
   const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear } = useMessageInput(
     draftKey,
@@ -88,6 +92,7 @@ export const MessageInput = ({
           readOnly={busy}
           onImageFile={(f) => attach([f])}
           placeholder={placeholder}
+          autofocus={autofocus}
           className={cn(
             "rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
             "[--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px] [--md-img-max:12rem]",

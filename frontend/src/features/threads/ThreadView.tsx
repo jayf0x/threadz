@@ -19,10 +19,13 @@ export const ThreadView = ({
   threadId,
   onBack,
   onCopied,
+  autofocus,
 }: {
   threadId: string;
   onBack: () => void;
   onCopied: (newThreadId: string) => void; // open the copy once it exists
+  /** Land straight in a focused composer (a `/capture` deep link into a fresh thread). */
+  autofocus?: boolean;
 }) => {
   const {
     messages,
@@ -171,6 +174,7 @@ export const ThreadView = ({
         onNote={addMessage}
         onAsk={onAsk}
         onCopied={onCopied}
+        autofocus={autofocus}
       />
     </div>
   );

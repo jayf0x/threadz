@@ -70,6 +70,17 @@ export default defineConfig({
           { src: `${base}icon-512.png`, sizes: "512x512", type: "image/png", purpose: "any" },
           { src: `${base}icon-maskable-512.png`, sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
+        // Long-press the installed icon → straight into a fresh, focused composer (`App.tsx`'s
+        // `?capture` handling). iOS still won't raise the keyboard from this — a programmatic
+        // focus outside a direct tap is blocked there — so it lands ready but may need one tap;
+        // real capture-latency win is on Android/desktop, see backlog.md.
+        shortcuts: [
+          {
+            name: "New note",
+            url: `${base}?capture=1`,
+            icons: [{ src: `${base}icon-192.png`, sizes: "192x192", type: "image/png" }],
+          },
+        ],
       },
     }),
   ],

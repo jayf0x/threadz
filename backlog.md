@@ -23,7 +23,11 @@ step, trash, backup import/export, both image orphan-GC scans — the thread has
 actually has one) are both done. `description`/`tags`/`embedding` stay null on a copy; no `copiedFrom`/`forkedFrom`
 provenance (decided 2026-09-22, see below). `+` / `n` makes `Thread: NNN`, opens it, retries auto-naming it from
 every note (not just the first) until it sticks, and reuses an empty untouched placeholder instead of piling up
-another — done, bar a `/capture` deep link / PWA shortcut into a focused composer (real-phone list, below). Open
+another. The same create-or-reuse logic (`features/threads/createOrReuseThread.ts`) now also backs a `/capture`
+deep link: `?capture=1` (the installed PWA's long-press "New note" shortcut, `vite.config.ts`) opens straight into
+a fresh thread with the composer focused (`MarkdownEditor`/`MessageInput`/`Composer` all gained a mount-time
+`autofocus`) — done on every platform except the final "does iOS actually raise the keyboard" check, which needs
+a real iPhone (see "Blocked on a real phone"). Open
 Todos (`frontend/src/features/todos`, read-only by design — decided 2026-09-22, see below) is done too:
 `lib/todos.ts`'s `parseOpenTodos`/`collectOpenTodos` are a pure scan for `- [ ] ` lines over every message, fed by
 `lib/local.ts`'s `exportSnapshot` — the device copy, which `lib/replica.ts`'s `pullMain` keeps warm with every
@@ -66,8 +70,10 @@ Everything is verified headless in Chrome (desktop + 390px); none of this has ru
 
 - **Popovers and the message menu on iOS:** positioning with the keyboard open, tap targets, dismissal. Only
   testable on a device.
-- **Deep-link straight into capture:** iOS does not raise the keyboard from a programmatic focus outside a tap, so
-  this may still need a manual tap once landed.
+- **Deep-link straight into capture — code done, verification isn't.** `?capture=1` / the PWA shortcut (above)
+  opens a focused composer on every platform this could be tested on (desktop Chrome, 390px). iOS is the one
+  unknown: WebKit does not raise the keyboard from a programmatic focus outside a direct tap, so landing "focused"
+  may still show no keyboard until one manual tap — can't be confirmed without a real iPhone.
 - **Images:** iOS HEIC picker, camera capture, canvas memory on old iPhones; a ~600px thumbnail tier if
   decoded-bitmap memory kills the iOS tab with many images in one thread; `navigator.storage.persist()` on
   the installed PWA (photos on a not-yet-synced device exist nowhere else); `crypto.subtle` on plain `http://`.

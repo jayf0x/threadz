@@ -212,6 +212,10 @@ placeholder, or exactly what it derived from the previous first note) and does n
 name. The pencil-sparkles button on a row does the same on demand from all of the thread's notes, and does replace a
 name you typed.
 
+**Capture deep link.** `?capture=1` opens the same way as `+`/`n` and focuses the composer — the installed PWA's
+long-press icon menu offers it as "New note" (`vite.config.ts`'s manifest `shortcuts`). Unverified on iOS: WebKit
+won't raise the keyboard from this without a direct tap, so it may land focused but silent until one tap.
+
 ### Settings
 
 The gear in the sidebar footer flips the sidebar to Settings: the auto-name switch, a Backend URL override (see
