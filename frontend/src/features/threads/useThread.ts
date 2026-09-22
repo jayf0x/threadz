@@ -6,16 +6,19 @@ import { unsyncedMessageIds } from "@/lib/local";
 import { getSettings } from "@/lib/settings";
 import { onChange, pullThread, pullThreads } from "@/lib/sync";
 import type { Message, Thread } from "@/lib/types";
-import { autoTitle } from "./titles";
+import { autoTitle, noteText } from "./titles";
 
 const uuid = () => crypto.randomUUID();
 
-// The first note names its thread (Settings → Naming). Fire-and-forget: a title is a nicety, so a failure here
-// never touches the note that was just stored.
-const autoName = async (thread: Thread, first: Message, previous?: string) => {
+// Names (or renames) the thread from `content` (Settings → Naming). Fire-and-forget: a title is a
+// nicety, so a failure here never touches the note that was just stored. `autoTitle` already refuses
+// to touch a title that isn't still the placeholder (or exactly what it derived last time), so this
+// can be called after every note — a short first note that yatefca couldn't name gets another shot
+// once later notes give it more to work with, and a real title (yours or already auto-picked) is left alone.
+const autoName = async (thread: Thread, content: string, previous?: string) => {
   if (!getSettings().autoName) return;
   try {
-    const title = await autoTitle(thread, first.content, previous);
+    const title = await autoTitle(thread, content, previous);
     if (!title) return;
     await api.renameThread(thread.id, title);
     await pullThreads();
@@ -85,7 +88,7 @@ export const useThread = (threadId: string | null) => {
       }
       // refreshing the view can fail; the write already succeeded
       const view = await pullThread(threadId).catch(() => null);
-      if (view?.messages.length === 1) autoName(view.thread, view.messages[0]!);
+      if (view) autoName(view.thread, noteText(view.messages));
       return true;
     },
     [threadId],
@@ -108,7 +111,7 @@ export const useThread = (threadId: string | null) => {
       }
       const view = await pullThread(threadId).catch(() => null);
       const first = view?.messages[0];
-      if (view && first?.id === id) autoName(view.thread, first, first.edits?.at(-1)?.content);
+      if (view && first?.id === id) autoName(view.thread, first.content, first.edits?.at(-1)?.content);
       return true;
     },
     [threadId],

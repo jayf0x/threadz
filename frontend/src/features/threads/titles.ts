@@ -6,6 +6,9 @@ const MAX_CHARS = 3000; // what yatefca reads of a thread; the topic is up front
 
 const label = (n: number) => `Thread: ${String(n).padStart(3, "0")}`;
 
+// Still the auto-generated placeholder nobody has renamed.
+export const isPlaceholderTitle = (title: string) => PLACEHOLDER.test(title);
+
 // Threads + 1, at least three digits. After a delete that number can already be taken: skip to a free one.
 export const nextTitle = (existing: string[]) => {
   const taken = new Set(existing);

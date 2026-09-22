@@ -9,13 +9,14 @@ import { StatusPill } from "@/features/connection";
 import { SettingsPanel } from "@/features/settings";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { getThreads } from "@/lib/db";
+import { getThreadMessages, getThreads } from "@/lib/db";
 import { shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
 import { pullThreads } from "@/lib/sync";
+import type { Thread } from "@/lib/types";
 import { ThreadRow } from "./ThreadRow";
-import { nextTitle } from "./titles";
+import { isPlaceholderTitle, nextTitle } from "./titles";
 import { useThreads } from "./useThreads";
 import { isSort, SORTS } from "./visibleThreads";
 
@@ -37,13 +38,24 @@ export const ThreadList = ({
   const search = useRef<HTMLInputElement>(null);
 
   // No form: a thread exists the moment you ask for one, named by its number, and you land in it.
+  // But not a second empty one in a row: if the newest thread is still an untouched placeholder
+  // (auto-generated title, no notes yet), reuse it instead of leaving another behind.
   const create = useCallback(async () => {
     if (starting.current) return;
     starting.current = true;
     setCreating(true);
     setCreateError(null);
     try {
-      const title = nextTitle((await getThreads()).map((t) => t.title));
+      const existing = await getThreads();
+      const newest = existing.reduce<Thread | undefined>(
+        (best, t) => (!best || t.createdAt > best.createdAt ? t : best),
+        undefined,
+      );
+      if (newest && isPlaceholderTitle(newest.title) && (await getThreadMessages(newest.id)).length === 0) {
+        onOpen(newest.id);
+        return;
+      }
+      const title = nextTitle(existing.map((t) => t.title));
       const thread = await api.createThread({ title });
       await pullThreads();
       onOpen(thread.id);
