@@ -11,18 +11,16 @@ Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now
 AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — see `.env.example`), `ThreadRow`/search
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
-`Popover` and `Menu` (`components/ui/`) and a shared `MessageInput` (editor + draft + image attach + send, keyed
-per target) are built and not yet wired into anything; `Composer` already wraps `MessageInput`. The remaining three
-entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`) — build in this
-order, one at a time, so parallel work doesn't collide: message menu → copy (without annotations) → annotations
+`Popover` and `Menu` (`components/ui/`) are built; `MessageInput` (editor + draft + image attach + send, keyed per
+target) is built and `Composer` already wraps it. The message menu is up too: each of your own notes has a ⋯ that
+opens a `Menu` (in `ThreadView.tsx`'s `EntryRow`) holding just **Edit** today, its `menuItems` array left ready for
+the next two entries to each append one item — no row of icons per message, same show-on-hover-hide-on-touch rule
+`ThreadRow.tsx` already uses. Thread-row actions (rename, regenerate title, delete) are untouched. Still to add:
+**Copy thread from here** (next entry) and **Annotate**, plus the annotation count chip in the meta line, the same
+pattern as "edited" (the entry after that). The remaining two entries build on each other and touch the same files
+(`local.ts`, `api.ts`, `db.ts`, `ThreadView`) — build in this order: copy (without annotations) → annotations
 (extends copy).
 
-- **Message menu.** One ⋯ button per message holds every secondary action: Annotate, Copy thread from here, and the
-  existing per-message actions that belong there (edit). Always visible on touch, on hover on desktop (the rule the
-  thread-row actions already use); no row of icons per message. Thread-row actions (rename, regenerate title,
-  delete) stay as they are. An annotated message shows a count chip in its meta line (next to the voice icon) that
-  expands the annotations inline, the same pattern as "edited" — a note only reachable through the popover would
-  never be found again.
 - **Copy thread from a message.** On A:N, create thread B as an identical copy of A from its first message up to
   and including N. A is unchanged. Build this before annotations; add annotation-copying in the next entry.
   - New ids for the thread and every message. Original `createdAt`, edits and other row properties are kept.
