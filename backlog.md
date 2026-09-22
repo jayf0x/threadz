@@ -11,39 +11,15 @@ Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now
 AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — see `.env.example`), `ThreadRow`/search
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
-`Popover` and `Menu` (`components/ui/`) are built; `MessageInput` (editor + draft + image attach + send, keyed per
-target) is built and `Composer` already wraps it. The message menu is up too: each of your own notes has a ⋯ that
-opens a `Menu` (in `ThreadView.tsx`'s `EntryRow`) holding just **Edit** today, its `menuItems` array left ready for
-the next two entries to each append one item — no row of icons per message, same show-on-hover-hide-on-touch rule
-`ThreadRow.tsx` already uses. Thread-row actions (rename, regenerate title, delete) are untouched. Still to add:
-**Copy thread from here** (next entry) and **Annotate**, plus the annotation count chip in the meta line, the same
-pattern as "edited" (the entry after that). The remaining two entries build on each other and touch the same files
-(`local.ts`, `api.ts`, `db.ts`, `ThreadView`) — build in this order: copy (without annotations) → annotations
-(extends copy).
+`Popover`, `Menu` and `MessageInput` are built; `Composer` wraps `MessageInput`. Each of your own notes has a ⋯
+(`ThreadView.tsx`'s `EntryRow`, `menuItems` array) holding **Edit** and **Copy thread from here**; the composer has
+its own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next note, in one
+call. Copy: `POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each, idempotent on a client-minted
+`newThreadId` (message ids derive from it too, so a retry can't duplicate), `description`/`tags`/`embedding` null on
+the copy, no `copiedFrom`/`forkedFrom` provenance (decided 2026-09-22, see below). Still to add: annotation-copying,
+by the next entry.
 
-- **Copy thread from a message.** On A:N, create thread B as an identical copy of A from its first message up to
-  and including N. A is unchanged. Build this before annotations; add annotation-copying in the next entry.
-  - New ids for the thread and every message. Original `createdAt`, edits and other row properties are kept.
-    Images stay references (`img:<sha256>`), no bytes are duplicated. `description`, `tags` and `embedding` stay
-    null. Title is `Copy: <original title>` ("Copy: Copy: X" is fine). B opens afterwards.
-  - One call in `remoteApi` and `localApi`: one transaction on main, IndexedDB in local mode. The caller (not the
-    server) mints B's id once, before the request, and reuses it on any retry — the same pattern `createThread`
-    already uses for its client id, so a double tap or a retried request cannot create two copies. Message ids
-    derive deterministically from B's id plus each original message's id, so the same call replayed produces the
-    same ids again instead of duplicating (plain new/random ids otherwise — decided 2026-09-22: no provenance
-    tracking, see below); the composer path's appended note (see Entry points) gets the same treatment — its id
-    derives from B's id too (e.g. `note-<B.id>`), not a freshly minted UUID, so retrying that call can't leave two
-    copies of the typed text either. Works offline; B syncs like any thread.
-  - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that
-    copies at the last message *and* appends the typed text as B's next note, in the same call (not a follow-up
-    request — a second call reopens the half-created-thread problem, and could lose the text if it failed). No
-    always-visible Copy button next to Send, so no mistap while capturing. That menu is the same `Menu` primitive
-    and takes future secondary actions.
-  - No `copiedFrom` / `forkedFrom` (decided, see below): a copy's origin is not recoverable later, and a copy will
-    look like an independent thread to search/trend-detection.
-  - Tests: A untouched; B ids new (a repeated call must not duplicate — reuse the client-minted id the same way
-    `createThread` does), `createdAt` kept, images shared, live and local, an offline copy syncs.
-- **Annotations.** A note attached to one message: text required (an image-only annotation counts as text — the
+- **Annotations.** Extends Copy (above) to carry annotations along when a copied message has any. A note attached to one message: text required (an image-only annotation counts as text — the
   content is markdown either way), images optional. Opened from the message menu in a popover holding a
   `MessageInput`; a message's existing annotations render as markdown, ordered by `(createdAt, id)`. Adding one
   bumps the thread's `updatedAt`, the same as editing a message does.
