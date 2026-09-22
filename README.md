@@ -218,6 +218,13 @@ The gear in the sidebar footer flips the sidebar to Settings: the auto-name swit
 "Reach the backend + Ollama from the phone"; hidden on a `VITE_LOCAL` build with no backend to point at), and the
 speech model. They are per device (`localStorage`), never synced.
 
+### Open todos
+
+The list icon beside the gear flips the sidebar to every unchecked `- [ ] ` line across every thread, newest first,
+tap to jump to its thread. Read-only, on purpose — see "Load-bearing decisions" and `backlog.md` for why ticking a
+box isn't wired up. Pure derived data: `frontend/src/lib/todos.ts` scans messages already pulled into the device
+copy (`lib/local.ts`'s `exportSnapshot`), so there's no new store and nothing to sync.
+
 ### Photos in notes
 
 The composer's image button (also paste / drop) takes a photo, shrinks it in the browser to ≤1600px on the

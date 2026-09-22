@@ -21,21 +21,25 @@ Copy (`POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each
 path — `countUnsynced`, `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, the handoff verify
 step, trash, backup import/export, both image orphan-GC scans — the thread hash only grows a segment once a thread
 actually has one) are both done. `description`/`tags`/`embedding` stay null on a copy; no `copiedFrom`/`forkedFrom`
-provenance (decided 2026-09-22, see below).
+provenance (decided 2026-09-22, see below). `+` / `n` makes `Thread: NNN`, opens it, retries auto-naming it from
+every note (not just the first) until it sticks, and reuses an empty untouched placeholder instead of piling up
+another — done, bar a `/capture` deep link / PWA shortcut into a focused composer (real-phone list, below). Open
+Todos (`frontend/src/features/todos`, read-only by design — decided 2026-09-22, see below) is done too:
+`lib/todos.ts`'s `parseOpenTodos`/`collectOpenTodos` are a pure scan for `- [ ] ` lines over every message, fed by
+`lib/local.ts`'s `exportSnapshot` — the device copy, which `lib/replica.ts`'s `pullMain` keeps warm with every
+thread's messages live or local alike, so no new backend endpoint was needed. Reachable from the sidebar footer,
+beside the settings gear.
 
-- **Capture without a title, the rest.** `+` / `n` makes `Thread: NNN`, opens it, retries auto-naming it from every
-  note (not just the first) until it sticks, and reuses an empty untouched placeholder instead of piling up another
-  — done. Still missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused
-  composer — note for the real-phone list: iOS will not raise the keyboard from a programmatic focus outside a tap,
-  so a deep link alone may land you in the thread with the keyboard still closed.
-- **Todos — in progress (2026-09-22).** Nothing gathers `- [ ]` across threads. Ship a **read-only** "Open todos"
-  view (a query over messages, links back to the note) — not tick-in-place: ticking a box is a content edit, so
-  it stores a full-text version in `edits`, and two devices ticking different boxes offline would silently lose
-  one tick (newest text wins). Independent of search.
+v1 is closed out; what's left of it is real-phone-only — see "Blocked on a real phone" below.
 
 **Decided 2026-09-22:** no `copiedFrom` / `forkedFrom` provenance for Copy. Simpler now; a copy's origin cannot be
 recovered later if this turns out to matter (e.g. for collapsing near-duplicates once search/trend-detection
 exist).
+
+**Decided 2026-09-22:** Open Todos ships read-only, no tick-in-place. Ticking a box is a content edit — it would
+need the same edit-with-history machinery as any other message edit (`editMessage`), and two devices ticking
+different boxes offline would silently lose one under "newest text wins." Real complexity for a feature whose
+whole value here is "see everything I meant to do"; tick-in-place can come later if it's actually missed.
 
 ## v2 features (deferred by design)
 

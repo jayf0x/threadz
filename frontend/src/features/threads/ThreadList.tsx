@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Settings } from "lucide-react";
+import { ListTodo, type LucideIcon, Plus, RefreshCw, Settings } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusPill } from "@/features/connection";
 import { SettingsPanel } from "@/features/settings";
+import { TodosPanel } from "@/features/todos";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadMessages, getThreads } from "@/lib/db";
@@ -31,7 +32,7 @@ export const ThreadList = ({
   selectedId?: string | null;
 }) => {
   const { threads, query, setQuery, sort, setSort, syncing, error, refresh } = useThreads();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanel] = useState<"index" | "settings" | "todos">("index");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
@@ -87,7 +88,7 @@ export const ThreadList = ({
   return (
     <div className="flex h-full flex-col">
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <View shown={!settingsOpen} from="left">
+        <View shown={panel === "index"} from="left">
           <header className="px-5 pb-4 pt-6">
             <div className="flex items-end justify-between">
               <div>
@@ -160,7 +161,16 @@ export const ThreadList = ({
           </ul>
         </View>
 
-        <View shown={settingsOpen} from="right">
+        <View shown={panel === "todos"} from="right">
+          <TodosPanel
+            onOpenThread={(id) => {
+              onOpen(id);
+              setPanel("index");
+            }}
+          />
+        </View>
+
+        <View shown={panel === "settings"} from="right">
           <SettingsPanel />
         </View>
       </div>
@@ -180,23 +190,18 @@ export const ThreadList = ({
               <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setSettingsOpen((o) => !o)}
-            aria-pressed={settingsOpen}
-            aria-label="Settings"
-            title="Settings"
-            className={cn(
-              "grid size-6 place-items-center rounded-md border transition-all duration-300 ease-in-out active:scale-90",
-              settingsOpen
-                ? "scale-125 border-primary bg-accent text-primary shadow-sm"
-                : "border-transparent text-muted-foreground/60 hover:text-foreground",
-            )}
-          >
-            <Settings
-              className={cn("size-3.5 transition-transform duration-500 ease-in-out", settingsOpen && "rotate-90")}
-            />
-          </button>
+          <PanelButton
+            active={panel === "todos"}
+            label="Todos"
+            icon={ListTodo}
+            onClick={() => setPanel((p) => (p === "todos" ? "index" : "todos"))}
+          />
+          <PanelButton
+            active={panel === "settings"}
+            label="Settings"
+            icon={Settings}
+            onClick={() => setPanel((p) => (p === "settings" ? "index" : "settings"))}
+          />
         </div>
         <ThemeToggle />
       </footer>
@@ -204,8 +209,38 @@ export const ThreadList = ({
   );
 };
 
-// One of the sidebar's two views. Both stay mounted (the index keeps its scroll and search) and cross-fade;
-// the hidden one drifts a little to its own side and is `inert`: no focus, no clicks, not read aloud.
+// The footer's Todos/Settings toggles: same look, same "press to flip the sidebar to this view, press
+// again to go back to the index" behaviour.
+const PanelButton = ({
+  active,
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={active}
+    aria-label={label}
+    title={label}
+    className={cn(
+      "grid size-6 place-items-center rounded-md border transition-all duration-300 ease-in-out active:scale-90",
+      active
+        ? "scale-125 border-primary bg-accent text-primary shadow-sm"
+        : "border-transparent text-muted-foreground/60 hover:text-foreground",
+    )}
+  >
+    <Icon className="size-3.5" />
+  </button>
+);
+
+// One of the sidebar's three views. All stay mounted (the index keeps its scroll and search) and cross-fade;
+// a hidden one drifts a little to its own side and is `inert`: no focus, no clicks, not read aloud.
 const View = ({ shown, from, children }: { shown: boolean; from: "left" | "right"; children: ReactNode }) => (
   <div
     inert={!shown}
