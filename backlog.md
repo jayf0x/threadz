@@ -12,46 +12,15 @@ AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — se
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
 `Popover`, `Menu` and `MessageInput` are built; `Composer` wraps `MessageInput`. Each of your own notes has a ⋯
-(`ThreadView.tsx`'s `EntryRow`, `menuItems` array) holding **Edit** and **Copy thread from here**; the composer has
-its own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next note, in one
-call. Copy: `POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each, idempotent on a client-minted
-`newThreadId` (message ids derive from it too, so a retry can't duplicate), `description`/`tags`/`embedding` null on
-the copy, no `copiedFrom`/`forkedFrom` provenance (decided 2026-09-22, see below). Still to add: annotation-copying,
-by the next entry.
+(`ThreadView.tsx`'s `EntryRow`) opening **Edit**, **Annotate** or **Copy thread from here**; the composer has its
+own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next note, in one call.
+Copy (`POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each, idempotent on a client-minted
+`newThreadId`) and Annotations (own SQLite table + IndexedDB stores, own dirty flag threaded through every sync
+path — `countUnsynced`, `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, the handoff verify
+step, trash, backup import/export, both image orphan-GC scans — the thread hash only grows a segment once a thread
+actually has one) are both done. `description`/`tags`/`embedding` stay null on a copy; no `copiedFrom`/`forkedFrom`
+provenance (decided 2026-09-22, see below).
 
-- **Annotations.** Extends Copy (above) to carry annotations along when a copied message has any. A note attached to one message: text required (an image-only annotation counts as text — the
-  content is markdown either way), images optional. Opened from the message menu in a popover holding a
-  `MessageInput`; a message's existing annotations render as markdown, ordered by `(createdAt, id)`. Adding one
-  bumps the thread's `updatedAt`, the same as editing a message does.
-  - Real schema, no `z.unknown()`: the same fields as a message minus `role` (only the user writes annotations in
-    v1; add it back if an AI-authored annotation happens later) — id, content, createdAt, editedAt, edits — plus
-    the thread and message it belongs to, and no annotations of annotations. One base schema shared with messages:
-    Zod in `backend/schemas.ts`, a SQLite table with cascade on thread delete, a TS type.
-  - Backend and sync: add (idempotent by client id) and edit (history kept like messages) endpoints; `annotations`
-    in the `/api/sync` payload; union merge by id, edits newest wins. The thread hash must only grow a new segment
-    for annotation ids/edit times **when the thread has at least one** — otherwise every existing thread's hash
-    changes on upgrade and every device's stored `base` mismatches, which shows as spurious "main changed" and
-    refuses pending deletes.
-  - Frontend, and everywhere a message can be dirty, deleted or restored, annotations must behave the same way —
-    they are their own rows, not part of a message's own dirty flag:
-    - the `threadz` mirror and `threadz-local` stores need their own object store (DB version bump plus migration);
-      `remoteApi` and `localApi` stay signature-identical.
-    - `applyRemoteDelete` in `local.ts` currently follows main's delete of a thread unless the thread or one of its
-      messages is dirty; an unsynced annotation on an otherwise-clean message must count too, or it is silently
-      destroyed.
-    - the same for the "N↑" pending-changes count, the `handoff` verify step, and trash/restore.
-    - `applySync`'s `missing` case (a note whose thread main no longer has) needs the same handling for an
-      annotation whose message main lacks: skip and retry, don't drop.
-    - `exportSnapshot`, `mergeSnapshot`, `parseSnapshot` and trash carry annotations; an old backup file without
-      them still imports.
-    - Copy: annotations on a copied message are copied too, with their message reference remapped to the new id.
-      No metadata question here — `description`/`tags`/`embedding` stay null on B either way (metadata generation
-      is v2/flag-gated off by default in v1; see the Copy entry above), nothing copy-specific to decide.
-  - Not part of Ask context or search for now.
-  - Images: both orphan-GC scans (`backend/images.ts` `referencedHashes`, `frontend/src/lib/images.ts`
-    `gcDeviceImages`) read only `messages.content`/`edits` today — an image that only appears in an annotation
-    would be collected as an orphan. Both need to scan annotation content/edits too, and annotations need to be
-    kept in trash the way messages are.
 - **Capture without a title, the rest.** `+` / `n` makes `Thread: NNN`, opens it, retries auto-naming it from every
   note (not just the first) until it sticks, and reuses an empty untouched placeholder instead of piling up another
   — done. Still missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused
