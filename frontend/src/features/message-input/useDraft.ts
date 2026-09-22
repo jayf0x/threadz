@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
 
-// An unsent composer draft survives reloads, crashes and remounts (e.g. a mode
-// switch). Cleared only by the caller, once the text is safely stored elsewhere.
-// Storage is written directly (not inside a state updater) so clearing still works
-// if the composer was unmounted meanwhile — e.g. main dropped and the app switched mode.
-// The draft follows `threadId`: if the same instance is handed another thread it shows that thread's
-// draft (it no longer relies on the parent remounting it with a key).
-export const useDraft = (threadId: string) => {
-  const key = `threadz.draft.${threadId}`;
+// An unsent draft survives reloads, crashes and remounts (e.g. a mode switch). Cleared only by the
+// caller, once the text is safely stored elsewhere. Storage is written directly (not inside a state
+// updater) so clearing still works if the input was unmounted meanwhile — e.g. main dropped and the
+// app switched mode.
+// `target` keys the draft to whatever it belongs to: a thread id for the composer, or e.g.
+// `annotation:${messageId}` for an annotation — each target gets its own slot, and the same hook
+// instance follows `target` if the caller hands it another one (it no longer relies on the parent
+// remounting it with a key).
+export const useDraft = (target: string) => {
+  const key = draftStorageKey(target);
   const [draft, setDraftState] = useState(() => ({ key, text: read(key) }));
   const latest = useRef(draft);
 
@@ -30,6 +32,8 @@ export const useDraft = (threadId: string) => {
 
   return [draft.text, setDraft] as const;
 };
+
+export const draftStorageKey = (target: string) => `threadz.draft.${target}`;
 
 const read = (key: string) => {
   try {

@@ -1,10 +1,9 @@
 import { CornerDownLeft, Mic, Square } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
+import { MessageInput, type MessageInputHandle } from "@/features/message-input";
 import { cn } from "@/lib/cn";
 import type { VoiceState } from "@/lib/voice/engine";
-import { useDraft } from "./useDraft";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { VoiceMeter } from "./VoiceMeter";
 
@@ -30,7 +29,8 @@ const voiceStatus = (v: VoiceState): { text: string; tone: "error" | "ghost" | "
   return null;
 };
 
-// The capture line. Owns the draft + voice; the parent only hears "add this" / "ask this".
+// The capture line. Wraps MessageInput with what's composer-specific: voice dictation, the
+// note/ask mode toggle and "keep exchange" checkbox. The parent only hears "add this" / "ask this".
 export const Composer = ({
   threadId,
   busy,
@@ -44,55 +44,28 @@ export const Composer = ({
   onNote: (text: string, meta: { voice: true } | null) => Promise<boolean>;
   onAsk: (prompt: string, commit: boolean) => Promise<boolean>;
 }) => {
-  const [draft, setDraft] = useDraft(threadId);
   const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
   const mode = canAsk ? picked : "note";
-  const sending = useRef(false);
   const [commit, setCommit] = useState(true);
-  const editor = useRef<MarkdownEditorHandle>(null);
-  const { attach, error: imageError } = useImageAttach(editor);
+  const input = useRef<MessageInputHandle>(null);
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
   // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,
-  // so it works with the keyboard closed. The editor's own onChange then feeds the draft, so
+  // so it works with the keyboard closed. MessageInput's own onChange then feeds the draft, so
   // persistence sees dictation exactly like typing.
-  const insert = useCallback(
-    (text: string) => {
-      fromVoice.current = true;
-      // editor not loaded yet: keep the text in the draft rather than lose it
-      if (!editor.current?.insertAtCaret(text)) setDraft((d) => (d ? `${d} ${text}` : text));
-    },
-    [setDraft],
-  );
+  const insert = (text: string) => {
+    fromVoice.current = true;
+    input.current?.insertAtCaret(text);
+  };
 
   const voice = useVoiceCapture(threadId, insert);
   const listening = voice.phase === "listening";
   const active = voice.phase !== "idle";
-  const status = voiceStatus(voice) ?? (imageError ? { text: imageError, tone: "error" as const } : null);
+  const status = voiceStatus(voice);
 
-  // The draft is only cleared once the text is stored (or answered). A failure
-  // leaves it in the box — and in localStorage — exactly as typed.
-  const submit = async () => {
-    const text = (editor.current?.getMarkdown() ?? draft).trim();
-    if (!text || busy || sending.current) return;
-    sending.current = true; // ⌘↵ twice before `busy` renders must not send twice
-    try {
-      const ok =
-        mode === "note" ? await onNote(text, fromVoice.current ? { voice: true } : null) : await onAsk(text, commit);
-      if (ok) {
-        // Speech can land while the send is in flight — remove only what was sent, keep the rest.
-        const raw = (editor.current?.getMarkdown() ?? "").trim();
-        const at = raw.indexOf(text);
-        const rest = at < 0 ? raw : (raw.slice(0, at) + raw.slice(at + text.length)).trim();
-        editor.current?.setMarkdown(rest);
-        setDraft(rest);
-        fromVoice.current = rest !== "";
-      }
-    } finally {
-      sending.current = false;
-    }
-  };
+  const onSubmit = (text: string) =>
+    mode === "note" ? onNote(text, fromVoice.current ? { voice: true } : null) : onAsk(text, commit);
 
   return (
     <div className="border-t border-border bg-card">
@@ -119,105 +92,86 @@ export const Composer = ({
       )}
 
       <div className="mx-auto max-w-3xl px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-10">
-        <div className="relative">
-          <MarkdownEditor
-            handleRef={editor}
-            value={draft}
-            onChange={setDraft}
-            readOnly={busy}
-            onImageFile={(f) => attach([f])}
-            placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
-            className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px] [--md-img-max:12rem]"
-            onKeyDownCapture={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                e.stopPropagation();
-                submit();
-              }
-            }}
-          />
-          <Button
-            size="icon"
-            variant={active ? "danger" : "ghost"}
-            aria-label={active ? "Stop dictation" : "Dictate"}
-            aria-pressed={active}
-            className={cn("absolute right-2 top-2 gap-2 transition-[width]", listening && "w-[3.25rem]")}
-            onClick={voice.toggle}
-            // keep the caret where the user left it: don't let the tap blur/refocus the editor
-            onPointerDown={(e) => e.preventDefault()}
-          >
-            {listening ? (
-              <>
-                <VoiceMeter />
-                <Square className="size-3 fill-current" />
-              </>
-            ) : (
-              <Mic className={cn("size-4", active && "blink")} />
-            )}
-          </Button>
-          <ImageButton onFiles={attach} disabled={busy} className="absolute right-2 top-11" />
-        </div>
-
-        <div className="mt-1 h-4" aria-live="polite">
-          {status && (
-            <p
-              className={cn(
-                "truncate font-mono text-[11px]",
-                status.tone === "error" && "text-destructive",
-                status.tone === "ghost" && "italic text-foreground/70",
-                status.tone === "quiet" && "text-muted-foreground",
-              )}
+        <MessageInput
+          handleRef={input}
+          draftKey={threadId}
+          busy={busy}
+          placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
+          onSubmit={onSubmit}
+          onSubmitted={(rest) => {
+            fromVoice.current = rest !== "";
+          }}
+          statusOverride={status}
+          overlay={
+            <Button
+              size="icon"
+              variant={active ? "danger" : "ghost"}
+              aria-label={active ? "Stop dictation" : "Dictate"}
+              aria-pressed={active}
+              className={cn("absolute right-2 top-2 gap-2 transition-[width]", listening && "w-[3.25rem]")}
+              onClick={voice.toggle}
+              // keep the caret where the user left it: don't let the tap blur/refocus the editor
+              onPointerDown={(e) => e.preventDefault()}
             >
-              {status.text}
-            </p>
-          )}
-        </div>
+              {listening ? (
+                <>
+                  <VoiceMeter />
+                  <Square className="size-3 fill-current" />
+                </>
+              ) : (
+                <Mic className={cn("size-4", active && "blink")} />
+              )}
+            </Button>
+          }
+          controls={
+            <>
+              {canAsk && (
+                <fieldset className="flex gap-px border border-border p-px">
+                  <legend className="sr-only">Entry type</legend>
+                  {MODES.map(({ value, label }) => (
+                    <label
+                      key={value}
+                      className={cn(
+                        "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
+                        mode === value
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="mode"
+                        value={value}
+                        checked={mode === value}
+                        onChange={() => setMode(value)}
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-          {canAsk && (
-            <fieldset className="flex gap-px border border-border p-px">
-              <legend className="sr-only">Entry type</legend>
-              {MODES.map(({ value, label }) => (
-                <label
-                  key={value}
-                  className={cn(
-                    "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
-                    mode === value
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
+              {mode === "ask" && (
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
                   <input
-                    type="radio"
-                    name="mode"
-                    value={value}
-                    checked={mode === value}
-                    onChange={() => setMode(value)}
-                    className="sr-only"
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={commit}
+                    onChange={(e) => setCommit(e.target.checked)}
                   />
-                  {label}
+                  Keep exchange in thread
                 </label>
-              ))}
-            </fieldset>
-          )}
-
-          {mode === "ask" && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                className="accent-primary"
-                checked={commit}
-                onChange={(e) => setCommit(e.target.checked)}
-              />
-              Keep exchange in thread
-            </label>
-          )}
-
-          <Button className="ml-auto" disabled={busy || !draft.trim()} onClick={submit}>
-            {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
-            {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
-          </Button>
-        </div>
+              )}
+            </>
+          }
+          submitLabel={
+            <>
+              {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
+              {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
+            </>
+          }
+        />
       </div>
     </div>
   );
