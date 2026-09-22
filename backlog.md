@@ -8,25 +8,13 @@ not committed to yet are in `inspiration.md`. What is left is v1 work, v2, or ca
 Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps, stay 100% local.
 Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now.
 
-The first five entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`,
-`Composer`) — build in this order, one at a time, so parallel work doesn't collide: metadata off → shared
-components → message menu → copy (without annotations) → annotations (extends copy).
+AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — see `.env.example`), `ThreadRow`/search
+show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
-- **Take AI metadata out of v1.** Tested, does not belong in v1 (no solid place in the UI, output too weak).
-  - The list row shows title and date only: drop description and tags from `ThreadRow.tsx`. No tags feature (typing
-    or showing) until there are 20+ threads.
-  - Search matches titles and note text only: drop the description/tags clauses from `visibleThreads.ts`, the local
-    search in `local.ts` and `listThreads` in `backend/db.ts`.
-  - Docs: `README.md` says the generated description, tags, embeddings and related threads were tried and do not
-    belong in v1, and its mentions of them (intro, Ollama prerequisite, API table, local-mode note) match.
-  - `description`, `tags` and `embedding` stay as nullable fields; nothing new may depend on them.
-  - The background generation (`refreshMetadata`) is switched off behind an env flag, off by default; the code
-    stays for v2. Gate it inside `refreshMetadata` itself (6 call sites in `server.ts`), reading the flag at call
-    time so tests can flip it. With the flag off nothing calls Ollama, so it is no longer a prerequisite (README
-    and `.env.example` say it is only needed with the flag on; `AGENTS.md`'s "fire-and-forget after each append"
-    line needs the same caveat). Endpoints that need it (`POST /api/threads/:id/metadata`, `related`) answer with
-    a clear "metadata is off" error; `scripts/smoke.sh` (which calls both) says so instead of failing. Tests that
-    exercise generation turn the flag on.
+The remaining four entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`,
+`Composer`) — build in this order, one at a time, so parallel work doesn't collide: shared components → message
+menu → copy (without annotations) → annotations (extends copy).
+
 - **Shared components** (needed by the next three entries).
   - `Popover` and `Menu` primitives in `components/ui/`: outside tap and Esc close them, keyboard reachable, usable
     on touch, positioned via a portal or fixed positioning (not inline, or the thread pane's scroll clips them), a
