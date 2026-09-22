@@ -7,6 +7,7 @@ export const describeUnsynced = (u: Unsynced) =>
   [
     u.threads && plural(u.threads, "new thread"),
     u.messages && plural(u.messages, "note"),
+    u.annotations && plural(u.annotations, "annotation"),
     u.deletions && plural(u.deletions, "deletion"),
   ]
     .filter(Boolean)

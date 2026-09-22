@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { getThreadMessages } from "@/lib/db";
+import { getThreadAnnotations, getThreadMessages } from "@/lib/db";
 import { ApiError, errorMessage } from "@/lib/errors";
-import { unsyncedMessageIds } from "@/lib/local";
+import { unsyncedAnnotationIds, unsyncedMessageIds } from "@/lib/local";
 import { getSettings } from "@/lib/settings";
 import { onChange, pullThread, pullThreads } from "@/lib/sync";
-import type { Message, Thread } from "@/lib/types";
+import type { Annotation, Message, Thread } from "@/lib/types";
 import { autoTitle, noteText } from "./titles";
 
 const uuid = () => crypto.randomUUID();
@@ -27,7 +27,9 @@ const autoName = async (thread: Thread, content: string, previous?: string) => {
 
 export const useThread = (threadId: string | null) => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
+  const [unsyncedAnnotations, setUnsyncedAnnotations] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gone, setGone] = useState(false); // the active store says this thread does not exist
@@ -38,11 +40,18 @@ export const useThread = (threadId: string | null) => {
   const load = useCallback(async () => {
     if (!threadId) return;
     const mine = ++loads.current;
-    // Notes only the device has (written while detached) are marked until they sync.
-    const [rows, pending] = await Promise.all([getThreadMessages(threadId), unsyncedMessageIds(threadId)]);
+    // Notes (and annotations) only the device has (written while detached) are marked until they sync.
+    const [rows, pending, annos, pendingAnnos] = await Promise.all([
+      getThreadMessages(threadId),
+      unsyncedMessageIds(threadId),
+      getThreadAnnotations(threadId),
+      unsyncedAnnotationIds(threadId),
+    ]);
     if (mine !== loads.current) return;
     setMessages(rows);
     setUnsynced(pending);
+    setAnnotations(annos);
+    setUnsyncedAnnotations(pendingAnnos);
   }, [threadId]);
 
   const refresh = useCallback(async () => {
@@ -143,5 +152,61 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
-  return { messages, unsynced, busy, error, gone, addMessage, editMessage, ask, refresh };
+  // Add an annotation to a message. Its own row, not part of the message's dirty flag — same
+  // success contract as addMessage/editMessage.
+  const addAnnotation = useCallback(
+    async (messageId: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!threadId || !text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await api.appendAnnotation(threadId, messageId, { id: uuid(), content: text });
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+      await pullThread(threadId).catch(() => {}); // the write already succeeded even if the refresh fails
+      return true;
+    },
+    [threadId],
+  );
+
+  const editAnnotation = useCallback(
+    async (id: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!threadId || !text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await api.editAnnotation(threadId, id, text);
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+      await pullThread(threadId).catch(() => {});
+      return true;
+    },
+    [threadId],
+  );
+
+  return {
+    messages,
+    annotations,
+    unsynced,
+    unsyncedAnnotations,
+    busy,
+    error,
+    gone,
+    addMessage,
+    editMessage,
+    addAnnotation,
+    editAnnotation,
+    ask,
+    refresh,
+  };
 };

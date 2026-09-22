@@ -20,7 +20,7 @@ export type Status = {
   detached: boolean; // "main went away, you're on the device copy" banner
 };
 
-const NONE: Unsynced = { threads: 0, messages: 0, deletions: 0 };
+const NONE: Unsynced = { threads: 0, messages: 0, annotations: 0, deletions: 0 };
 const PROBE_MS = 15000; // polled only while the page is visible
 
 let state: Status = {
@@ -39,7 +39,7 @@ const set = (patch: Partial<Status>) => {
   for (const l of listeners) l();
 };
 
-export const total = (u: Unsynced) => u.threads + u.messages + u.deletions;
+export const total = (u: Unsynced) => u.threads + u.messages + u.annotations + u.deletions;
 
 export const openPanel = () => set({ panel: true, nudge: false });
 export const closePanel = () => set({ panel: false });

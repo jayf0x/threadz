@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import type { Message, OutboxItem, Thread } from "./types";
+import type { Annotation, Message, OutboxItem, Thread } from "./types";
 import { bySeq } from "./versions";
 
 // Local mirror: what the screens render. Disposable — wholesale-replaced from whichever
@@ -8,6 +8,7 @@ import { bySeq } from "./versions";
 interface ThreadzDB extends DBSchema {
   threads: { key: string; value: Thread };
   messages: { key: string; value: Message; indexes: { byThread: string } };
+  annotations: { key: string; value: Annotation; indexes: { byThread: string } };
   outbox: { key: string; value: OutboxItem; indexes: { byThread: string } };
 }
 
@@ -15,11 +16,14 @@ let dbp: Promise<IDBPDatabase<ThreadzDB>> | null = null;
 
 const getDB = () => {
   if (!dbp) {
-    dbp = openDB<ThreadzDB>("threadz", 1, {
-      upgrade(db) {
-        db.createObjectStore("threads", { keyPath: "id" });
-        db.createObjectStore("messages", { keyPath: "id" }).createIndex("byThread", "threadId");
-        db.createObjectStore("outbox", { keyPath: "id" }).createIndex("byThread", "threadId");
+    dbp = openDB<ThreadzDB>("threadz", 2, {
+      upgrade(db, old) {
+        if (old < 1) {
+          db.createObjectStore("threads", { keyPath: "id" });
+          db.createObjectStore("messages", { keyPath: "id" }).createIndex("byThread", "threadId");
+          db.createObjectStore("outbox", { keyPath: "id" }).createIndex("byThread", "threadId");
+        }
+        if (old < 2) db.createObjectStore("annotations", { keyPath: "id" }).createIndex("byThread", "threadId");
       },
     });
   }
@@ -55,6 +59,20 @@ export const getThreadMessages = async (threadId: string) => {
   const rows = await (await getDB()).getAllFromIndex("messages", "byThread", threadId);
   return rows.sort(bySeq);
 };
+
+// --- mirror: annotations for one thread ---
+
+export const replaceThreadAnnotations = async (threadId: string, annotations: Annotation[]) => {
+  const db = await getDB();
+  const tx = db.transaction("annotations", "readwrite");
+  const existing = await tx.store.index("byThread").getAllKeys(threadId);
+  for (const k of existing) await tx.store.delete(k);
+  for (const a of annotations) await tx.store.put(a);
+  await tx.done;
+};
+
+export const getThreadAnnotations = async (threadId: string) =>
+  (await getDB()).getAllFromIndex("annotations", "byThread", threadId);
 
 // --- legacy outbox (drained into the device store by lib/replica.ts; nothing writes it any more) ---
 

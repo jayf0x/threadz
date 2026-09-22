@@ -2,7 +2,7 @@ import { BACKEND_URL } from "./config";
 import { ApiError } from "./errors";
 import { localApi, seedId } from "./local";
 import { detach, getMode, replicaReady } from "./mode";
-import type { Head, Message, SyncPayload, SyncResult, Thread } from "./types";
+import type { Annotation, Head, Message, SyncPayload, SyncResult, Thread } from "./types";
 
 const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(BACKEND_URL + path, {
@@ -27,7 +27,8 @@ export const remoteApi = {
   createThread: (body: { title: string; seed?: string; id?: string; createdAt?: number }) =>
     req<Thread>("/api/threads", { method: "POST", body: JSON.stringify(body) }),
 
-  getThread: (id: string) => req<{ thread: Thread; messages: Message[]; hash?: string }>(`/api/threads/${id}`),
+  getThread: (id: string) =>
+    req<{ thread: Thread; messages: Message[]; annotations: Annotation[]; hash?: string }>(`/api/threads/${id}`),
 
   renameThread: (id: string, title: string) =>
     req<Thread>(`/api/threads/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
@@ -66,9 +67,23 @@ export const remoteApi = {
     threadId: string,
     body: { newThreadId: string; uptoMessageId: string; appendNote?: { id: string; content: string } },
   ) =>
-    req<{ thread: Thread; messages: Message[] }>(`/api/threads/${threadId}/copy`, {
+    req<{ thread: Thread; messages: Message[]; annotations: Annotation[] }>(`/api/threads/${threadId}/copy`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  // A note on one message. Idempotent append, like `appendMessage`.
+  appendAnnotation: (threadId: string, messageId: string, body: { id: string; content: string; createdAt?: number }) =>
+    req<{ annotation: Annotation; inserted: boolean }>(`/api/threads/${threadId}/messages/${messageId}/annotations`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // The previous text is kept by the backend (`edits`), same as `editMessage`.
+  editAnnotation: (threadId: string, id: string, content: string) =>
+    req<{ annotation: Annotation }>(`/api/threads/${threadId}/annotations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
     }),
 
   // NOTE: GET /api/threads/:id/related exists on the backend but is a v2 feature —
@@ -182,5 +197,15 @@ export const api: Api = {
     via(
       () => remoteApi.ask(threadId, body),
       () => localApi.ask(threadId, body),
+    ),
+  appendAnnotation: (threadId, messageId, body) =>
+    via(
+      () => remoteApi.appendAnnotation(threadId, messageId, body),
+      () => localApi.appendAnnotation(threadId, messageId, body),
+    ),
+  editAnnotation: (threadId, id, content) =>
+    via(
+      () => remoteApi.editAnnotation(threadId, id, content),
+      () => localApi.editAnnotation(threadId, id, content),
     ),
 };

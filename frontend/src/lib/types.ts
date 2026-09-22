@@ -24,6 +24,19 @@ export type Message = {
   edits?: Version[]; // previous texts, oldest first
 };
 
+// A note attached to one message. Same fields as a message minus `role` (only the user writes
+// annotations in v1), plus the thread and message it belongs to. No annotations of annotations:
+// `messageId` always names a row in `messages`, never another annotation.
+export type Annotation = {
+  id: string;
+  threadId: string;
+  messageId: string;
+  content: string;
+  createdAt: number;
+  editedAt?: number | null;
+  edits?: Version[];
+};
+
 // LEGACY: the old offline queue. Nothing writes it any more; leftovers are drained
 // into the local store on the first successful pull (see lib/replica.ts).
 export type OutboxItem = {
@@ -44,13 +57,15 @@ export type Snapshot = {
   exportedAt: number;
   threads: Thread[];
   messages: Message[];
+  // Optional so an old backup file (made before annotations existed) still imports cleanly.
+  annotations?: Annotation[];
   // Threads deleted on this device. Backups keep them so a delete is recoverable by hand;
   // import ignores them.
-  trash?: { thread: Thread; messages: Message[]; deletedAt: number }[];
+  trash?: { thread: Thread; messages: Message[]; annotations?: Annotation[]; deletedAt: number }[];
 };
 
 // What a sync would push. Shown to the user before they confirm.
-export type Unsynced = { threads: number; messages: number; deletions: number };
+export type Unsynced = { threads: number; messages: number; annotations: number; deletions: number };
 
 // Change detection: one hash per thread (title + message ids + edit times) and one for the whole store.
 export type Head = { head: string; threads: Record<string, string> };
@@ -63,6 +78,15 @@ export type SyncPayload = {
     role: "user" | "assistant";
     content: string;
     meta: unknown;
+    createdAt: number;
+    editedAt: number | null;
+    edits: Version[];
+  }[];
+  annotations: {
+    id: string;
+    threadId: string;
+    messageId: string;
+    content: string;
     createdAt: number;
     editedAt: number | null;
     edits: Version[];

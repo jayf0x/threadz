@@ -33,6 +33,20 @@ export const SyncPayload = z.object({
       }),
     )
     .default([]),
+  // Same fields as a message minus `role`, plus the thread/message it belongs to.
+  annotations: z
+    .array(
+      z.object({
+        id: z.string(),
+        threadId: z.string(),
+        messageId: z.string(),
+        content: z.string(),
+        createdAt: z.number().optional(),
+        editedAt: z.number().nullish(),
+        edits: z.array(Version).optional(),
+      }),
+    )
+    .default([]),
   // Delete only if the thread is still exactly what the device last saw (`baseHash`).
   deletes: z.array(z.object({ id: z.string(), baseHash: z.string() })).default([]),
 });
@@ -69,3 +83,11 @@ export const CopyThread = z.object({
   uptoMessageId: z.string().optional(),
   appendNote: z.object({ id: z.string(), content: z.string(), createdAt: z.number().optional() }).optional(),
 });
+
+export const CreateAnnotation = z.object({
+  id: z.string().optional(),
+  content: z.string().optional(),
+  createdAt: z.number().optional(),
+});
+
+export const EditAnnotation = z.object({ content: z.string().optional(), editedAt: z.number().optional() });

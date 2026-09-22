@@ -1,16 +1,19 @@
 import { format } from "date-fns";
-import { ArrowLeft, CloudOff, Copy, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, CloudOff, Copy, MessageSquarePlus, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
-import { Menu, type MenuItem } from "@/components/ui/menu";
+import { Popover } from "@/components/ui/popover";
 import { Composer } from "@/features/composer";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
+import { MessageInput } from "@/features/message-input";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
-import type { Message, Thread } from "@/lib/types";
+import type { Annotation, Message, Thread } from "@/lib/types";
+import { byCreatedThenId } from "@/lib/versions";
 import { useThread } from "./useThread";
 
 export const ThreadView = ({
@@ -22,7 +25,19 @@ export const ThreadView = ({
   onBack: () => void;
   onCopied: (newThreadId: string) => void; // open the copy once it exists
 }) => {
-  const { messages, unsynced, busy, error, gone, addMessage, editMessage, ask } = useThread(threadId);
+  const {
+    messages,
+    annotations,
+    unsynced,
+    unsyncedAnnotations,
+    busy,
+    error,
+    gone,
+    addMessage,
+    editMessage,
+    addAnnotation,
+    ask,
+  } = useThread(threadId);
   const local = useStatus().mode === "local";
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
@@ -32,6 +47,17 @@ export const ThreadView = ({
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
+
+  // Grouped per message, ordered by (createdAt, id) — the order the backlog asks annotations render in.
+  const annotationsByMessage = useMemo(() => {
+    const byMessage = new Map<string, Annotation[]>();
+    for (const a of [...annotations].sort(byCreatedThenId)) {
+      const list = byMessage.get(a.messageId);
+      if (list) list.push(a);
+      else byMessage.set(a.messageId, [a]);
+    }
+    return byMessage;
+  }, [annotations]);
 
   // "Copy thread from here": B is A up to and including this message. A is never touched.
   const copyThreadFrom = async (uptoMessageId: string) => {
@@ -111,6 +137,9 @@ export const ThreadView = ({
               busy={busy}
               onEdit={(text) => editMessage(m.id, text)}
               onCopyThread={() => copyThreadFrom(m.id)}
+              annotations={annotationsByMessage.get(m.id) ?? []}
+              unsyncedAnnotations={unsyncedAnnotations}
+              onAddAnnotation={(text) => addAnnotation(m.id, text)}
             />
           ))}
 
@@ -167,16 +196,23 @@ const EntryRow = ({
   busy,
   onEdit,
   onCopyThread,
+  annotations,
+  unsyncedAnnotations,
+  onAddAnnotation,
 }: {
   message: Message;
   pending: boolean;
   busy: boolean;
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
+  annotations: Annotation[]; // this message's own, already ordered by (createdAt, id)
+  unsyncedAnnotations: Set<string>;
+  onAddAnnotation: (text: string) => Promise<boolean>;
 }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.content);
   const [history, setHistory] = useState(false);
+  const [annotating, setAnnotating] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
   const { attach, error: imageError } = useImageAttach(editor);
   const mine = m.role === "user";
@@ -190,11 +226,6 @@ const EntryRow = ({
     setText(m.content);
     setEditing(true);
   };
-  // Extend this array (not the JSX) for "Annotate" as it lands.
-  const menuItems: MenuItem[] = [
-    { label: "Edit", icon: Pencil, onClick: startEdit },
-    { label: "Copy thread from here", icon: Copy, onClick: onCopyThread },
-  ];
 
   return (
     <article className="group border-b border-rule py-4">
@@ -248,20 +279,62 @@ const EntryRow = ({
             </button>
           )}
           {mine && (
-            <Menu
+            <Popover
               align="end"
-              items={menuItems}
+              className={annotating ? "w-80 p-3" : undefined}
               trigger={
                 <button
                   type="button"
                   aria-label="Message actions"
                   title="Message actions"
+                  // Reopening (or closing) always starts back at the actions list, not wherever we left off.
+                  onClick={() => setAnnotating(false)}
                   className="ml-auto p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
                 >
                   <MoreHorizontal className="size-3" />
                 </button>
               }
-            />
+            >
+              {({ close }) =>
+                annotating ? (
+                  <MessageInput
+                    draftKey={`annotation:${m.id}`}
+                    placeholder="Add an annotation…"
+                    busy={busy}
+                    onSubmit={async (value) => {
+                      const ok = await onAddAnnotation(value);
+                      if (ok) close();
+                      return ok;
+                    }}
+                    submitLabel="Add"
+                  />
+                ) : (
+                  <div role="menu" className="flex flex-col py-1">
+                    <MenuAction
+                      icon={Pencil}
+                      onClick={() => {
+                        startEdit();
+                        close();
+                      }}
+                    >
+                      Edit
+                    </MenuAction>
+                    <MenuAction icon={MessageSquarePlus} onClick={() => setAnnotating(true)}>
+                      Annotate
+                    </MenuAction>
+                    <MenuAction
+                      icon={Copy}
+                      onClick={() => {
+                        onCopyThread();
+                        close();
+                      }}
+                    >
+                      Copy thread from here
+                    </MenuAction>
+                  </div>
+                )
+              }
+            </Popover>
           )}
         </p>
       )}
@@ -274,6 +347,42 @@ const EntryRow = ({
             <MarkdownEditor readOnly value={v.content} className="[--md-padding:0]" />
           </div>
         ))}
+
+      {annotations.length > 0 && (
+        <div className="mt-3 space-y-2 border-l-2 border-primary/40 pl-3">
+          {annotations.map((a) => (
+            <div key={a.id}>
+              <MarkdownEditor readOnly value={a.content} className="[--md-padding:0]" />
+              <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
+                <time>{format(a.createdAt, "d MMM HH:mm")}</time>
+                {unsyncedAnnotations.has(a.id) && (
+                  <CloudOff className="size-2.5" aria-label="only on this device so far" />
+                )}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </article>
   );
 };
+
+const MenuAction = ({
+  icon: Icon,
+  onClick,
+  children,
+}: {
+  icon: typeof Pencil;
+  onClick: () => void;
+  children: string;
+}) => (
+  <button
+    type="button"
+    role="menuitem"
+    className="flex items-center gap-2 px-3 py-2 text-left text-sm text-foreground outline-none hover:bg-accent focus-visible:bg-accent"
+    onClick={onClick}
+  >
+    <Icon className="size-4" />
+    {children}
+  </button>
+);

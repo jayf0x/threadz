@@ -37,7 +37,7 @@ test("an image round-trips byte-identical, stays dirty until acknowledged, and n
   await localApi.appendMessage(t.id, { id: crypto.randomUUID(), content: `![](img:${HASH}#10x10)` });
   await saveBackup("test");
   const snap = await exportSnapshot();
-  expect(Object.keys(snap).sort()).toEqual(["exportedAt", "messages", "threads", "trash", "version"]);
+  expect(Object.keys(snap).sort()).toEqual(["annotations", "exportedAt", "messages", "threads", "trash", "version"]);
   const dump = JSON.stringify(snap) + (await latestBackup())!.json;
   expect(dump).toContain(`img:${HASH}`); // the reference travels with the text …
   expect(dump).not.toContain("image/jpeg"); // … the bytes never do

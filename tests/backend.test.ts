@@ -31,9 +31,19 @@ mock.module("../backend/model.ts", () => ({
   embed: async (texts: string[]) => texts.map(() => Float32Array.from(EMBED_VEC)),
 }));
 
-const { appendMessage, backupDb, createThread, db, getMessages, getThread, threadEmbeddings } = await import(
-  "../backend/db.ts"
-);
+const {
+  appendAnnotation,
+  appendMessage,
+  backupDb,
+  copyThread,
+  createThread,
+  db,
+  getAnnotations,
+  getMessages,
+  getThread,
+  threadEmbeddings,
+  threadHash,
+} = await import("../backend/db.ts");
 const { collectOrphanImages } = await import("../backend/images.ts");
 const { generateMetadata, looksLikeGarbage, MIN_WORDS, stripImages } = await import("../backend/metadata.ts");
 
@@ -604,6 +614,164 @@ describe("POST /api/threads/:id/copy (invariant: A untouched, B is new ids on a 
   });
 });
 
+describe("annotations (invariant: own row, same fields as a message minus role, hash only grows when non-empty)", () => {
+  const post = (path: string, body: unknown) =>
+    fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+  const patch = (path: string, body: unknown) =>
+    fetch(`${BASE}${path}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+
+  test("idempotent create (client id), edit keeps history, exactly like a message", async () => {
+    const t = createThread(crypto.randomUUID(), "annotate-me");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "base" });
+    const aid = crypto.randomUUID();
+
+    const a = await post(`/api/threads/${t.id}/messages/${message.id}/annotations`, { id: aid, content: "first note" });
+    expect(a.inserted).toBe(true);
+    expect(a.annotation).toMatchObject({ id: aid, threadId: t.id, messageId: message.id, content: "first note" });
+
+    const replay = await post(`/api/threads/${t.id}/messages/${message.id}/annotations`, {
+      id: aid,
+      content: "ignored on replay",
+    });
+    expect(replay.inserted).toBe(false);
+    expect(replay.annotation.content).toBe("first note"); // create never overwrites
+
+    await new Promise((r) => setTimeout(r, 5)); // distinct `at` from the creation instant
+    const edited = await patch(`/api/threads/${t.id}/annotations/${aid}`, { content: "revised note" });
+    expect(edited.annotation.content).toBe("revised note");
+    expect(edited.annotation.edits.map((v: { content: string }) => v.content)).toEqual(["first note"]);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("404s when the message isn't in the thread, or the annotation isn't in it", async () => {
+    const t = createThread(crypto.randomUUID(), "annotate-404");
+    const other = createThread(crypto.randomUUID(), "annotate-404-other");
+    const bad = await fetch(`${BASE}/api/threads/${t.id}/messages/not-a-message/annotations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: crypto.randomUUID(), content: "x" }),
+    });
+    expect(bad.status).toBe(404);
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: other.id, role: "user", content: "m" });
+    const a = await post(`/api/threads/${other.id}/messages/${message.id}/annotations`, {
+      id: crypto.randomUUID(),
+      content: "note",
+    });
+    // right annotation, wrong thread in the URL
+    const wrongThread = await fetch(`${BASE}/api/threads/${t.id}/annotations/${a.annotation.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "y" }),
+    });
+    expect(wrongThread.status).toBe(404);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+    await fetch(`${BASE}/api/threads/${other.id}`, { method: "DELETE" });
+  });
+
+  test("threadHash is byte-for-byte the pre-annotation formula when a thread has none, and changes once one is added", () => {
+    const t = createThread(crypto.randomUUID(), "hash-thread");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "m" });
+    const withoutAnnotations = new Bun.CryptoHasher("sha1").update(`${t.id}\n${t.title}\n${message.id}`).digest("hex");
+    const before = threadHash(getThread(t.id)!);
+    expect(before).toBe(withoutAnnotations); // exactly the old formula: zero annotations changes nothing
+
+    const aid = crypto.randomUUID();
+    appendAnnotation({ id: aid, threadId: t.id, messageId: message.id, content: "note" });
+    const after = threadHash(getThread(t.id)!);
+    expect(after).not.toBe(before);
+    expect(after).toBe(new Bun.CryptoHasher("sha1").update(`${t.id}\n${t.title}\n${message.id}\n${aid}`).digest("hex"));
+    db.query("DELETE FROM threads WHERE id = ?").run(t.id);
+  });
+
+  test("sync: an annotation reaches main, a replay doesn't duplicate, and one whose message's thread is gone is reported missing, not dropped", async () => {
+    const sync = (body: unknown) =>
+      fetch(`${BASE}/api/sync`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+    const t = createThread(crypto.randomUUID(), "sync-annotate");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "m" });
+    const aid = crypto.randomUUID();
+    const payload = {
+      threads: [],
+      messages: [],
+      annotations: [{ id: aid, threadId: t.id, messageId: message.id, content: "offline annotation" }],
+      deletes: [],
+    };
+    const a = await sync(payload);
+    expect(a.appended).toBe(1);
+    const b = await sync(payload);
+    expect(b.appended).toBe(0); // replay: idempotent
+    expect(getAnnotations(t.id).map((x) => x.content)).toEqual(["offline annotation"]);
+
+    const ghost = crypto.randomUUID();
+    const r = await sync({
+      threads: [],
+      messages: [],
+      annotations: [{ id: crypto.randomUUID(), threadId: ghost, messageId: crypto.randomUUID(), content: "orphan" }],
+      deletes: [],
+    });
+    expect(r.missing).toEqual([ghost]);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("copy: annotations on a copied message are copied with messageId remapped; a message with none doesn't error", async () => {
+    const a = createThread(crypto.randomUUID(), "copy-source-with-annotations");
+    const m1 = appendMessage({ id: crypto.randomUUID(), threadId: a.id, role: "user", content: "first" });
+    const m2 = appendMessage({ id: crypto.randomUUID(), threadId: a.id, role: "user", content: "second" });
+    const anno = appendAnnotation({
+      id: crypto.randomUUID(),
+      threadId: a.id,
+      messageId: m1.message.id,
+      content: "note on first",
+    });
+
+    const newThreadId = crypto.randomUUID();
+    const result = copyThread(newThreadId, a.id, m2.message.id)!;
+    expect(result.annotations).toHaveLength(1);
+    const copiedMessageId = result.messages.find((m) => m.content === "first")!.id;
+    expect(result.annotations[0]?.message_id).toBe(copiedMessageId);
+    expect(result.annotations[0]?.content).toBe("note on first");
+    expect(result.annotations[0]?.id).not.toBe(anno.annotation.id);
+
+    // A replay is idempotent (same annotation ids re-derived, not duplicated).
+    const replay = copyThread(newThreadId, a.id, m2.message.id)!;
+    expect(replay.annotations).toHaveLength(1);
+
+    db.query("DELETE FROM threads WHERE id = ?").run(a.id);
+    db.query("DELETE FROM threads WHERE id = ?").run(newThreadId);
+  });
+
+  test("images: a photo referenced only from an annotation is never garbage-collected as an orphan", async () => {
+    const t = createThread(crypto.randomUUID(), "annotation-image");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "plain" });
+    const hash = "e".repeat(64);
+    appendAnnotation({
+      id: crypto.randomUUID(),
+      threadId: t.id,
+      messageId: message.id,
+      content: `![](img:${hash}#4x3)`,
+    });
+    const { existsSync: exists, mkdirSync, writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    mkdirSync(IMAGES_DIR, { recursive: true });
+    writeFileSync(join(IMAGES_DIR, hash), Buffer.from([1, 2, 3]));
+    const later = Date.now() + 8 * 24 * 3600 * 1000;
+    collectOrphanImages(later);
+    expect(exists(join(IMAGES_DIR, hash))).toBe(true); // still referenced, from the annotation
+    db.query("DELETE FROM threads WHERE id = ?").run(t.id);
+  });
+});
+
 // The device-side store. Invariant: nothing the user wrote on this device is ever lost —
 // not to a sync, a retry, a crash mid-sync, a delete on main, or main going away mid-write.
 describe("local mode (invariant: no data lost across sync)", () => {
@@ -714,7 +882,7 @@ describe("local mode (invariant: no data lost across sync)", () => {
     const got = await mainGet(t.id).then((r) => r.json());
     expect(got.messages.map((m: { content: string }) => m.content).sort()).toEqual(["captured offline", "seed note"]);
     expect(got.messages.find((m: { id: string }) => m.id === mid).createdAt).toBe(past);
-    expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, deletions: 0 });
+    expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, annotations: 0, deletions: 0 });
     expect(await localContents(t.id)).toHaveLength(2);
     // in sync = our base hashes are exactly main's
     expect(await local.getBase()).toEqual((await fetch(`${BASE}/api/head`).then((r) => r.json())).threads);
@@ -803,6 +971,97 @@ describe("local mode (invariant: no data lost across sync)", () => {
     expect(r.keptRemote).toBe(1);
     expect((await contents(t.id)).sort()).toEqual(["main kept writing", "shared"]);
     expect((await localContents(t.id)).sort()).toEqual(["main kept writing", "shared"]);
+    await cleanUp(t.id);
+  });
+
+  test("an annotation created offline reaches main, and a replay doesn't duplicate it", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ annotate", seed: "base note" });
+    await handoff.syncNow();
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+    const a = await local.localApi.appendAnnotation(t.id, m.id, { id: crypto.randomUUID(), content: "my annotation" });
+    expect(a.inserted).toBe(true);
+    expect((await local.countUnsynced()).annotations).toBe(1);
+
+    const first = await handoff.syncNow();
+    const second = await handoff.syncNow();
+    expect(first.pushed).toBeGreaterThan(0);
+    expect(second.pushed).toBe(0);
+
+    const main = await mainGet(t.id).then((r) => r.json());
+    expect(main.annotations.map((x: { content: string }) => x.content)).toEqual(["my annotation"]);
+    expect((await local.countUnsynced()).annotations).toBe(0);
+    await cleanUp(t.id);
+  });
+
+  test("applyRemoteDelete: main deletes a thread whose only unsynced change is a dirty annotation on an otherwise-clean message — the thread is KEPT, not destroyed", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ dirty-annotation-keep", seed: "clean message" });
+    await handoff.syncNow(); // thread + message are clean on both sides
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+    // An unsynced annotation on that otherwise-clean message — nothing else about the thread is dirty.
+    await local.localApi.appendAnnotation(t.id, m.id, { id: crypto.randomUUID(), content: "not yet on main" });
+    await mainDelete(t.id); // main deletes it without ever seeing the annotation
+
+    const outcome = await local.applyRemoteDelete(t.id);
+    expect(outcome).toBe("kept"); // this is the bug the backlog named: it must NOT be "removed"
+    const survivor = await local.localApi.getThread(t.id);
+    expect(survivor.thread.id).toBe(t.id);
+
+    // Syncing re-creates the thread on main with the annotation intact.
+    const r = await handoff.syncNow();
+    expect(r.pushed).toBeGreaterThan(0);
+    const main = await mainGet(t.id).then((res) => res.json());
+    expect(main.annotations.map((x: { content: string }) => x.content)).toEqual(["not yet on main"]);
+    await cleanUp(t.id);
+  });
+
+  test("copying a message with annotations copies them too (messageId remapped); one with none doesn't error", async () => {
+    const a = await local.localApi.createThread({ title: "__local__ copy-annotations" });
+    const m1 = await local.localApi.appendMessage(a.id, { id: crypto.randomUUID(), content: "first" });
+    const m2 = await local.localApi.appendMessage(a.id, { id: crypto.randomUUID(), content: "second, no annotations" });
+    await local.localApi.appendAnnotation(a.id, m1.message.id, {
+      id: crypto.randomUUID(),
+      content: "note on first",
+    });
+
+    const newThreadId = crypto.randomUUID();
+    const copy = await local.localApi.copyThread(a.id, { newThreadId, uptoMessageId: m2.message.id });
+    expect(copy.annotations).toHaveLength(1);
+    const copiedFirst = copy.messages.find((m) => m.content === "first")!;
+    expect(copy.annotations[0]?.messageId).toBe(copiedFirst.id);
+    expect(copy.annotations[0]?.content).toBe("note on first");
+    await cleanUp(a.id, newThreadId);
+  });
+
+  test("device GC: an image referenced only from an annotation is never collected as an orphan", async () => {
+    const blob = new Blob([Uint8Array.of(0xff, 0xd8, 0xff, 9)], { type: "image/jpeg" });
+    const hash = "f".repeat(64);
+    const t = await local.localApi.createThread({ title: "__local__ annotation-image" });
+    const m = await local.localApi.appendMessage(t.id, { id: crypto.randomUUID(), content: "plain message" });
+    await local.localApi.appendAnnotation(t.id, m.message.id, {
+      id: crypto.randomUUID(),
+      content: `![](img:${hash}#4x3)`,
+    });
+    await images.putImage(hash, blob, 0); // a clean cached copy, old enough to be swept if unreferenced
+    const later = Date.now() + 2 * 24 * 3600 * 1000;
+    const removed = await images.gcDeviceImages(later);
+    expect(removed).not.toContain(hash);
+    expect(await images.getImage(hash)).toBeDefined();
+    await cleanUp(t.id);
+  });
+
+  test("importing a backup without an `annotations` field (an old export) still imports cleanly", async () => {
+    const t = { ...(await local.localApi.createThread({ title: "__local__ old-backup-shape" })) };
+    await local.localApi.deleteThread(t.id); // clears it locally so the import below actually restores it
+    const oldShapeSnapshot = {
+      version: 1 as const,
+      exportedAt: Date.now(),
+      threads: [t],
+      messages: [],
+      // deliberately no `annotations` field, like a backup made before this feature existed
+    };
+    const added = await local.mergeSnapshot(oldShapeSnapshot);
+    expect(added.threads).toBe(1);
+    expect((await local.localApi.getThread(t.id)).thread.id).toBe(t.id);
     await cleanUp(t.id);
   });
 

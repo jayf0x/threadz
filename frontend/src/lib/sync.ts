@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { putThread, putThreads, replaceThreadMessages } from "./db";
+import { putThread, putThreads, replaceThreadAnnotations, replaceThreadMessages } from "./db";
 import { updateMeta } from "./local";
 import { getMode } from "./mode";
 import { pullMain } from "./replica";
@@ -40,10 +40,11 @@ export const pullThreads = async () => {
 };
 
 export const pullThread = async (id: string) => {
-  const { thread, messages } = await api.getThread(id);
+  const { thread, messages, annotations } = await api.getThread(id);
   await putThread(thread);
   await replaceThreadMessages(id, messages);
+  await replaceThreadAnnotations(id, annotations);
   emitChange();
   await keepReplicaWarm();
-  return { thread, messages };
+  return { thread, messages, annotations };
 };

@@ -30,9 +30,13 @@ export const addReports = (a: PullReport, b: PullReport): PullReport => ({
 // Fetch one thread from main and union it into the device copy. `knownHash` (from a /api/head read) stands in
 // if the thread reply carries none (a made-up "" base would never match main and refetch on every pull).
 export const fetchAndMerge = async (id: string, knownHash?: string) => {
-  const { thread, messages, hash } = await remoteApi.getThread(id);
-  const r = await mergeRemoteThread(thread, messages, hash ?? knownHash);
-  return { ...r, mainIds: new Set(messages.map((m) => m.id)) };
+  const { thread, messages, annotations, hash } = await remoteApi.getThread(id);
+  const r = await mergeRemoteThread(thread, messages, annotations, hash ?? knownHash);
+  return {
+    ...r,
+    mainIds: new Set(messages.map((m) => m.id)),
+    mainAnnotationIds: new Set(annotations.map((a) => a.id)),
+  };
 };
 
 const BATCH = 8;

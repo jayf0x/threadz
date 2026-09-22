@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS messages (
   edits       TEXT                  -- JSON [{content, at}] previous versions, oldest first
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, seq);
+CREATE TABLE IF NOT EXISTS annotations (
+  id          TEXT PRIMARY KEY,     -- client-generated UUID == idempotency key
+  thread_id   TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+  message_id  TEXT NOT NULL,        -- the message this annotation is attached to (never another annotation)
+  content     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  edited_at   INTEGER,              -- when content was last edited (NULL = never)
+  edits       TEXT                  -- JSON [{content, at}] previous versions, oldest first
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_thread ON annotations(thread_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_message ON annotations(message_id);
 `;
 
 export type ThreadRow = {
@@ -49,6 +60,19 @@ export type MessageRow = {
   created_at: number;
   seq: number;
   meta: string | null;
+  edited_at: number | null;
+  edits: string | null;
+};
+
+// Same fields as a message minus `role` (only the user writes annotations in v1), plus the thread
+// and message it belongs to. No annotations of annotations: message_id always names a row in
+// `messages`, never one in this table.
+export type AnnotationRow = {
+  id: string;
+  thread_id: string;
+  message_id: string;
+  content: string;
+  created_at: number;
   edited_at: number | null;
   edits: string | null;
 };
@@ -109,6 +133,25 @@ export const allMessages = () =>
 export const getMessages = (threadId: string) =>
   db.query<MessageRow, [string]>("SELECT * FROM messages WHERE thread_id = ? ORDER BY seq, created_at").all(threadId);
 
+export const getMessage = (id: string) => db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id);
+
+export const allAnnotations = () =>
+  db.query<AnnotationRow, []>("SELECT * FROM annotations ORDER BY thread_id, created_at, id").all();
+
+// Ordered by (createdAt, id), per the backlog's rendering order.
+export const getAnnotations = (threadId: string) =>
+  db
+    .query<AnnotationRow, [string]>("SELECT * FROM annotations WHERE thread_id = ? ORDER BY created_at, id")
+    .all(threadId);
+
+export const getAnnotation = (id: string) =>
+  db.query<AnnotationRow, [string]>("SELECT * FROM annotations WHERE id = ?").get(id);
+
+export const getAnnotationsForMessage = (messageId: string) =>
+  db
+    .query<AnnotationRow, [string]>("SELECT * FROM annotations WHERE message_id = ? ORDER BY created_at, id")
+    .all(messageId);
+
 // `createdAt` lets a device that captured offline keep the original timestamp.
 export const createThread = (id: string, title: string, createdAt?: number) => {
   const ts = clampTs(createdAt);
@@ -145,6 +188,10 @@ export const appendMessage = (msg: {
 // a retried copy call (same client-minted newThreadId) re-derives identical ids instead of duplicating.
 export const copyMessageId = (newThreadId: string, originalId: string) => `${newThreadId}:${originalId}`;
 
+// Same determinism for a copied annotation: a distinct namespace from `copyMessageId` so the two
+// never collide even though both derive from (newThreadId, originalId).
+export const copyAnnotationId = (newThreadId: string, originalId: string) => `${newThreadId}:anno:${originalId}`;
+
 // Copies `sourceId` from its first message up to and including `uptoId` into a brand-new thread
 // `newId` (new message ids, original `createdAt`/edits/meta kept, description/tags/embedding stay
 // null). One transaction: the thread, every copied message and the optional appended note land
@@ -156,9 +203,9 @@ export const copyThread = db.transaction(
     sourceId: string,
     uptoId: string,
     appendNote?: { id: string; content: string; createdAt?: number },
-  ): { thread: ThreadRow; messages: MessageRow[] } | null => {
+  ): { thread: ThreadRow; messages: MessageRow[]; annotations: AnnotationRow[] } | null => {
     const already = getThread(newId);
-    if (already) return { thread: already, messages: getMessages(newId) };
+    if (already) return { thread: already, messages: getMessages(newId), annotations: getAnnotations(newId) };
 
     const source = getThread(sourceId);
     if (!source) return null;
@@ -175,6 +222,20 @@ export const copyThread = db.transaction(
       db.query(
         "INSERT INTO messages (id, thread_id, role, content, created_at, seq, meta, edited_at, edits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(copyMessageId(newId, m.id), newId, m.role, m.content, m.created_at, m.seq, m.meta, m.edited_at, m.edits);
+      // Annotations on a copied message are copied too, with `message_id` remapped to the copy.
+      for (const a of getAnnotationsForMessage(m.id)) {
+        db.query(
+          "INSERT INTO annotations (id, thread_id, message_id, content, created_at, edited_at, edits) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ).run(
+          copyAnnotationId(newId, a.id),
+          newId,
+          copyMessageId(newId, m.id),
+          a.content,
+          a.created_at,
+          a.edited_at,
+          a.edits,
+        );
+      }
     }
 
     const note = appendNote?.content.trim();
@@ -190,7 +251,7 @@ export const copyThread = db.transaction(
     }
     db.query("UPDATE threads SET updated_at = ? WHERE id = ?").run(now(), newId);
 
-    return { thread: getThread(newId)!, messages: getMessages(newId) };
+    return { thread: getThread(newId)!, messages: getMessages(newId), annotations: getAnnotations(newId) };
   },
 );
 
@@ -233,7 +294,10 @@ export const mergeVersions = (a: Version[], b: Version[]) => {
   return { current: all.at(-1)!, edits: all.slice(0, -1) };
 };
 
-const versionsOf = (m: MessageRow): Version[] => [
+// A row with the "content + edit history" shape shared by messages and annotations.
+type Versioned = { content: string; created_at: number; edited_at: number | null; edits: string | null };
+
+const versionsOf = (m: Versioned): Version[] => [
   ...(m.edits ? (JSON.parse(m.edits) as Version[]) : []),
   { content: m.content, at: m.edited_at ?? m.created_at },
 ];
@@ -254,6 +318,48 @@ export const editMessage = (id: string, incoming: Version[]) => {
   );
   db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(current.at, m.thread_id);
   return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
+};
+
+// --- annotations ---
+
+// Idempotent create, exactly like `appendMessage`: client UUID is the primary key.
+export const appendAnnotation = (a: {
+  id: string;
+  threadId: string;
+  messageId: string;
+  content: string;
+  createdAt?: number;
+}) => {
+  const existing = getAnnotation(a.id);
+  if (existing) return { annotation: existing, inserted: false };
+  const ts = clampTs(a.createdAt);
+  db.query("INSERT INTO annotations (id, thread_id, message_id, content, created_at) VALUES (?, ?, ?, ?, ?)").run(
+    a.id,
+    a.threadId,
+    a.messageId,
+    a.content,
+    ts,
+  );
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(ts, a.threadId);
+  return { annotation: getAnnotation(a.id)!, inserted: true };
+};
+
+// Edit an annotation, same history-keeping as `editMessage` (reuses `mergeVersions`/`versionsOf`).
+export const editAnnotation = (id: string, incoming: Version[]) => {
+  const a = getAnnotation(id);
+  if (!a) return null;
+  if (incoming.length === 1 && incoming[0]?.content === a.content) return a; // nothing changed
+  const { current, edits } = mergeVersions(versionsOf(a), incoming);
+  const at = a.edited_at ?? a.created_at;
+  if (current.at === at && current.content === a.content && edits.length === versionsOf(a).length - 1) return a;
+  db.query("UPDATE annotations SET content = ?, edited_at = ?, edits = ? WHERE id = ?").run(
+    current.content,
+    current.at,
+    edits.length ? JSON.stringify(edits) : null,
+    id,
+  );
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(current.at, a.thread_id);
+  return getAnnotation(id)!;
 };
 
 export const threadEmbeddings = () =>
@@ -289,11 +395,26 @@ export const messageJson = (m: MessageRow) => ({
   edits: m.edits ? (JSON.parse(m.edits) as Version[]) : [],
 });
 
+export const annotationJson = (a: AnnotationRow) => ({
+  id: a.id,
+  threadId: a.thread_id,
+  messageId: a.message_id,
+  content: a.content,
+  createdAt: a.created_at,
+  editedAt: a.edited_at,
+  edits: a.edits ? (JSON.parse(a.edits) as Version[]) : [],
+});
+
 // --- change detection + sync ---------------------------------------------------
 
 // What a device compares to know whether main moved. Title + message ids + edit times only:
 // description/tags are generated asynchronously after every append and would make
 // main look like it "keeps changing" right after a sync.
+//
+// Annotations are folded in the same way (id + edit time), but ONLY when the thread actually has
+// at least one: an unconditional extra segment would change every existing thread's hash the moment
+// this table exists, and every device's stored `base` would mismatch on upgrade — spurious "main
+// changed" and refused pending deletes. A thread with zero annotations hashes exactly as before.
 export const threadHash = (t: ThreadRow) => {
   const ids = db
     .query<{ id: string; edited_at: number | null }, [string]>(
@@ -301,7 +422,15 @@ export const threadHash = (t: ThreadRow) => {
     )
     .all(t.id)
     .map((r) => (r.edited_at ? `${r.id}@${r.edited_at}` : r.id));
-  return new Bun.CryptoHasher("sha1").update(`${t.id}\n${t.title}\n${ids.join(",")}`).digest("hex");
+  const annotations = db
+    .query<{ id: string; edited_at: number | null }, [string]>(
+      "SELECT id, edited_at FROM annotations WHERE thread_id = ? ORDER BY id",
+    )
+    .all(t.id);
+  const annoSuffix = annotations.length
+    ? `\n${annotations.map((r) => (r.edited_at ? `${r.id}@${r.edited_at}` : r.id)).join(",")}`
+    : "";
+  return new Bun.CryptoHasher("sha1").update(`${t.id}\n${t.title}\n${ids.join(",")}${annoSuffix}`).digest("hex");
 };
 
 export const heads = () => {
@@ -368,6 +497,17 @@ export const applySync = db.transaction((p: SyncPayload) => {
     if (r.inserted) appended++;
     if (m.editedAt) editMessage(m.id, [...(m.edits ?? []), { content: m.content, at: m.editedAt }]);
     touched.add(m.threadId);
+  }
+  for (const a of p.annotations ?? []) {
+    if (!getThread(a.threadId)) {
+      missing.add(a.threadId); // thread deleted on main since the device last looked — re-pull and retry
+      continue;
+    }
+    // A new annotation arrives as its first version; the edits are then merged on top (same as messages).
+    const r = appendAnnotation({ ...a, content: a.edits?.[0]?.content ?? a.content });
+    if (r.inserted) appended++;
+    if (a.editedAt) editAnnotation(a.id, [...(a.edits ?? []), { content: a.content, at: a.editedAt }]);
+    touched.add(a.threadId);
   }
   for (const d of p.deletes) {
     const t = getThread(d.id);

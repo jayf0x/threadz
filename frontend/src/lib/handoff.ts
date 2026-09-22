@@ -6,7 +6,9 @@ import {
   countUnsynced,
   exportSnapshot,
   getBase,
+  localAnnotationIds,
   localMessageIds,
+  markAnnotationsDirty,
   markDirty,
   mergeSnapshot,
   parseSnapshot,
@@ -64,7 +66,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
       const baseHash = base[x.id];
       return baseHash ? [{ id: x.id, baseHash }] : [];
     });
-    const pending = batch.threads.length + batch.messages.length + batch.trash.length;
+    const pending = batch.threads.length + batch.messages.length + batch.annotations.length + batch.trash.length;
 
     // Photos first: a note should not reach main ahead of its image. One main refuses is skipped, not fatal.
     for (const hash of (await pushImages()).skipped) refused.add(hash);
@@ -88,6 +90,15 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
           editedAt: m.editedAt ?? null,
           edits: m.edits ?? [],
         })),
+        annotations: batch.annotations.map((a) => ({
+          id: a.id,
+          threadId: a.threadId,
+          messageId: a.messageId,
+          content: a.content,
+          createdAt: a.createdAt,
+          editedAt: a.editedAt ?? null,
+          edits: a.edits ?? [],
+        })),
         deletes,
       });
       await commitPush(batch, result);
@@ -95,14 +106,22 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
 
       phase?.("Verifying…");
       for (const id of Object.keys(result.hashes)) {
-        const { mainIds } = await fetchAndMerge(id, result.hashes[id]);
+        const { mainIds, mainAnnotationIds } = await fetchAndMerge(id, result.hashes[id]);
         const lacking = [...(await localMessageIds(id))].filter((m) => !mainIds.has(m));
         if (lacking.length) await markDirty(lacking);
+        const lackingAnnotations = [...(await localAnnotationIds(id))].filter((a) => !mainAnnotationIds.has(a));
+        if (lackingAnnotations.length) await markAnnotationsDirty(lackingAnnotations);
       }
     }
 
     const left = await countUnsynced();
-    if (!left.threads && !left.messages && !left.deletions && sameHeads(await getBase(), (await fetchHead()).threads))
+    if (
+      !left.threads &&
+      !left.messages &&
+      !left.annotations &&
+      !left.deletions &&
+      sameHeads(await getBase(), (await fetchHead()).threads)
+    )
       return report;
   }
   throw new Error("Main kept changing while syncing — nothing was lost; try again.");

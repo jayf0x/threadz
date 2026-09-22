@@ -92,11 +92,16 @@ export const deleteOrphanImages = async (used: Set<string>, now = Date.now()) =>
   return removed;
 };
 
-// What the device copy (`threadz-local`, trash included, every kept edit) refers to. An empty copy
-// (not warmed yet) collects nothing.
+// What the device copy (`threadz-local`, trash included, every kept edit) refers to — messages AND
+// annotations, since an image can be referenced from either. An empty copy (not warmed yet) collects
+// nothing.
 export const gcDeviceImages = async (now = Date.now()) => {
-  const { messages, trash } = await exportSnapshot();
-  const all = [...messages, ...(trash ?? []).flatMap((t) => t.messages)];
+  const { messages, annotations, trash } = await exportSnapshot();
+  const all = [
+    ...messages,
+    ...(annotations ?? []),
+    ...(trash ?? []).flatMap((t) => [...t.messages, ...(t.annotations ?? [])]),
+  ];
   if (!all.length) return [];
   return deleteOrphanImages(
     referencedHashes(all.flatMap((m) => [m.content, ...(m.edits ?? []).map((v) => v.content)])),

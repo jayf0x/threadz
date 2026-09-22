@@ -1,14 +1,20 @@
 import type { BunRequest } from "bun";
 import type { z } from "zod";
 import {
+  allAnnotations,
   allMessages,
+  annotationJson,
+  appendAnnotation,
   appendMessage,
   applySync,
   backupDb,
   copyThread,
   createThread,
   deleteThread,
+  editAnnotation,
   editMessage,
+  getAnnotations,
+  getMessage,
   getMessages,
   getThread,
   heads,
@@ -22,7 +28,17 @@ import {
 import { collectOrphanImages, imageFile, saveImage } from "./images";
 import { generateMetadata, metadataEnabled, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
-import { AppendMessage, AskThread, CopyThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
+import {
+  AppendMessage,
+  AskThread,
+  CopyThread,
+  CreateAnnotation,
+  CreateThread,
+  EditAnnotation,
+  EditMessage,
+  RenameThread,
+  SyncPayload,
+} from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -123,6 +139,7 @@ const server = Bun.serve({
         exportedAt: Date.now(),
         threads: listThreads().map(threadJson),
         messages: allMessages().map(messageJson),
+        annotations: allAnnotations().map(annotationJson),
       }),
 
     // Cheap "did main move?" check: one hash per thread + one for the whole store.
@@ -185,6 +202,7 @@ const server = Bun.serve({
         return json({
           thread: threadJson(thread),
           messages: getMessages(p.id).map(messageJson),
+          annotations: getAnnotations(p.id).map(annotationJson),
           hash: threadHash(thread),
         });
       }),
@@ -215,7 +233,14 @@ const server = Bun.serve({
           throw new HttpError(400, "newThreadId and uptoMessageId are required");
         const result = copyThread(body.newThreadId, p.id, body.uptoMessageId, body.appendNote);
         if (!result) throw new HttpError(404, "message not found");
-        return json({ thread: threadJson(result.thread), messages: result.messages.map(messageJson) }, 201);
+        return json(
+          {
+            thread: threadJson(result.thread),
+            messages: result.messages.map(messageJson),
+            annotations: result.annotations.map(annotationJson),
+          },
+          201,
+        );
       }),
     },
 
@@ -250,6 +275,41 @@ const server = Bun.serve({
         if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
         refreshMetadata(p.id);
         return json({ message: messageJson(message) });
+      }),
+    },
+
+    // A note attached to one message: text required, images optional (an image-only annotation is
+    // still text — a markdown image ref). Idempotent by client id, like a message append.
+    "/api/threads/:id/messages/:mid/annotations": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      POST: wrap(async (req, p) => {
+        requireThread(p.id);
+        const message = getMessage(p.mid);
+        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
+        const body = await readBody(req, CreateAnnotation);
+        if (!body.id || !body.content?.trim()) throw new HttpError(400, "id and content are required");
+        const { annotation, inserted } = appendAnnotation({
+          id: body.id,
+          threadId: p.id,
+          messageId: p.mid,
+          content: body.content.trim(),
+          createdAt: body.createdAt,
+        });
+        return json({ annotation: annotationJson(annotation), inserted });
+      }),
+    },
+
+    // Edit in place; the previous text is kept in the annotation's `edits`, same as a message.
+    "/api/threads/:id/annotations/:aid": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      PATCH: wrap(async (req, p) => {
+        requireThread(p.id);
+        const body = await readBody(req, EditAnnotation);
+        if (!body.content?.trim()) throw new HttpError(400, "content is required");
+        const at = Math.min(body.editedAt || Date.now(), Date.now());
+        const annotation = editAnnotation(p.aid, [{ content: body.content.trim(), at }]);
+        if (!annotation || annotation.thread_id !== p.id) throw new HttpError(404, "annotation not found");
+        return json({ annotation: annotationJson(annotation) });
       }),
     },
 

@@ -45,7 +45,10 @@ export const ORPHAN_MIN_AGE_MS = 7 * 24 * 3600 * 1000;
 
 const referencedHashes = () => {
   const found = new Set<string>();
-  const rows = db.query("SELECT content, edits FROM messages").all() as { content: string; edits: string | null }[];
+  const rows = [
+    ...(db.query("SELECT content, edits FROM messages").all() as { content: string; edits: string | null }[]),
+    ...(db.query("SELECT content, edits FROM annotations").all() as { content: string; edits: string | null }[]),
+  ];
   for (const { content, edits } of rows)
     for (const m of `${content}\n${edits ?? ""}`.matchAll(/img:([0-9a-f]{64})/g)) found.add(m[1] as string);
   return found;
