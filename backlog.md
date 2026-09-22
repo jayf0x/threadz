@@ -8,8 +8,9 @@ not committed to yet are in `inspiration.md`. What is left is v1 work, v2, or ca
 Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps, stay 100% local.
 Anything AI-generated (descriptions, tags, themes, "similar to x") is v2 for now.
 
-The first five entries belong together: what the list shows, the shared components, then the message menu,
-annotations and copy built on them.
+The first five entries build on each other and touch the same files (`local.ts`, `api.ts`, `db.ts`, `ThreadView`,
+`Composer`) — build in this order, one at a time, so parallel work doesn't collide: metadata off → shared
+components → message menu → copy (without annotations) → annotations (extends copy).
 
 - **Take AI metadata out of v1.** Tested, does not belong in v1 (no solid place in the UI, output too weak).
   - The list row shows title and date only: drop description and tags from `ThreadRow.tsx`. No tags feature (typing
@@ -19,14 +20,18 @@ annotations and copy built on them.
   - Docs: `README.md` says the generated description, tags, embeddings and related threads were tried and do not
     belong in v1, and its mentions of them (intro, Ollama prerequisite, API table, local-mode note) match.
   - `description`, `tags` and `embedding` stay as nullable fields; nothing new may depend on them.
-  - The background generation (`refreshMetadata` after each append) is switched off behind an env flag, off by
-    default; the code stays for v2. With the flag off nothing calls Ollama, so it is no longer a prerequisite
-    (README and `.env.example` say it is only needed with the flag on). Endpoints that need it
-    (`POST /api/threads/:id/metadata`, `related`) answer with a clear "metadata is off" error. Tests that exercise
-    generation turn the flag on.
+  - The background generation (`refreshMetadata`) is switched off behind an env flag, off by default; the code
+    stays for v2. Gate it inside `refreshMetadata` itself (6 call sites in `server.ts`), reading the flag at call
+    time so tests can flip it. With the flag off nothing calls Ollama, so it is no longer a prerequisite (README
+    and `.env.example` say it is only needed with the flag on; `AGENTS.md`'s "fire-and-forget after each append"
+    line needs the same caveat). Endpoints that need it (`POST /api/threads/:id/metadata`, `related`) answer with
+    a clear "metadata is off" error; `scripts/smoke.sh` (which calls both) says so instead of failing. Tests that
+    exercise generation turn the flag on.
 - **Shared components** (needed by the next three entries).
   - `Popover` and `Menu` primitives in `components/ui/`: outside tap and Esc close them, keyboard reachable, usable
-    on touch. Implementation is the developer's call.
+    on touch, positioned via a portal or fixed positioning (not inline, or the thread pane's scroll clips them), a
+    bottom sheet on phones. Implementation is the developer's call; touch behaviour only really checks out on a
+    real phone (see "Blocked on a real phone").
   - `MessageInput`: the composer's editor, draft, image attach and send, extracted from `Composer.tsx` into a
     reusable component and hook with minor adjustments. `Composer` wraps it and keeps voice dictation and Ask. The
     draft key is per target (a thread, or a message for an annotation). No dictation in the annotation input for
@@ -34,43 +39,89 @@ annotations and copy built on them.
 - **Message menu.** One ⋯ button per message holds every secondary action: Annotate, Copy thread from here, and the
   existing per-message actions that belong there (edit). Always visible on touch, on hover on desktop (the rule the
   thread-row actions already use); no row of icons per message. Thread-row actions (rename, regenerate title,
-  delete) stay as they are.
-- **Annotations.** A note attached to one message: text required, images optional. Opened from the message menu in a
-  popover holding a `MessageInput`; the message's existing annotations render as markdown.
-  - Real schema, no `z.unknown()`: the same fields as a message (id, role, content, createdAt, editedAt, edits) plus
-    the thread and message it belongs to, and no annotations of annotations. No `meta` unless a field needs it. One
-    base schema shared with messages: Zod in `backend/schemas.ts`, a SQLite table with cascade on thread delete, a
-    TS type.
-  - Backend and sync: add (idempotent by client id) and edit (history kept like messages) endpoints; `annotations`
-    in the `/api/sync` payload; the thread hash includes annotation ids and edit times so changes are noticed;
-    union merge by id, edits newest wins.
-  - Frontend: the `threadz` mirror and `threadz-local` stores (DB version bump plus migration); `remoteApi` and
-    `localApi` stay signature-identical; `exportSnapshot`, `mergeSnapshot`, `parseSnapshot` and trash carry
-    annotations, and old backup files still import.
-  - Not part of Ask context or search for now.
-  - **Open:** how an annotated message shows it: a count chip that expands inline, or only inside the popover.
+  delete) stay as they are. An annotated message shows a count chip in its meta line (next to the voice icon) that
+  expands the annotations inline, the same pattern as "edited" — a note only reachable through the popover would
+  never be found again.
 - **Copy thread from a message.** On A:N, create thread B as an identical copy of A from its first message up to
-  and including N. A is unchanged.
-  - New ids for the thread, every message and every annotation. Original `createdAt`, edits and other row properties
-    are kept. Annotations are copied with their message reference remapped. Images stay references
-    (`img:<sha256>`), no bytes are duplicated. `description`, `tags` and `embedding` stay null. Title is
-    `Copy: <original title>` ("Copy: Copy: X" is fine). B opens afterwards.
-  - One call in `remoteApi` and `localApi`: one transaction on main, IndexedDB in local mode. New ids derive from the
-    new thread id plus the original id, so a retry or double tap cannot duplicate (like the `seed-<threadId>`
-    note). Works offline; B syncs like any thread.
-  - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that copies
-    at the last message and makes the typed text B's first note (no always-visible Copy button, so no mistap next to
-    Send). That menu is the same `Menu` primitive and takes future secondary actions.
-  - Not stored: `copiedFrom` / `forkedFrom`. They cannot be added retroactively; see `inspiration.md`.
-  - Tests: A untouched; B ids new, `createdAt` kept, annotations remapped, images shared, retry is idempotent, live
-    and local, an offline copy syncs.
+  and including N. A is unchanged. Build this before annotations; add annotation-copying in the next entry.
+  - New ids for the thread and every message. Original `createdAt`, edits and other row properties are kept.
+    Images stay references (`img:<sha256>`), no bytes are duplicated. `description`, `tags` and `embedding` stay
+    null. Title is `Copy: <original title>` ("Copy: Copy: X" is fine). B opens afterwards.
+  - One call in `remoteApi` and `localApi`: one transaction on main, IndexedDB in local mode. The caller (not the
+    server) mints B's id once, before the request, and reuses it on any retry — the same pattern `createThread`
+    already uses for its client id, so a double tap or a retried request cannot create two copies. Message ids
+    derive deterministically from B's id plus each original message's id, so the same call replayed produces the
+    same ids again instead of duplicating. Works offline; B syncs like any thread.
+  - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that
+    copies at the last message *and* appends the typed text as B's next note, in the same call (not a follow-up
+    request — a second call reopens the half-created-thread problem, and could lose the text if it failed). No
+    always-visible Copy button next to Send, so no mistap while capturing. That menu is the same `Menu` primitive
+    and takes future secondary actions.
+  - Not stored yet: `copiedFrom` / `forkedFrom` (per-message/per-thread provenance). See the open question below —
+    this is the one part of Copy that can't be added retroactively once threads have been copied without it.
+  - Tests: A untouched; B ids new and deterministic from a fixed input (so a retry reproduces them), `createdAt`
+    kept, images shared, a repeated call does not duplicate, live and local, an offline copy syncs.
+- **Annotations.** A note attached to one message: text required (an image-only annotation counts as text — the
+  content is markdown either way), images optional. Opened from the message menu in a popover holding a
+  `MessageInput`; a message's existing annotations render as markdown, ordered by `(createdAt, id)`. Adding one
+  bumps the thread's `updatedAt`, the same as editing a message does.
+  - Real schema, no `z.unknown()`: the same fields as a message minus `role` (only the user writes annotations in
+    v1; add it back if an AI-authored annotation happens later) — id, content, createdAt, editedAt, edits — plus
+    the thread and message it belongs to, and no annotations of annotations. One base schema shared with messages:
+    Zod in `backend/schemas.ts`, a SQLite table with cascade on thread delete, a TS type.
+  - Backend and sync: add (idempotent by client id) and edit (history kept like messages) endpoints; `annotations`
+    in the `/api/sync` payload; union merge by id, edits newest wins. The thread hash must only grow a new segment
+    for annotation ids/edit times **when the thread has at least one** — otherwise every existing thread's hash
+    changes on upgrade and every device's stored `base` mismatches, which shows as spurious "main changed" and
+    refuses pending deletes.
+  - Frontend, and everywhere a message can be dirty, deleted or restored, annotations must behave the same way —
+    they are their own rows, not part of a message's own dirty flag:
+    - the `threadz` mirror and `threadz-local` stores need their own object store (DB version bump plus migration);
+      `remoteApi` and `localApi` stay signature-identical.
+    - `applyRemoteDelete` in `local.ts` currently follows main's delete of a thread unless the thread or one of its
+      messages is dirty; an unsynced annotation on an otherwise-clean message must count too, or it is silently
+      destroyed.
+    - the same for the "N↑" pending-changes count, the `handoff` verify step, and trash/restore.
+    - `applySync`'s `missing` case (a note whose thread main no longer has) needs the same handling for an
+      annotation whose message main lacks: skip and retry, don't drop.
+    - `exportSnapshot`, `mergeSnapshot`, `parseSnapshot` and trash carry annotations; an old backup file without
+      them still imports.
+    - Copy: annotations on a copied message are copied too, with their message reference remapped to the new id;
+      the AI-metadata-on-copy question above already says regenerate rather than reuse.
+  - Not part of Ask context or search for now.
+  - Images: both orphan-GC scans (`backend/images.ts` `referencedHashes`, `frontend/src/lib/images.ts`
+    `gcDeviceImages`) read only `messages.content`/`edits` today — an image that only appears in an annotation
+    would be collected as an orphan. Both need to scan annotation content/edits too, and annotations need to be
+    kept in trash the way messages are.
+- **My auto-name only tries once.** `autoTitle` (`titles.ts`) only fires from the thread's first note; a short one
+  like "call dentist" leaves it `Thread: 004` forever. Retry on later notes too, while the title is still the
+  placeholder.
 - **Capture without a title, the rest.** `+` / `n` now makes `Thread: NNN` and opens it, and yatefca names it from
-  the first note. Still missing: opening the app (or a `/capture` deep link / PWA shortcut) landing in a focused
-  composer, and an Inbox. Pressing `+` and walking away leaves an empty `Thread: NNN` behind; decide whether to
-  create on the first note instead. yatefca gives nothing for a very short note.
-- **Search and todos.** Search is a literal `LIKE` (`db.ts`): no ranking. Want SQLite FTS5. Nothing gathers `- [ ]`
-  across threads; an "Open todos" view needs a query over messages, plus a decision on ticking a box (it is an edit,
-  so it lands in `edits`).
+  the first note. Pressing `+` and walking away leaves an empty `Thread: NNN` behind: instead of an inbox (dropped —
+  see "no folders, no streams" in `inspiration.md`), `+` / `n` / the deep link should reuse the newest untouched
+  placeholder thread (title still the auto-generated `Thread: NNN`, no notes) instead of making another one. (An
+inbox / stream-first home was floated and explicitly rejected as unnecessary complexity — see "Stream-first home"
+in `inspiration.md`, parked there, not planned.) Still
+  missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused composer —
+  note for the real-phone list: iOS will not raise the keyboard from a programmatic focus outside a tap, so a deep
+  link alone may land you in the thread with the keyboard still closed.
+- **Search.** Search is a literal `LIKE` (`db.ts`): no ranking. SQLite (Bun's bundled 3.43.2) has FTS5, but its
+  default `unicode61` tokenizer only matches whole tokens — confirmed: it finds 0 hits for `izing` against
+  "resizing", where today's `LIKE` matches. Use the `trigram` tokenizer instead, which keeps mid-word matching (1
+  hit, confirmed). Local mode and the static Pages build still use the plain JS substring search, so live and
+  local results would differ in ranking even after this; unifying them behind one shared TypeScript scorer instead
+  of running FTS5 on main and a JS twin everywhere else is a reasonable follow-up, left to the implementer.
+- **Todos.** Nothing gathers `- [ ]` across threads. Ship a **read-only** "Open todos" view first (a query over
+  messages, links to the note) — not tick-in-place: ticking a box is a content edit, so it stores a full-text
+  version in `edits`, and two devices ticking different boxes offline would silently lose one tick (newest text
+  wins). Independent of search; can be built any time.
+
+**Open before Copy is built:** should each copied message keep an inert, unexposed `copiedFrom` (and each copied
+thread a `forkedFrom`), so the derived layer can later collapse near-duplicates in search/trend-detection and draw
+a copy history? If yes, a readable derived id (e.g. `<newMessageId> = <B's thread id>~<original message id>`, the
+same style as `seedId`) recovers per-message provenance for free with no extra column, versus a random id with an
+explicit column. This can't be added retroactively for threads copied before it exists, so it has to be decided
+before Copy ships, not after.
 
 ## v2 features (deferred by design)
 
@@ -97,6 +148,8 @@ Everything is verified headless in Chrome (desktop + 390px); none of this has ru
 
 - **Popovers and the message menu on iOS:** positioning with the keyboard open, tap targets, dismissal. Only
   testable on a device.
+- **Deep-link straight into capture:** iOS does not raise the keyboard from a programmatic focus outside a tap, so
+  this may still need a manual tap once landed.
 - **Images:** iOS HEIC picker, camera capture, canvas memory on old iPhones; a ~600px thumbnail tier if
   decoded-bitmap memory kills the iOS tab with many images in one thread; `navigator.storage.persist()` on
   the installed PWA (photos on a not-yet-synced device exist nowhere else); `crypto.subtle` on plain `http://`.
