@@ -120,6 +120,29 @@
   fill: color-mix(in oklab, var(--foreground) 80%, transparent);
 }
 
+/* Raw mode (`raw` prop on <MarkdownEditor>): a plain textarea showing literal markdown source.
+ * Governed by the same --md-* layout vars as the WYSIWYG surface above so it drops into the
+ * same slots (e.g. the edit surface's padding-right for the image button overlay). */
+.threadz-md-raw {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--md-min-height, 100%);
+  max-height: var(--md-max-height, none);
+  padding: var(--md-padding, 14px 18px 40px);
+  overflow-y: auto;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--foreground);
+  caret-color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.threadz-md-raw::placeholder { color: var(--muted-foreground); }
+
 /* Photos (`img:` refs, see imageView.ts): a grey box of the right aspect ratio until the bytes arrive. */
 .threadz-md .threadz-img {
   display: inline-block;

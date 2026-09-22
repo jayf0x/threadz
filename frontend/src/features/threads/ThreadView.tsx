@@ -235,6 +235,7 @@ const EntryRow = ({
         <>
           <div className="relative">
             <MarkdownEditor
+              raw
               handleRef={editor}
               value={text}
               onChange={setText}

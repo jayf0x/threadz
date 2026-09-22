@@ -68,14 +68,10 @@ type Loaded = {
 };
 
 export const MarkdownEditor = ({
-  value,
-  onChange,
+  raw = false,
   placeholder = "start writing…",
   readOnly = false,
-  handleRef,
-  onKeyDownCapture,
-  onImageFile,
-  className,
+  ...rest
 }: {
   value: string;
   onChange?: (markdown: string) => void;
@@ -91,6 +87,122 @@ export const MarkdownEditor = ({
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
    * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
+  className?: string;
+  /** Plain-text mode: a `<textarea>` showing the literal markdown source instead of WYSIWYG
+   * rendering, for surfaces where the point is to select and delete raw syntax characters
+   * (editing a message that already has `**bold**` etc. — there's no toolbar to undo it via
+   * rendering). No lazy Milkdown load, so it's cheap and synchronous. Same imperative handle,
+   * `onKeyDownCapture`, `placeholder`, `className` contract as the WYSIWYG surface, so any
+   * caller can flip this on without other changes. */
+  raw?: boolean;
+}) =>
+  raw ? (
+    <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
+  ) : (
+    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
+  );
+
+// Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
+const takeImageFile = (
+  files: FileList | null | undefined,
+  onImageFile: ((file: File) => void) | undefined,
+  e: React.ClipboardEvent | React.DragEvent,
+) => {
+  const file = [...(files ?? [])].find((f) => f.type.startsWith("image/"));
+  if (!file || !onImageFile) return;
+  e.preventDefault();
+  e.stopPropagation();
+  onImageFile(file);
+};
+
+// Raw mode: literal markdown text in a plain textarea. No ProseMirror, no rich image embed —
+// `insertImage` just splices in the `![](src)` text, which is what "raw" means.
+const RawEditor = ({
+  value,
+  onChange,
+  placeholder,
+  readOnly,
+  handleRef,
+  onKeyDownCapture,
+  onImageFile,
+  className,
+}: {
+  value: string;
+  onChange?: (markdown: string) => void;
+  placeholder: string;
+  readOnly: boolean;
+  handleRef?: Ref<MarkdownEditorHandle>;
+  onKeyDownCapture?: (e: React.KeyboardEvent) => void;
+  onImageFile?: (file: File) => void;
+  className?: string;
+}) => {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // Has the user ever put a caret in here? Until then a programmatic insert (e.g. the image
+  // button, which deliberately doesn't steal focus) goes to the end, matching the WYSIWYG surface.
+  const touchedRef = useRef(false);
+
+  const spliceAtCaret = (text: string) => {
+    const el = ref.current;
+    if (!el) return false;
+    const len = el.value.length;
+    const from = touchedRef.current ? (el.selectionStart ?? len) : len;
+    const to = touchedRef.current ? (el.selectionEnd ?? len) : len;
+    const next = el.value.slice(0, from) + text + el.value.slice(to);
+    const caret = from + text.length;
+    onChange?.(next);
+    // Keep the DOM in sync now: a caller may read getMarkdown() or insert again before the
+    // controlled `value` prop round-trips back through a render.
+    el.value = next;
+    el.setSelectionRange(caret, caret);
+    return true;
+  };
+
+  useImperativeHandle(handleRef, () => ({
+    getMarkdown: () => ref.current?.value ?? value,
+    setMarkdown: (md) => {
+      onChange?.(md);
+      if (ref.current) ref.current.value = md;
+    },
+    insertAtCaret: (text) => spliceAtCaret(text),
+    insertImage: (src) => spliceAtCaret(`![](${src})`),
+  }));
+
+  return (
+    <textarea
+      ref={ref}
+      className={cn("threadz-md-raw", className)}
+      value={value}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      spellCheck={false}
+      onChange={(e) => onChange?.(e.target.value)}
+      onKeyDownCapture={onKeyDownCapture}
+      onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
+      onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
+      onFocus={() => {
+        touchedRef.current = true;
+      }}
+    />
+  );
+};
+
+const CrepeEditor = ({
+  value,
+  onChange,
+  placeholder,
+  readOnly,
+  handleRef,
+  onKeyDownCapture,
+  onImageFile,
+  className,
+}: {
+  value: string;
+  onChange?: (markdown: string) => void;
+  placeholder: string;
+  readOnly: boolean;
+  handleRef?: Ref<MarkdownEditorHandle>;
+  onKeyDownCapture?: (e: React.KeyboardEvent) => void;
+  onImageFile?: (file: File) => void;
   className?: string;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -234,23 +346,14 @@ export const MarkdownEditor = ({
     getMarkdown: () => crepeRef.current?.getMarkdown() ?? lastEmittedRef.current,
   }));
 
-  // Pasting or dropping a photo: hand the file to the caller instead of letting ProseMirror embed it.
-  const takeFile = (e: React.ClipboardEvent | React.DragEvent, files: FileList | null | undefined) => {
-    const file = [...(files ?? [])].find((f) => f.type.startsWith("image/"));
-    if (!file || !onImageFile) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onImageFile(file);
-  };
-
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: focus bubbling only records "the user has been here"; the div isn't a control
     <div
       ref={containerRef}
       className={cn("threadz-md", className)}
       onKeyDownCapture={onKeyDownCapture}
-      onPasteCapture={(e) => takeFile(e, e.clipboardData.files)}
-      onDropCapture={(e) => takeFile(e, e.dataTransfer.files)}
+      onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
+      onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
       onFocus={() => {
         touchedRef.current = true;
       }}
