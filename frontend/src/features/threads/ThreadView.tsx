@@ -1,8 +1,9 @@
 import { format } from "date-fns";
-import { ArrowLeft, CloudOff, Mic, Pencil, X } from "lucide-react";
+import { ArrowLeft, CloudOff, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import { Composer } from "@/features/composer";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
 import { getThreadLocal } from "@/lib/db";
@@ -153,6 +154,8 @@ const EntryRow = ({
     setText(m.content);
     setEditing(true);
   };
+  // Extend this array (not the JSX) for "Copy thread from here" and "Annotate" as they land.
+  const menuItems: MenuItem[] = [{ label: "Edit", icon: Pencil, onClick: startEdit }];
 
   return (
     <article className="group border-b border-rule py-4">
@@ -206,15 +209,20 @@ const EntryRow = ({
             </button>
           )}
           {mine && (
-            <button
-              type="button"
-              aria-label="Edit"
-              title="Edit"
-              className="ml-auto p-1 opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
-              onClick={startEdit}
-            >
-              <Pencil className="size-3" />
-            </button>
+            <Menu
+              align="end"
+              items={menuItems}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Message actions"
+                  title="Message actions"
+                  className="ml-auto p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                >
+                  <MoreHorizontal className="size-3" />
+                </button>
+              }
+            />
           )}
         </p>
       )}
