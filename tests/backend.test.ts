@@ -34,17 +34,20 @@ mock.module("../backend/model.ts", () => ({
 const {
   appendAnnotation,
   appendMessage,
+  backfillSearchIndex,
   backupDb,
   copyThread,
   createThread,
   db,
   dedupeDuplicateAnnotations,
   editAnnotation,
+  editMessage,
   getAnnotation,
   getAnnotations,
   getAnnotationsForMessage,
   getMessages,
   getThread,
+  SCHEMA,
   threadEmbeddings,
   threadHash,
 } = await import("../backend/db.ts");
@@ -459,8 +462,10 @@ describe("request bodies are validated (a wrong type is the caller's 400, never 
 });
 
 describe("search (LIKE wildcards in the query are literal)", () => {
-  const find = async (q: string) =>
-    (await fetch(`${BASE}/api/threads?q=${encodeURIComponent(q)}`).then((r) => r.json())) as { title: string }[];
+  const find = async (q: string, sort?: string) =>
+    (await fetch(`${BASE}/api/threads?q=${encodeURIComponent(q)}${sort ? `&sort=${sort}` : ""}`).then((r) =>
+      r.json(),
+    )) as { id: string; title: string }[];
 
   test("`%` and `_` match themselves, not everything", async () => {
     createThread("like-1", "100% done");
@@ -474,6 +479,76 @@ describe("search (LIKE wildcards in the query are literal)", () => {
     createThread("like-3", "plain title");
     appendMessage({ id: crypto.randomUUID(), threadId: "like-3", role: "user", content: "the zebra crossed" });
     expect((await find("zebra")).map((t) => t.title)).toEqual(["plain title"]);
+  });
+
+  // FTS5's default `unicode61` tokenizer only matches whole tokens (0 hits for "izing" against
+  // "resizing") — the `trigram` tokenizer was chosen specifically to keep this working like the old LIKE.
+  test("a mid-word substring match still works (trigram, not the default whole-token tokenizer)", async () => {
+    createThread("fts-mid-1", "Photo resizing notes");
+    expect((await find("izing")).map((t) => t.title)).toEqual(["Photo resizing notes"]);
+  });
+
+  test("results come back ranked by relevance when there's a query: a title match outranks a content-only match", async () => {
+    const contentOnly = createThread(crypto.randomUUID(), "grocery list");
+    appendMessage({ id: crypto.randomUUID(), threadId: contentOnly.id, role: "user", content: "walnuts and dates" });
+    const titleMatch = createThread(crypto.randomUUID(), "walnuts to buy");
+    // `sort=title` would put these in the opposite order (alphabetically "grocery" < "walnuts") —
+    // confirms bm25 ranking wins over `sort` whenever q is set.
+    const rows = await find("walnuts", "title");
+    expect(rows.map((r) => r.id)).toEqual([titleMatch.id, contentOnly.id]);
+  });
+
+  test("search after an edit or append picks up the new content (the FTS5 index actually stays in sync)", async () => {
+    const t = createThread(crypto.randomUUID(), "sync check");
+    expect(await find("kumquat")).toEqual([]);
+    const { message } = appendMessage({
+      id: crypto.randomUUID(),
+      threadId: t.id,
+      role: "user",
+      content: "no fruit here",
+    });
+    expect(await find("kumquat")).toEqual([]);
+    editMessage(message.id, [{ content: "a kumquat appeared", at: Date.now() }]);
+    expect((await find("kumquat")).map((r) => r.id)).toEqual([t.id]);
+    // The old text is gone from the index too, not just appended alongside the new text.
+    expect(await find("no fruit here")).toEqual([]);
+  });
+});
+
+// Simulates upgrading a real, already-populated threadz.sqlite made before `thread_search` existed:
+// SCHEMA + backfillSearchIndex must be safe to re-run against it and must index what's already there.
+describe("search index backfill (invariant: an existing database indexes fine after upgrading)", () => {
+  test("threads/messages written before thread_search existed are searchable once the real init code re-runs", async () => {
+    const { Database: RawDatabase } = await import("bun:sqlite");
+    const raw = new RawDatabase(":memory:");
+    // Only the columns an older version of this schema would have had — no thread_search yet.
+    raw.exec(`
+      CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, seq INTEGER NOT NULL);
+    `);
+    raw.query("INSERT INTO threads (id, title, created_at, updated_at) VALUES ('pre-1', 'Old thread', 1, 1)").run();
+    raw
+      .query(
+        "INSERT INTO messages (id, thread_id, role, content, created_at, seq) VALUES ('pre-1-m1', 'pre-1', 'user', 'notes about resizing photos', 1, 1)",
+      )
+      .run();
+
+    // The real startup sequence: create the table/triggers (idempotent), then backfill pre-existing rows.
+    raw.exec(SCHEMA);
+    backfillSearchIndex(raw);
+
+    const hit = raw
+      .query(
+        "SELECT t.id FROM threads t JOIN thread_search ON thread_search.thread_id = t.id WHERE thread_search MATCH '\"izing\"'",
+      )
+      .all();
+    expect(hit).toEqual([{ id: "pre-1" }]);
+
+    // Idempotent: running it again (e.g. next boot) doesn't duplicate the row or error.
+    raw.exec(SCHEMA);
+    backfillSearchIndex(raw);
+    expect(raw.query("SELECT COUNT(*) AS n FROM thread_search").get()).toEqual({ n: 1 });
+    raw.close();
   });
 });
 

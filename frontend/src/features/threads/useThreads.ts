@@ -34,9 +34,13 @@ export const useThreads = () => {
   }, [load, refresh]);
 
   // Titles, descriptions and tags are matched on the device at once; note text needs the API (main while
-  // live, the device copy while local). A failed lookup just leaves the instant matches.
-  const [content, setContent] = useState<{ q: string; ids: ReadonlySet<string> }>({ q: "", ids: new Set() });
-  const contentHits = content.q === query.trim() ? content.ids : NO_HITS;
+  // live, the device copy while local). A failed lookup just leaves the instant matches. `ranks` keeps
+  // the API's own relevance order (id -> position) so visibleThreads can rank content-only hits by it.
+  const [content, setContent] = useState<{ q: string; ranks: ReadonlyMap<string, number> }>({
+    q: "",
+    ranks: NO_HITS,
+  });
+  const contentHits = content.q === query.trim() ? content.ranks : NO_HITS;
 
   const visible = useMemo(() => visibleThreads(threads, query, sort, contentHits), [threads, query, sort, contentHits]);
 
@@ -46,7 +50,7 @@ export const useThreads = () => {
     let stale = false;
     const timer = setTimeout(() => {
       api.listThreads(q).then(
-        (rows) => !stale && setContent({ q, ids: new Set(rows.map((r) => r.id)) }),
+        (rows) => !stale && setContent({ q, ranks: new Map(rows.map((r, i) => [r.id, i])) }),
         () => {},
       );
     }, 200);
@@ -59,4 +63,4 @@ export const useThreads = () => {
   return { threads: visible, query, setQuery, sort, setSort, syncing, error, refresh };
 };
 
-const NO_HITS: ReadonlySet<string> = new Set();
+const NO_HITS: ReadonlyMap<string, number> = new Map();

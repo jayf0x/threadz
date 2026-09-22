@@ -16,7 +16,7 @@ const t = (id: string, o: Partial<Thread> = {}): Thread => ({
 
 const ids = (rows: Thread[]) => rows.map((r) => r.id);
 
-test("orders by updated (default), created, or title", () => {
+test("orders by updated (default), created, or title when there's no query", () => {
   const rows = [
     t("b", { updatedAt: 1, createdAt: 3 }),
     t("a", { updatedAt: 3, createdAt: 1 }),
@@ -38,12 +38,24 @@ test("isSort accepts only known sorts", () => {
   expect(isSort("nope")).toBe(false);
 });
 
-test("a thread found only by the text of a note (content hit from the API) is shown, in the chosen order", () => {
-  const rows = [t("b", { updatedAt: 1 }), t("a", { updatedAt: 2 }), t("c", { updatedAt: 3 })];
-  const hits = new Set(["b"]);
+test("a thread found only by the text of a note (content hit from the API) is shown", () => {
+  const rows = [t("a"), t("b")];
+  const hits = new Map([["b", 0]]);
   expect(ids(visibleThreads(rows, "needle", "updated", hits))).toEqual(["b"]);
-  expect(ids(visibleThreads([...rows, t("needle-title", { updatedAt: 0 })], "needle", "updated", hits))).toEqual([
-    "b",
-    "needle-title",
+});
+
+test("while searching, a title match always outranks a content-only hit, regardless of `sort`", () => {
+  const rows = [t("b", { updatedAt: 5 }), t("needle-title", { updatedAt: 0 })];
+  const hits = new Map([["b", 0]]); // b matched only via a note, and ranked first by the API
+  expect(ids(visibleThreads(rows, "needle", "updated", hits))).toEqual(["needle-title", "b"]);
+});
+
+test("among content-only hits, the API's own rank order (lower = better) decides the order", () => {
+  const rows = [t("a"), t("b"), t("c")];
+  const hits = new Map([
+    ["c", 0],
+    ["a", 1],
+    ["b", 2],
   ]);
+  expect(ids(visibleThreads(rows, "needle", "created", hits))).toEqual(["c", "a", "b"]);
 });

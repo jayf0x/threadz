@@ -5,7 +5,9 @@ import type { Role, SyncPayload } from "./schemas";
 
 // Plain threads and messages. Databases made before `source` was dropped keep an inert
 // `source TEXT NOT NULL DEFAULT 'pwa'` column: inserts that omit it get the default, so no migration.
-const SCHEMA = `
+// Exported so a test can re-run the real init (this + backfillSearchIndex below) against a
+// throwaway db seeded like an older version of this schema, instead of re-implementing it.
+export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS threads (
   id          TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
@@ -41,6 +43,44 @@ CREATE INDEX IF NOT EXISTS idx_annotations_thread ON annotations(thread_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_message ON annotations(message_id);
 -- One annotation per message. NOT created here: an existing database can already violate it (see
 -- dedupeDuplicateAnnotations below), so the unique index is created separately, after that cleanup runs.
+
+-- Search index: one row per thread, title and message text as separate FTS5 columns so bm25() can
+-- weight title matches above body matches. 'trigram' (not the default unicode61) so a mid-word
+-- substring like "izing" still matches "resizing" the way the old LIKE search did.
+-- Kept in sync by triggers, not app code, so nothing that creates/edits a thread or message needs to
+-- remember to update it (matches the "DB constraint over app code" instinct used for annotations above).
+CREATE VIRTUAL TABLE IF NOT EXISTS thread_search USING fts5(
+  thread_id UNINDEXED,
+  title,
+  body,
+  tokenize = 'trigram'
+);
+CREATE TRIGGER IF NOT EXISTS thread_search_ai AFTER INSERT ON threads BEGIN
+  INSERT INTO thread_search (thread_id, title, body) VALUES (new.id, new.title, '');
+END;
+CREATE TRIGGER IF NOT EXISTS thread_search_au AFTER UPDATE OF title ON threads BEGIN
+  UPDATE thread_search SET title = new.title WHERE thread_id = new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS thread_search_ad AFTER DELETE ON threads BEGIN
+  DELETE FROM thread_search WHERE thread_id = old.id;
+END;
+CREATE TRIGGER IF NOT EXISTS thread_search_msg_ai AFTER INSERT ON messages BEGIN
+  UPDATE thread_search SET body = body || char(10) || new.content WHERE thread_id = new.thread_id;
+END;
+-- An edit or delete can't just patch the old text back out (it may appear more than once), so these
+-- two recompute the whole body from what's left in messages -- cheap at personal-note scale.
+CREATE TRIGGER IF NOT EXISTS thread_search_msg_au AFTER UPDATE OF content ON messages BEGIN
+  UPDATE thread_search
+     SET body = (SELECT coalesce(group_concat(content, char(10)), '')
+                 FROM (SELECT content FROM messages WHERE thread_id = new.thread_id ORDER BY seq))
+   WHERE thread_id = new.thread_id;
+END;
+CREATE TRIGGER IF NOT EXISTS thread_search_msg_ad AFTER DELETE ON messages BEGIN
+  UPDATE thread_search
+     SET body = (SELECT coalesce(group_concat(content, char(10)), '')
+                 FROM (SELECT content FROM messages WHERE thread_id = old.thread_id ORDER BY seq))
+   WHERE thread_id = old.thread_id;
+END;
 `;
 
 export type ThreadRow = {
@@ -111,6 +151,26 @@ export const dedupeDuplicateAnnotations = (database: Database = db) => {
 dedupeDuplicateAnnotations();
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_one_per_message ON annotations(message_id)");
 
+// A database from before `thread_search` existed has threads/messages but no rows in it yet: the
+// triggers above only fire on new writes, so pre-existing rows need a one-time backfill. Guarded by
+// a row-count check (cheap) and, within the insert itself, `NOT EXISTS` per thread, so this is safe
+// (and a fast no-op) to run on every boot, backfilled or not — same shape as `addColumn` below.
+// Takes a `Database` parameter (default: the module's own) so tests can exercise it against a
+// throwaway db file seeded like an older version of this schema, without disturbing the real one.
+export const backfillSearchIndex = (database: Database = db) => {
+  const { n: indexed } = database.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM thread_search").get()!;
+  const { n: total } = database.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM threads").get()!;
+  if (indexed >= total) return;
+  database.exec(`
+    INSERT INTO thread_search (thread_id, title, body)
+    SELECT t.id, t.title,
+      COALESCE((SELECT group_concat(content, char(10)) FROM (SELECT content FROM messages WHERE thread_id = t.id ORDER BY seq)), '')
+    FROM threads t
+    WHERE NOT EXISTS (SELECT 1 FROM thread_search fs WHERE fs.thread_id = t.id)
+  `);
+};
+backfillSearchIndex();
+
 // Databases made before edit/rename existed: add the columns once.
 const addColumn = (table: string, col: string, type: string) => {
   if (
@@ -133,21 +193,41 @@ export const clampTs = (t?: number) =>
 
 // --- threads ---
 
+// A user's query, as a single literal FTS5 phrase: doubling `"` escapes it, and wrapping the whole
+// thing in quotes stops FTS5 from reading `-`/`*`/`AND`/parens etc. as query syntax. For the
+// trigram tokenizer this is also what makes it behave like a substring search: a quoted phrase
+// requires its tokens (trigrams, here) adjacent and in order, which is exactly "contains this text".
+const ftsPhrase = (q: string) => `"${q.replace(/"/g, '""')}"`;
+
 export const listThreads = (q?: string, sort = "updated") => {
   const order =
     sort === "created" ? "created_at DESC" : sort === "title" ? "title COLLATE NOCASE ASC" : "updated_at DESC";
-  if (q?.trim()) {
-    // `%` and `_` in the query are literal characters, not wildcards.
-    const like = `%${q.trim().replace(/[\\%_]/g, "\\$&")}%`;
-    // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note text only.
+  const query = q?.trim();
+  if (query) {
+    // The trigram tokenizer has no trigrams to match below 3 characters (a MATCH just finds nothing,
+    // it doesn't error) — fall back to the old substring LIKE scan so a 1-2 character search still
+    // works, just without ranking. Rare at personal-note query lengths.
+    if (query.length < 3) {
+      const like = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+      return db
+        .query<ThreadRow, [string]>(
+          `SELECT DISTINCT t.* FROM threads t
+           LEFT JOIN messages m ON m.thread_id = t.id
+           WHERE t.title LIKE ?1 ESCAPE '\\' OR m.content LIKE ?1 ESCAPE '\\'
+           ORDER BY ${order}`,
+        )
+        .all(like);
+    }
+    // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note
+    // text only. Ranked by bm25 (title weighted 10x over body); `sort` only orders the no-query case.
     return db
       .query<ThreadRow, [string]>(
-        `SELECT DISTINCT t.* FROM threads t
-         LEFT JOIN messages m ON m.thread_id = t.id
-         WHERE t.title LIKE ?1 ESCAPE '\\' OR m.content LIKE ?1 ESCAPE '\\'
-         ORDER BY ${order}`,
+        `SELECT t.* FROM threads t
+         JOIN thread_search ON thread_search.thread_id = t.id
+         WHERE thread_search MATCH ?1
+         ORDER BY bm25(thread_search, 10.0, 1.0)`,
       )
-      .all(like);
+      .all(ftsPhrase(query));
   }
   return db.query<ThreadRow, []>(`SELECT * FROM threads ORDER BY ${order}`).all();
 };

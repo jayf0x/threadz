@@ -1,6 +1,7 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Api } from "./api";
 import { ApiError } from "./errors";
+import { combineScore, matchScore } from "./search";
 import type { Annotation, Message, Snapshot, SyncResult, Thread, Unsynced, Version } from "./types";
 import { byCreatedThenId, bySeq, mergeMessage, versionsOf } from "./versions";
 
@@ -88,14 +89,23 @@ export const localApi: Api = {
 
   listThreads: async (q, sort = "updated") => {
     const db = await getDB();
-    let threads = (await db.getAll("threads")).map(strip);
+    const threads = (await db.getAll("threads")).map(strip);
     const needle = q?.trim().toLowerCase();
     if (needle) {
-      // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note text only.
-      const hit = new Set(
-        (await db.getAll("messages")).filter((m) => m.content.toLowerCase().includes(needle)).map((m) => m.threadId),
-      );
-      threads = threads.filter((t) => hit.has(t.id) || t.title.toLowerCase().includes(needle));
+      // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note
+      // text only. Ranked, not just filtered — see lib/search.ts for why this isn't the backend's bm25.
+      const contentScore = new Map<string, number>();
+      for (const m of await db.getAll("messages")) {
+        const s = matchScore(m.content, needle);
+        if (s == null) continue;
+        const best = contentScore.get(m.threadId);
+        if (best == null || s > best) contentScore.set(m.threadId, s);
+      }
+      return threads
+        .map((t) => ({ t, score: combineScore(matchScore(t.title, needle), contentScore.get(t.id) ?? null) }))
+        .filter((r): r is { t: Thread; score: number } => r.score != null)
+        .sort((a, b) => b.score - a.score)
+        .map((r) => r.t);
     }
     if (sort === "title") return threads.sort((a, b) => a.title.localeCompare(b.title));
     return threads.sort((a, b) => (sort === "created" ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt));

@@ -28,16 +28,10 @@ provenance (decided 2026-09-22, see below).
   — done. Still missing: opening the app, or a `/capture` deep link / PWA shortcut, landing straight in a focused
   composer — note for the real-phone list: iOS will not raise the keyboard from a programmatic focus outside a tap,
   so a deep link alone may land you in the thread with the keyboard still closed.
-- **Search.** Search is a literal `LIKE` (`db.ts`): no ranking. SQLite (Bun's bundled 3.43.2) has FTS5, but its
-  default `unicode61` tokenizer only matches whole tokens — confirmed: it finds 0 hits for `izing` against
-  "resizing", where today's `LIKE` matches. Use the `trigram` tokenizer instead, which keeps mid-word matching (1
-  hit, confirmed). Local mode and the static Pages build still use the plain JS substring search, so live and
-  local results would differ in ranking even after this; unifying them behind one shared TypeScript scorer instead
-  of running FTS5 on main and a JS twin everywhere else is a reasonable follow-up, left to the implementer.
-- **Todos.** Nothing gathers `- [ ]` across threads. Ship a **read-only** "Open todos" view first (a query over
-  messages, links to the note) — not tick-in-place: ticking a box is a content edit, so it stores a full-text
-  version in `edits`, and two devices ticking different boxes offline would silently lose one tick (newest text
-  wins). Independent of search; can be built any time.
+- **Todos — in progress (2026-09-22).** Nothing gathers `- [ ]` across threads. Ship a **read-only** "Open todos"
+  view (a query over messages, links back to the note) — not tick-in-place: ticking a box is a content edit, so
+  it stores a full-text version in `edits`, and two devices ticking different boxes offline would silently lose
+  one tick (newest text wins). Independent of search.
 
 **Decided 2026-09-22:** no `copiedFrom` / `forkedFrom` provenance for Copy. Simpler now; a copy's origin cannot be
 recovered later if this turns out to matter (e.g. for collapsing near-duplicates once search/trend-detection
