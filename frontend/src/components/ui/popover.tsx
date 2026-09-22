@@ -150,13 +150,17 @@ export const Popover = ({ trigger, children, align = "start", className }: Popov
   const enter = reduceMotion ? { duration: 0.01 } : { duration: 0.16, ease: "easeOut" as const };
   const exit = reduceMotion ? { duration: 0.01 } : { duration: 0.12, ease: "easeIn" as const };
 
+  // AnimatePresence must directly own the elements it's tracking — a portal is a React Portal
+  // object, not a real element (`isValidElement` is false for it), so AnimatePresence silently
+  // drops it if it's the thing being conditionally rendered. Portal the *always-present*
+  // AnimatePresence itself instead, and let it conditionally render real `m.div`s inside.
   return (
     <>
       {clonedTrigger}
-      <AnimatePresence>
-        {open &&
-          createPortal(
-            phone ? (
+      {createPortal(
+        <AnimatePresence>
+          {open &&
+            (phone ? (
               <>
                 <m.div
                   key="backdrop"
@@ -201,10 +205,10 @@ export const Popover = ({ trigger, children, align = "start", className }: Popov
               >
                 {content}
               </m.div>
-            ),
-            document.body,
-          )}
-      </AnimatePresence>
+            ))}
+        </AnimatePresence>,
+        document.body,
+      )}
     </>
   );
 };
