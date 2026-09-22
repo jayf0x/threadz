@@ -60,6 +60,7 @@ extract a helper when the same code shows up a third time; delete dead code and 
   image is never deleted; it is `PUT` to main before `/api/sync`.
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint and not in the UI; see `backlog.md`.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
-- Metadata generation is fire-and-forget after each append (no queue).
+- Metadata generation is fire-and-forget after each append (no queue) — off by default; set `THREADZ_METADATA=1`
+  to turn it on (v1 dropped generated description/tags/embeddings/related from the UI; the code stays for v2).
 - Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
   itself. No per-component suites; a change that touches none of that needs no new test.

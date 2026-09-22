@@ -28,6 +28,10 @@ export const MIN_WORDS = 4;
 // Images are `![](img:<hash>#WxH)` — noise to a text summariser.
 export const stripImages = (s: string) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
 
+// Off by default — v1 dropped generated description/tags/embeddings/related from the UI (weak output, no
+// solid place to show them). The code stays for v2; read live (not cached) so tests can flip it per-case.
+export const metadataEnabled = () => process.env.THREADZ_METADATA === "1";
+
 export const generateMetadata = async (threadId: string) => {
   const thread = getThread(threadId);
   if (!thread) return;
@@ -71,7 +75,9 @@ export const generateMetadata = async (threadId: string) => {
   setMetadata(threadId, description, tags, vec);
 };
 
-// Fire-and-forget wrapper used by append/commit paths.
+// Fire-and-forget wrapper used by append/commit paths. No-op unless THREADZ_METADATA=1 —
+// with the flag off, nothing here ever calls Ollama.
 export const refreshMetadata = (threadId: string) => {
+  if (!metadataEnabled()) return;
   generateMetadata(threadId).catch((err) => console.error("[threadz] refreshMetadata", err));
 };

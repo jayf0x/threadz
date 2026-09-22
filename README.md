@@ -7,7 +7,7 @@ on its own copy and syncs when you say so. See `backlog.md` for open questions a
 ## What's here
 
 ```
-backend/    Bun + bun:sqlite service. HTTP API, model seam, metadata + embeddings.
+backend/    Bun + bun:sqlite service. HTTP API, model seam, metadata + embeddings (off by default — see below).
 frontend/   React 19 + Vite + Tailwind v4 PWA. IndexedDB mirror + local copy, on-device whisper.
 tests/      bun test — invariant + HTTP e2e tests.
 scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-pages.sh (triggers the Pages workflow).
@@ -16,10 +16,11 @@ scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-p
 ## Prerequisites
 
 - [Bun](https://bun.sh) ≥ 1.3
-- [Ollama](https://ollama.com) running, with two models pulled. These are test defaults, not decisions: any
-  Ollama model that can emit JSON works for tags/descriptions (`THREADZ_GEN_MODEL`), the embedding model is
-  swappable (`THREADZ_EMBED_MODEL`; vectors from different embedding models don't compare), and none of it has
-  been benchmarked yet.
+- [Ollama](https://ollama.com), only if you turn on generated metadata (`THREADZ_METADATA=1` — see "Metadata
+  generation (v2, off by default)" below). Not needed otherwise; nothing calls Ollama with the flag off. If you do
+  turn it on: these are test defaults, not decisions — any Ollama model that can emit JSON works for
+  tags/descriptions (`THREADZ_GEN_MODEL`), the embedding model is swappable (`THREADZ_EMBED_MODEL`; vectors from
+  different embedding models don't compare), and none of it has been benchmarked yet.
   ```bash
   ollama pull qwen3.5:0.8b       # tags + descriptions (small on purpose while testing)
   ollama pull nomic-embed-text   # embeddings
@@ -67,8 +68,8 @@ The backend already binds `0.0.0.0`. Ollama does not by default:
 launchctl setenv OLLAMA_HOST "0.0.0.0:11434"   # then quit & reopen Ollama.app
 ```
 
-(Only needed because metadata/embeddings run backend→Ollama; the phone talks only to the
-backend.)
+(Only needed if `THREADZ_METADATA=1` — metadata/embeddings then run backend→Ollama; the phone
+always talks only to the backend.)
 
 ## Publish to GitHub Pages
 
@@ -131,7 +132,7 @@ frontend/src/
 ## API (JSON, except the image bytes)
 
 Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type or a bad `role` is a 400 `{ error }`.
-`GET /api/threads?q=` matches titles, descriptions, tags and note text; `%` and `_` in `q` are literal.
+`GET /api/threads?q=` matches titles and note text; `%` and `_` in `q` are literal.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -147,10 +148,20 @@ Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type 
 | PATCH | `/api/threads/:id/messages/:mid` | edit `{ content }`; the old text is appended to `edits` |
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
-| POST | `/api/threads/:id/metadata` | force regen tags/description/embedding |
+| POST | `/api/threads/:id/metadata` | force regen tags/description/embedding — **v2, off by default**; 503 unless `THREADZ_METADATA=1` |
 | PUT | `/api/images/:hash` | store a photo: raw JPEG bytes, `:hash` = its sha256 hex. The body is re-hashed and must be a JPEG (magic bytes) ≤ 8MB, else 400/415/413. Idempotent: a replay changes nothing (`{ ok, stored }`) |
 | GET | `/api/images/:hash` | the JPEG, `cache-control: immutable`; 404 if unknown |
-| GET | `/api/threads/:id/related` | top-5 cosine-similar threads — **v2, not used by the UI** |
+| GET | `/api/threads/:id/related` | top-5 cosine-similar threads — **v2, not used by the UI**; 503 unless `THREADZ_METADATA=1` |
+
+### Metadata generation (v2, off by default)
+
+Generated description, tags, embeddings and "related threads" were tried for v1 and dropped: there was no
+solid place in the UI for them, and the output was too weak to trust. The list row shows only title and
+date; search matches only titles and note text; there is no tags feature. The columns, `metadata.ts` and the
+`/related` endpoint stay in the codebase for a v2 revisit (see `backlog.md`) but do nothing by default. Set
+`THREADZ_METADATA=1` to turn generation back on (needs Ollama, see Prerequisites) — appends then trigger it
+fire-and-forget, and `POST /api/threads/:id/metadata` / `GET /api/threads/:id/related` work instead of
+answering `503`.
 
 ### Local mode (work with no backend)
 
@@ -162,7 +173,7 @@ the pill for the connection dialog.
   plus per-thread hashes of what it last agreed on with main). If main becomes unreachable, the
   app switches to that copy by itself — a failed write is retried on the device, never dropped —
   and says so once. **Work locally** does the same on purpose. Claude ("Ask") needs main, so the
-  Ask toggle is not offered while local; local threads carry no tags/description until they reach main.
+  Ask toggle is not offered while local.
 - **Coming back is never automatic.** A "Main is reachable" banner offers Review; going live is a
   button. It runs: pull main's changes into the device copy → send everything pending in one
   request → re-read what was sent and prove every local note is on main → compare hashes. Only

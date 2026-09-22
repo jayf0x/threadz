@@ -88,12 +88,12 @@ export const listThreads = (q?: string, sort = "updated") => {
   if (q?.trim()) {
     // `%` and `_` in the query are literal characters, not wildcards.
     const like = `%${q.trim().replace(/[\\%_]/g, "\\$&")}%`;
+    // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note text only.
     return db
       .query<ThreadRow, [string]>(
         `SELECT DISTINCT t.* FROM threads t
          LEFT JOIN messages m ON m.thread_id = t.id
-         WHERE t.title LIKE ?1 ESCAPE '\\' OR t.description LIKE ?1 ESCAPE '\\'
-            OR t.tags LIKE ?1 ESCAPE '\\' OR m.content LIKE ?1 ESCAPE '\\'
+         WHERE t.title LIKE ?1 ESCAPE '\\' OR m.content LIKE ?1 ESCAPE '\\'
          ORDER BY ${order}`,
       )
       .all(like);

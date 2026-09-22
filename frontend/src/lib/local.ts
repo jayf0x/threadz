@@ -62,16 +62,11 @@ export const localApi: Api = {
     let threads = (await db.getAll("threads")).map(strip);
     const needle = q?.trim().toLowerCase();
     if (needle) {
+      // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note text only.
       const hit = new Set(
         (await db.getAll("messages")).filter((m) => m.content.toLowerCase().includes(needle)).map((m) => m.threadId),
       );
-      threads = threads.filter(
-        (t) =>
-          hit.has(t.id) ||
-          t.title.toLowerCase().includes(needle) ||
-          t.description?.toLowerCase().includes(needle) ||
-          t.tags.some((tag) => tag.includes(needle)),
-      );
+      threads = threads.filter((t) => hit.has(t.id) || t.title.toLowerCase().includes(needle));
     }
     if (sort === "title") return threads.sort((a, b) => a.title.localeCompare(b.title));
     return threads.sort((a, b) => (sort === "created" ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt));

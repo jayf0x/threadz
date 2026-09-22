@@ -24,12 +24,24 @@ COUNT=$(j "$BASE/api/threads/$TID" | grep -o '"role":' | wc -l | tr -d ' ')
 echo "  message count = $COUNT (expect 2: seed + 1 append)"
 [ "$COUNT" = "2" ] || { echo "FAIL: idempotency"; exit 1; }
 
-echo "force metadata (needs Ollama with the gen + embed models):"
-j -XPOST "$BASE/api/threads/$TID/metadata" | grep -o '"tags":\[[^]]*\]' || echo "  skipped: Ollama not reachable"
+echo "force metadata (v2, off by default — needs THREADZ_METADATA=1 + Ollama with the gen + embed models):"
+META=$(curl -s -H 'content-type: application/json' -XPOST "$BASE/api/threads/$TID/metadata")
+if echo "$META" | grep -q "metadata generation is off"; then
+  echo "  skipped: metadata generation is off (set THREADZ_METADATA=1)"
+elif echo "$META" | grep -o '"tags":\[[^]]*\]'; then
+  :
+else
+  echo "  skipped: Ollama not reachable"
+fi
 echo
 
-echo "related (v2 endpoint, not used by the UI; needs Ollama):"
-j "$BASE/api/threads/$TID/related" || echo "  skipped: Ollama not reachable"
+echo "related (v2 endpoint, not used by the UI; needs THREADZ_METADATA=1 + Ollama):"
+RELATED=$(curl -s "$BASE/api/threads/$TID/related")
+if echo "$RELATED" | grep -q "metadata generation is off"; then
+  echo "  skipped: metadata generation is off (set THREADZ_METADATA=1)"
+else
+  echo "$RELATED"
+fi
 echo
 
 echo "ask Claude (scratch, no commit) — needs a logged-in \`claude\` CLI:"

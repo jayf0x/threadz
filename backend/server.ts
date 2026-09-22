@@ -19,7 +19,7 @@ import {
   threadJson,
 } from "./db";
 import { collectOrphanImages, imageFile, saveImage } from "./images";
-import { generateMetadata, refreshMetadata } from "./metadata";
+import { generateMetadata, metadataEnabled, refreshMetadata } from "./metadata";
 import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
 import { AppendMessage, AskThread, CreateThread, EditMessage, RenameThread, SyncPayload } from "./schemas";
 
@@ -280,6 +280,7 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (_req, p) => {
         requireThread(p.id);
+        if (!metadataEnabled()) throw new HttpError(503, "metadata generation is off (set THREADZ_METADATA=1)");
         await generateMetadata(p.id);
         return json(threadJson(getThread(p.id)!));
       }),
@@ -292,6 +293,7 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       GET: wrap(async (_req, p) => {
         const thread = requireThread(p.id);
+        if (!metadataEnabled()) throw new HttpError(503, "metadata generation is off (set THREADZ_METADATA=1)");
         const all = threadEmbeddings();
         // No stored embedding yet — embed the title on the fly so the result isn't empty.
         const self = all.find((t) => t.id === p.id)?.vec ?? (await embed([thread.title], "query"))[0];

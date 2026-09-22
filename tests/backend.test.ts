@@ -11,6 +11,9 @@ const BACKUP_DIR = `${DB_PATH}.backups`;
 process.env.THREADZ_BACKUPS = BACKUP_DIR;
 const IMAGES_DIR = `${DB_PATH}.images`;
 process.env.THREADZ_IMAGES = IMAGES_DIR;
+// Off by default in v1; turned on for this suite so the generation tests below actually exercise it.
+// `refreshMetadata` reads it at call time, so the dedicated "off" tests can flip it back temporarily.
+process.env.THREADZ_METADATA = "1";
 
 // Tests tweak these to drive the (mocked) local model.
 let genOutput: unknown = { description: "a real description of the thread", tags: ["alpha", "beta"] };
@@ -129,6 +132,39 @@ describe("metadata generation (bug: gemma3:270m parroted the prompt into the DB)
   test("MIN_WORDS is a sane threshold", () => {
     expect(MIN_WORDS).toBeGreaterThan(0);
     expect(MIN_WORDS).toBeLessThan(20);
+  });
+});
+
+describe("metadata generation is off by default (v1: no solid UI, weak output)", () => {
+  test("POST /metadata and GET /related answer a clear 503, not a 500 or a silent no-op, and nothing else fires Ollama meanwhile", async () => {
+    const before = process.env.THREADZ_METADATA;
+    delete process.env.THREADZ_METADATA;
+    try {
+      const t = await fetch(`${BASE}/api/threads`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "__e2e__ metadata off", seed: "plenty of words to summarise here" }),
+      }).then((r) => r.json());
+
+      const meta = await fetch(`${BASE}/api/threads/${t.id}/metadata`, { method: "POST" });
+      expect(meta.status).toBe(503);
+      expect((await meta.json()).error).toBe("metadata generation is off (set THREADZ_METADATA=1)");
+
+      const related = await fetch(`${BASE}/api/threads/${t.id}/related`);
+      expect(related.status).toBe(503);
+      expect((await related.json()).error).toBe("metadata generation is off (set THREADZ_METADATA=1)");
+
+      // an append with the flag off must never reach Ollama: description/tags/embedding stay untouched
+      await new Promise((r) => setTimeout(r, 30));
+      const after = await fetch(`${BASE}/api/threads/${t.id}`).then((r) => r.json());
+      expect(after.thread.description).toBeNull();
+      expect(after.thread.tags).toEqual([]);
+
+      await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+    } finally {
+      if (before === undefined) delete process.env.THREADZ_METADATA;
+      else process.env.THREADZ_METADATA = before;
+    }
   });
 });
 

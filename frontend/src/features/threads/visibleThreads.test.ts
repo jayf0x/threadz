@@ -27,10 +27,10 @@ test("orders by updated (default), created, or title", () => {
   expect(ids(visibleThreads(rows, "", "title"))).toEqual(["a", "b", "c"]);
 });
 
-test("search matches title, description or tag, case-insensitively, and never mutates the input", () => {
-  const rows = [t("Sourdough"), t("x", { description: "About BREAD" }), t("y", { tags: ["bread"] }), t("z")];
-  expect(ids(visibleThreads(rows, "  bread ", "title"))).toEqual(["x", "y"]);
-  expect(ids(rows)).toEqual(["Sourdough", "x", "y", "z"]);
+test("search matches the title, case-insensitively, and never mutates the input", () => {
+  const rows = [t("Sourdough Bread"), t("x", { description: "About BREAD" }), t("y", { tags: ["bread"] }), t("z")];
+  expect(ids(visibleThreads(rows, "  bread ", "title"))).toEqual(["Sourdough Bread"]);
+  expect(ids(rows)).toEqual(["Sourdough Bread", "x", "y", "z"]);
 });
 
 test("isSort accepts only known sorts", () => {
@@ -46,8 +46,4 @@ test("a thread found only by the text of a note (content hit from the API) is sh
     "b",
     "needle-title",
   ]);
-});
-
-test("tags match whatever their case", () => {
-  expect(ids(visibleThreads([t("x", { tags: ["Bread"] })], "bread", "title"))).toEqual(["x"]);
 });

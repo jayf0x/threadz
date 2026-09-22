@@ -19,15 +19,8 @@ export const visibleThreads = (
   contentHits: ReadonlySet<string> = new Set(),
 ): Thread[] => {
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? threads.filter(
-        (t) =>
-          contentHits.has(t.id) ||
-          t.title.toLowerCase().includes(q) ||
-          t.description?.toLowerCase().includes(q) ||
-          t.tags.some((tag) => tag.toLowerCase().includes(q)),
-      )
-    : threads;
+  // v1 dropped generated description/tags from search (weak output, no UI for it) — titles and note text only.
+  const filtered = q ? threads.filter((t) => contentHits.has(t.id) || t.title.toLowerCase().includes(q)) : threads;
   const sorted = [...filtered];
   if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
   else if (sort === "created") sorted.sort((a, b) => b.createdAt - a.createdAt);

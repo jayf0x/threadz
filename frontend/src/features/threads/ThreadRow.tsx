@@ -134,16 +134,6 @@ export const ThreadRow = ({
             </span>
             <span className="min-w-0 pr-20">
               <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
-              {thread.description && (
-                <span className="mt-0.5 line-clamp-2 block text-[13px] leading-snug text-muted-foreground">
-                  {thread.description}
-                </span>
-              )}
-              {thread.tags.length > 0 && (
-                <span className="mt-1.5 block truncate font-mono text-[11px] text-muted-foreground">
-                  {thread.tags.map((t) => `#${t}`).join("  ")}
-                </span>
-              )}
               {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
               {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
             </span>
