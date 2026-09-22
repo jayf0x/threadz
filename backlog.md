@@ -12,6 +12,14 @@ backend table/API keep the name `annotation` (not worth a rename); icon-over-tex
 standing convention (AGENTS.md); no reference/citation feature exists yet and none is being built now (parked in
 `inspiration.md`'s "Annotation extensions" / "Staleness citations" for v2).
 
+**Notes (annotations) are done**, backend and UI: one per message (DB-enforced unique index; a second create folds
+into an edit), its own `DELETE` route, and `useThread.ts`'s `addAnnotation`/`editAnnotation`/`deleteAnnotation` all
+wired up. In `ThreadView.tsx`'s `EntryRow`, a note is a quiet `StickyNote` icon next to the message's own ⋯ menu —
+nothing shown until hover if there's no note yet, a muted-tinted icon if there is — that expands inline into a
+compact editor with a CSS grid-rows transition (no new motion dependency; the next wave's animation library can
+replace this if it wants to). Edit and delete (with a confirm, "no tombstone" per the API table) live in the
+expanded view; the message-actions menu lost its old "Annotate" entry now that the icon is always there to open.
+
 - **PWA can't reach a LAN backend.** `BACKEND_URL` (`lib/config.ts`) is computed once at load from
   `location.hostname` — correct if the page was ever loaded from the Mac's LAN IP, wrong if someone opened
   `localhost:5173` on the phone itself (which then means "this phone", not the Mac) and installed from there.
@@ -23,22 +31,6 @@ standing convention (AGENTS.md); no reference/citation feature exists yet and no
   delete them. Give `MarkdownEditor` a raw mode — plain textarea bound to the same markdown string, same handle
   contract (`getMarkdown`/`setMarkdown`/`insertAtCaret`/`insertImage` as a text-insert) — and use it for editing an
   existing message. Build it generically enough that annotation-edit (below) can reuse it.
-- **Notes (annotations): finish the backend contract.** `editAnnotation` exists (`db.ts`, `server.ts` PATCH
-  `/api/threads/:id/annotations/:aid`) but there's no delete, and nothing stops a message from getting more than
-  one. Add: a unique index `annotations(message_id)` (DB constraint does the "one per message" work, not app code);
-  a `DELETE /api/threads/:id/annotations/:aid` route + `deleteAnnotation` in `db.ts`, mirrored in `local.ts` for the
-  device copy, threaded through the same places the original annotation work touched (`countUnsynced`,
-  `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, thread-hash, trash, backup import/export,
-  both image orphan scans); `appendAnnotation`'s sync-merge path (`db.ts` `mergeRemoteThread`, and `local.ts`'s
-  equivalent) needs to treat "a second annotation arrives for a message that already has one" as an edit onto the
-  existing row (content-wins, same as message edits), not a unique-constraint failure. `useThread.ts` needs
-  `deleteAnnotation`, and both need wiring into whatever UI the next item builds. Extend `tests/backend.test.ts`.
-- **Notes (annotations): the UI.** Today they render as a stacked block under the message
-  (`ThreadView.tsx` `EntryRow`), indistinguishable from another message. Redesign so a note reads as *attached to*
-  the message but clearly separate — collapsed by default (a small indicator/badge when one exists), expands inline
-  with a snappy, deliberate transition, not a 2005-style popover. Small and quiet by design: a note is a short
-  personal aside, not a reply. Wire in edit and delete (both now exist server-side) and the icon-only "add a note"
-  trigger. Good candidate for the `frontend-design` skill.
 - **Motion.** Backend is fine as-is; the frontend reads static next to what the redesigned notes UI needs to feel
   like. Add a small animation library (research React Spring vs. Motion/Framer Motion vs. GSAP vs. plain CSS
   transitions first — several already cover this without a new dependency) and apply restrained, subtle motion to
@@ -54,8 +46,10 @@ AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — se
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
 `Popover`, `Menu` and `MessageInput` are built; `Composer` wraps `MessageInput`. Each of your own notes has a ⋯
-(`ThreadView.tsx`'s `EntryRow`) opening **Edit**, **Annotate** or **Copy thread from here**; the composer has its
-own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next note, in one call.
+(`ThreadView.tsx`'s `EntryRow`) opening **Edit** or **Copy thread from here**, plus its own always-there `StickyNote`
+icon that expands a small inline note editor (add/edit/delete) — no separate "Annotate" menu entry any more. The
+composer has its own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next
+note, in one call.
 Copy (`POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each, idempotent on a client-minted
 `newThreadId`) and Annotations (own SQLite table + IndexedDB stores, own dirty flag threaded through every sync
 path — `countUnsynced`, `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, the handoff verify

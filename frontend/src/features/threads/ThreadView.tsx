@@ -1,19 +1,17 @@
 import { format } from "date-fns";
-import { ArrowLeft, CloudOff, Copy, MessageSquarePlus, Mic, MoreHorizontal, Pencil, X } from "lucide-react";
+import { ArrowLeft, Check, CloudOff, Copy, Mic, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
-import { Popover } from "@/components/ui/popover";
+import { Menu } from "@/components/ui/menu";
 import { Composer } from "@/features/composer";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
-import { MessageInput } from "@/features/message-input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import type { Annotation, Message, Thread } from "@/lib/types";
-import { byCreatedThenId } from "@/lib/versions";
 import { useThread } from "./useThread";
 
 export const ThreadView = ({
@@ -36,6 +34,8 @@ export const ThreadView = ({
     addMessage,
     editMessage,
     addAnnotation,
+    editAnnotation,
+    deleteAnnotation,
     ask,
   } = useThread(threadId);
   const local = useStatus().mode === "local";
@@ -48,16 +48,8 @@ export const ThreadView = ({
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
 
-  // Grouped per message, ordered by (createdAt, id) — the order the backlog asks annotations render in.
-  const annotationsByMessage = useMemo(() => {
-    const byMessage = new Map<string, Annotation[]>();
-    for (const a of [...annotations].sort(byCreatedThenId)) {
-      const list = byMessage.get(a.messageId);
-      if (list) list.push(a);
-      else byMessage.set(a.messageId, [a]);
-    }
-    return byMessage;
-  }, [annotations]);
+  // One note per message (DB-enforced), so this is a plain lookup, not a grouped list.
+  const noteByMessage = useMemo(() => new Map(annotations.map((a) => [a.messageId, a])), [annotations]);
 
   // "Copy thread from here": B is A up to and including this message. A is never touched.
   const copyThreadFrom = async (uptoMessageId: string) => {
@@ -137,9 +129,11 @@ export const ThreadView = ({
               busy={busy}
               onEdit={(text) => editMessage(m.id, text)}
               onCopyThread={() => copyThreadFrom(m.id)}
-              annotations={annotationsByMessage.get(m.id) ?? []}
+              note={noteByMessage.get(m.id)}
               unsyncedAnnotations={unsyncedAnnotations}
               onAddAnnotation={(text) => addAnnotation(m.id, text)}
+              onEditAnnotation={editAnnotation}
+              onDeleteAnnotation={deleteAnnotation}
             />
           ))}
 
@@ -189,6 +183,8 @@ const tiny = "font-mono text-[10px] text-muted-foreground";
 
 // One entry: the content, then a hairline of tiny metadata under it. Your notes can be
 // edited in place (the previous text is kept and can be shown under "edited").
+// A note (annotation) is a quiet aside attached to the entry, not another entry: collapsed to a
+// small icon by default, expands in place (see the `noteOpen` panel below).
 // ponytail: every entry is its own read-only editor instance; virtualize if a thread reaches hundreds.
 const EntryRow = ({
   message: m,
@@ -196,27 +192,41 @@ const EntryRow = ({
   busy,
   onEdit,
   onCopyThread,
-  annotations,
+  note,
   unsyncedAnnotations,
   onAddAnnotation,
+  onEditAnnotation,
+  onDeleteAnnotation,
 }: {
   message: Message;
   pending: boolean;
   busy: boolean;
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
-  annotations: Annotation[]; // this message's own, already ordered by (createdAt, id)
+  note: Annotation | undefined; // one per message, DB-enforced
   unsyncedAnnotations: Set<string>;
   onAddAnnotation: (text: string) => Promise<boolean>;
+  onEditAnnotation: (id: string, text: string) => Promise<boolean>;
+  onDeleteAnnotation: (id: string) => Promise<boolean>;
 }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.content);
   const [history, setHistory] = useState(false);
-  const [annotating, setAnnotating] = useState(false);
+  // Collapsed by default. `noteMounted` is one-way (set once opened, never back to false): the
+  // panel then only ever *animates* closed instead of unmounting, which is what makes the collapse
+  // transition smooth instead of the content just vanishing mid-shrink.
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteMounted, setNoteMounted] = useState(false);
+  const [noteEditing, setNoteEditing] = useState(false); // editing existing note text, vs. its read view
+  const [noteText, setNoteText] = useState(note?.content ?? "");
   const editor = useRef<MarkdownEditorHandle>(null);
+  const noteEditor = useRef<MarkdownEditorHandle>(null);
   const { attach, error: imageError } = useImageAttach(editor);
+  const { attach: noteAttach, error: noteImageError } = useImageAttach(noteEditor);
   const mine = m.role === "user";
   const changed = text.trim() && text.trim() !== m.content;
+  const composingNote = noteEditing || !note; // nothing to view yet, or editing what's there
+  const noteSaveDisabled = busy || !noteText.trim() || (!!note && noteText.trim() === note.content);
 
   const save = async () => {
     const next = (editor.current?.getMarkdown() ?? text).trim(); // `text` lags typing by the debounce
@@ -225,6 +235,40 @@ const EntryRow = ({
   const startEdit = () => {
     setText(m.content);
     setEditing(true);
+  };
+
+  // Collapsed ⇄ expanded. Reopening (or closing) an existing note always lands on its quiet read
+  // view, not wherever editing was left — composing a brand-new note keeps whatever was typed.
+  const toggleNote = () => {
+    setNoteMounted(true);
+    setNoteOpen((open) => !open);
+    if (note) setNoteEditing(false);
+  };
+  const startNoteEdit = () => {
+    if (!note) return;
+    setNoteText(note.content);
+    setNoteEditing(true);
+  };
+  const cancelNoteEdit = () => {
+    setNoteText(note?.content ?? "");
+    if (note) setNoteEditing(false);
+    else setNoteOpen(false); // nothing to fall back to — just collapse
+  };
+  const saveNote = async () => {
+    const next = (noteEditor.current?.getMarkdown() ?? noteText).trim();
+    if (!next) return;
+    if (note) {
+      if (next !== note.content && (await onEditAnnotation(note.id, next))) setNoteEditing(false);
+    } else if (await onAddAnnotation(next)) {
+      setNoteText("");
+    }
+  };
+  const deleteNote = async () => {
+    if (!note || !confirm("Delete this note? This cannot be undone.")) return;
+    if (await onDeleteAnnotation(note.id)) {
+      setNoteOpen(false);
+      setNoteText(""); // otherwise reopening (now with no note) would pre-fill the just-deleted text
+    }
   };
 
   return (
@@ -280,62 +324,40 @@ const EntryRow = ({
             </button>
           )}
           {mine && (
-            <Popover
+            <button
+              type="button"
+              aria-label={note ? "Note" : "Add a note"}
+              title={note ? "Note" : "Add a note"}
+              aria-expanded={noteOpen}
+              onClick={toggleNote}
+              className={cn(
+                "ml-auto p-1 transition-colors",
+                note
+                  ? "text-primary/70 hover:text-primary"
+                  : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              <StickyNote className="size-3" />
+            </button>
+          )}
+          {mine && (
+            <Menu
               align="end"
-              className={annotating ? "w-80 p-3" : undefined}
               trigger={
                 <button
                   type="button"
                   aria-label="Message actions"
                   title="Message actions"
-                  // Reopening (or closing) always starts back at the actions list, not wherever we left off.
-                  onClick={() => setAnnotating(false)}
-                  className="ml-auto p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                  className="p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
                 >
                   <MoreHorizontal className="size-3" />
                 </button>
               }
-            >
-              {({ close }) =>
-                annotating ? (
-                  <MessageInput
-                    draftKey={`annotation:${m.id}`}
-                    placeholder="Add an annotation…"
-                    busy={busy}
-                    onSubmit={async (value) => {
-                      const ok = await onAddAnnotation(value);
-                      if (ok) close();
-                      return ok;
-                    }}
-                    submitLabel="Add"
-                  />
-                ) : (
-                  <div role="menu" className="flex flex-col py-1">
-                    <MenuAction
-                      icon={Pencil}
-                      onClick={() => {
-                        startEdit();
-                        close();
-                      }}
-                    >
-                      Edit
-                    </MenuAction>
-                    <MenuAction icon={MessageSquarePlus} onClick={() => setAnnotating(true)}>
-                      Annotate
-                    </MenuAction>
-                    <MenuAction
-                      icon={Copy}
-                      onClick={() => {
-                        onCopyThread();
-                        close();
-                      }}
-                    >
-                      Copy thread from here
-                    </MenuAction>
-                  </div>
-                )
-              }
-            </Popover>
+              items={[
+                { label: "Edit", icon: Pencil, onClick: startEdit },
+                { label: "Copy thread from here", icon: Copy, onClick: onCopyThread },
+              ]}
+            />
           )}
         </p>
       )}
@@ -349,41 +371,109 @@ const EntryRow = ({
           </div>
         ))}
 
-      {annotations.length > 0 && (
-        <div className="mt-3 space-y-2 border-l-2 border-primary/40 pl-3">
-          {annotations.map((a) => (
-            <div key={a.id}>
-              <MarkdownEditor readOnly value={a.content} className="[--md-padding:0]" />
-              <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
-                <time>{format(a.createdAt, "d MMM HH:mm")}</time>
-                {unsyncedAnnotations.has(a.id) && (
-                  <CloudOff className="size-2.5" aria-label="only on this device so far" />
+      {/* The note panel: a CSS grid row animated between 0fr/1fr (not height:auto — that can't
+          transition) so it opens and closes with a smooth height+opacity glide, never a jump. */}
+      {mine && (
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+            noteOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          )}
+        >
+          <div className="overflow-hidden">
+            {noteMounted && (
+              <div className="mt-2 border-l-2 border-primary/40 py-0.5 pl-3">
+                {composingNote ? (
+                  <>
+                    <div className="relative">
+                      <MarkdownEditor
+                        raw
+                        handleRef={noteEditor}
+                        value={noteText}
+                        onChange={setNoteText}
+                        readOnly={busy}
+                        placeholder="A quick note…"
+                        onImageFile={(f) => noteAttach([f])}
+                        className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
+                        onKeyDownCapture={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            saveNote();
+                          } else if (e.key === "Escape") {
+                            e.stopPropagation();
+                            cancelNoteEdit();
+                          }
+                        }}
+                      />
+                      <ImageButton onFiles={noteAttach} disabled={busy} className="absolute right-1 top-1" />
+                    </div>
+                    {noteImageError && (
+                      <p className="mt-1 truncate font-mono text-[11px] text-destructive">{noteImageError}</p>
+                    )}
+                    <div className="mt-1.5 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        aria-label="Cancel"
+                        title="Cancel"
+                        onClick={cancelNoteEdit}
+                        className="p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Save note"
+                        title="Save note"
+                        disabled={noteSaveDisabled}
+                        onClick={saveNote}
+                        className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
+                      >
+                        <Check className="size-3.5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  note && (
+                    <>
+                      <div className="flex items-start gap-2">
+                        <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <button
+                            type="button"
+                            aria-label="Edit note"
+                            title="Edit note"
+                            onClick={startNoteEdit}
+                            className="p-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="size-3" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete note"
+                            title="Delete note"
+                            onClick={deleteNote}
+                            className="p-1 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
+                        <time>{format(note.createdAt, "d MMM HH:mm")}</time>
+                        {unsyncedAnnotations.has(note.id) && (
+                          <CloudOff className="size-2.5" aria-label="only on this device so far" />
+                        )}
+                        {!!note.edits?.length && <span>edited</span>}
+                      </p>
+                    </>
+                  )
                 )}
-              </p>
-            </div>
-          ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </article>
   );
 };
-
-const MenuAction = ({
-  icon: Icon,
-  onClick,
-  children,
-}: {
-  icon: typeof Pencil;
-  onClick: () => void;
-  children: string;
-}) => (
-  <button
-    type="button"
-    role="menuitem"
-    className="flex items-center gap-2 px-3 py-2 text-left text-sm text-foreground outline-none hover:bg-accent focus-visible:bg-accent"
-    onClick={onClick}
-  >
-    <Icon className="size-4" />
-    {children}
-  </button>
-);
