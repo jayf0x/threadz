@@ -52,7 +52,9 @@ components → message menu → copy (without annotations) → annotations (exte
     already uses for its client id, so a double tap or a retried request cannot create two copies. Message ids
     derive deterministically from B's id plus each original message's id, so the same call replayed produces the
     same ids again instead of duplicating (plain new/random ids otherwise — decided 2026-09-22: no provenance
-    tracking, see below). Works offline; B syncs like any thread.
+    tracking, see below); the composer path's appended note (see Entry points) gets the same treatment — its id
+    derives from B's id too (e.g. `note-<B.id>`), not a freshly minted UUID, so retrying that call can't leave two
+    copies of the typed text either. Works offline; B syncs like any thread.
   - Entry points: "Copy thread from here" in the message menu, and a ⋯ menu beside Send in the composer that
     copies at the last message *and* appends the typed text as B's next note, in the same call (not a follow-up
     request — a second call reopens the half-created-thread problem, and could lose the text if it failed). No
@@ -87,8 +89,9 @@ components → message menu → copy (without annotations) → annotations (exte
       annotation whose message main lacks: skip and retry, don't drop.
     - `exportSnapshot`, `mergeSnapshot`, `parseSnapshot` and trash carry annotations; an old backup file without
       them still imports.
-    - Copy: annotations on a copied message are copied too, with their message reference remapped to the new id;
-      the AI-metadata-on-copy question above already says regenerate rather than reuse.
+    - Copy: annotations on a copied message are copied too, with their message reference remapped to the new id.
+      No metadata question here — `description`/`tags`/`embedding` stay null on B either way (metadata generation
+      is v2/flag-gated off by default in v1; see the Copy entry above), nothing copy-specific to decide.
   - Not part of Ask context or search for now.
   - Images: both orphan-GC scans (`backend/images.ts` `referencedHashes`, `frontend/src/lib/images.ts`
     `gcDeviceImages`) read only `messages.content`/`edits` today — an image that only appears in an annotation
