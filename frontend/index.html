@@ -12,16 +12,16 @@
     <meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)" />
     <title>Threadz</title>
     <script>
-      // Pre-paint theme (twinz): single writer for the root class, so no flash.
+      // Pre-paint theme: single writer for the root class, so no flash.
       // React only ever calls window._setTheme.
       (function () {
         var root = document.documentElement;
-        var theme = localStorage.getItem("twinz-theme") || "system";
+        var theme = localStorage.getItem("threadz-theme") || "system";
         root.classList.remove("light", "dark", "system");
         root.classList.add(theme);
         window._setTheme = function (t) {
-          if (!t) { localStorage.removeItem("twinz-theme"); t = "system"; }
-          else { localStorage.setItem("twinz-theme", t); }
+          if (!t) { localStorage.removeItem("threadz-theme"); t = "system"; }
+          else { localStorage.setItem("threadz-theme", t); }
           root.classList.remove("light", "dark", "system");
           root.classList.add(t);
         };

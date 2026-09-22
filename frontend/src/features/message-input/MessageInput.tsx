@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from "react";
 import { useImperativeHandle } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { ImageButton, MarkdownEditor } from "@/features/editor";
 import { cn } from "@/lib/cn";
 import { useMessageInput } from "./useMessageInput";
@@ -27,6 +27,10 @@ export type MessageInputProps = {
   /** Called after a successful send with whatever text is left in the box. */
   onSubmitted?: (rest: string) => void;
   submitLabel: ReactNode;
+  /** Accessible name for the submit button — needed when `submitLabel` is icon-only. */
+  submitAriaLabel?: string;
+  /** Defaults to the regular text-button size; pass `"icon"` when `submitLabel` is icon-only. */
+  submitButtonSize?: ButtonProps["size"];
   /** Extra buttons overlaid on the editor (the composer's mic button), absolutely positioned by the caller. */
   overlay?: ReactNode;
   /** Extra controls in the bottom row, before the submit button (the composer's mode toggle / checkbox). */
@@ -49,6 +53,8 @@ export const MessageInput = ({
   onSubmit,
   onSubmitted,
   submitLabel,
+  submitAriaLabel,
+  submitButtonSize,
   overlay,
   controls,
   statusOverride,
@@ -117,7 +123,13 @@ export const MessageInput = ({
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
         {controls}
         <div className="ml-auto flex items-center gap-1">
-          <Button disabled={busy || !draft.trim()} onClick={send}>
+          <Button
+            size={submitButtonSize}
+            aria-label={submitAriaLabel}
+            title={submitAriaLabel}
+            disabled={busy || !draft.trim()}
+            onClick={send}
+          >
             {submitLabel}
           </Button>
           {trailingActions}

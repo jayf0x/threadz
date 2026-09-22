@@ -1,8 +1,8 @@
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-// Bare controls, same look as twinz `Field`'s input — for places a visible label would be noise
-// (search box, composer). Candidate to upstream into twinz's field.tsx.
+// Bare controls, same look as the shared design system's `Field` input — for places a visible
+// label would be noise (search box, composer).
 const shared =
   "w-full rounded-md border border-input bg-background text-foreground outline-none " +
   "placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";

@@ -30,13 +30,15 @@ Typecheck passing says nothing about whether the UI renders.
 
 **Enforced by `bun run check`** (fix the code, don't work around it): no `any` (a `biome-ignore` with a
 reason is the only exit), no `../` imports, no reaching into `features/<x>/*` except its `index.ts`, unused
-imports/vars, formatting + import order, raw colours (`// twinz-allow-raw-color` for a real one-off), and
+imports/vars, formatting + import order, raw colours (`// threadz-allow-raw-color` for a real one-off), and
 `noUncheckedIndexedAccess`.
 
 **Guidelines** (not enforced; use judgment): file order (imports, types, exported component, its helpers in
 call order, constants; in a component state, handlers, effects last); effects only for syncing with something
 external, never for derived state; fetching and transforming data live in a hook or pure function, not in JSX;
-extract a helper when the same code shows up a third time; delete dead code and comments that restate the code.
+extract a helper when the same code shows up a third time; delete dead code and comments that restate the code;
+primary actions (send, add, create) use an icon once an established one exists for the action, not a text
+label — reserve text labels for actions without an obvious icon, or where the icon alone would be ambiguous.
 
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.

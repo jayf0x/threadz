@@ -17,9 +17,9 @@
  */
 
 :root[data-palette="ochre-paper"] {
-  --twinz-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --twinz-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --twinz-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --background: oklch(0.973 0.008 85);
   --foreground: oklch(0.235 0.014 60);

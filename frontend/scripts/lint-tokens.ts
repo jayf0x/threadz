@@ -3,7 +3,7 @@
 // raw color instead of a `var(--...)` / Tailwind token class. Themes are the
 // one place raw values belong, so src/themes/ is exempt. A line that has a
 // legitimate one-off raw color (a decorative gradient, say) can opt out with
-// a trailing `// twinz-allow-raw-color` comment.
+// a trailing `// threadz-allow-raw-color` comment.
 //
 // This is the "design tokens as AI guardrails" pattern: a build-time check
 // catches vibe-coding color drift on every commit, instead of relying on
@@ -15,7 +15,7 @@ const ROOT = join(import.meta.dir, "..");
 const SRC = join(ROOT, "src");
 const EXEMPT_DIRS = [join(SRC, "themes")];
 const SCAN_EXTENSIONS = [".ts", ".tsx", ".css"];
-const ALLOW_MARKER = "twinz-allow-raw-color";
+const ALLOW_MARKER = "threadz-allow-raw-color";
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/;
 // `hsl(var(--x))` and friends read a token, which is the point; only literal channels are drift.

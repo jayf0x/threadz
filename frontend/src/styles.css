@@ -2,7 +2,7 @@
 @import "./themes/ochre-paper.css";
 
 /* Threadz = a commonplace book: a record you append to, not a conversation.
-   Tokens + theme come from twinz (ochre-paper). Components read colour through
+   Tokens + theme come from the active palette (ochre-paper). Components read colour through
    token names only — `bun run lint:tokens` enforces it. */
 
 :root {
@@ -15,9 +15,9 @@
 }
 
 @theme inline {
-  --font-sans: var(--twinz-font-sans);
-  --font-serif: var(--twinz-font-serif);
-  --font-mono: var(--twinz-font-mono);
+  --font-sans: var(--palette-font-sans);
+  --font-serif: var(--palette-font-serif);
+  --font-mono: var(--palette-font-mono);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);

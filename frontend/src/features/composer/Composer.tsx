@@ -1,4 +1,4 @@
-import { Copy, CornerDownLeft, Mic, MoreHorizontal, Square } from "lucide-react";
+import { Copy, Loader2, Mic, MoreHorizontal, Plus, Send, Square } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
@@ -200,11 +200,16 @@ export const Composer = ({
               )}
             </>
           }
+          submitButtonSize="icon"
+          submitAriaLabel={busy ? "Working…" : mode === "note" ? "Add note" : "Ask Claude"}
           submitLabel={
-            <>
-              {busy ? "Working…" : mode === "note" ? "Add" : "Ask"}
-              {!busy && <CornerDownLeft className="size-3.5 opacity-70" />}
-            </>
+            busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : mode === "note" ? (
+              <Plus className="size-4" />
+            ) : (
+              <Send className="size-4" />
+            )
           }
           trailingActions={
             lastMessage && (

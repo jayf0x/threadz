@@ -127,7 +127,7 @@ frontend/src/
 - `strict` + `noUncheckedIndexedAccess`; `any` only behind a `biome-ignore` with a reason; narrow `unknown` at trust boundaries. Variants are
   `Record<Variant, string>` maps or `as const` lists that types derive from.
 - Colours come from tokens only (`bun run --cwd frontend lint:tokens`); opt out of a genuine one-off with a
-  trailing `// twinz-allow-raw-color`.
+  trailing `// threadz-allow-raw-color`.
 
 ## API (JSON, except the image bytes)
 

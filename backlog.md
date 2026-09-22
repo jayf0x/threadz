@@ -3,6 +3,48 @@
 Open items only. Resolved items live in the git history; deliberate scope choices are in `README.md`; ideas that are
 not committed to yet are in `inspiration.md`. What is left is v1 work, v2, or can't be settled without a real phone.
 
+## Now — pre-v2 polish (2026-09-22)
+
+Feedback on the annotations/copy-thread round, plus a few items pulled forward from `inspiration.md`. Decided calls
+made here (no further sign-off needed): annotations become **one per message** (upsert, not append — it's a small
+note, not a sub-thread) and are **editable and deletable**; the visible word for them changes to **"Note"**, the
+backend table/API keep the name `annotation` (not worth a rename); icon-over-text on primary actions is now a
+standing convention (AGENTS.md); no reference/citation feature exists yet and none is being built now (parked in
+`inspiration.md`'s "Annotation extensions" / "Staleness citations" for v2).
+
+- **PWA can't reach a LAN backend.** `BACKEND_URL` (`lib/config.ts`) is computed once at load from
+  `location.hostname` — correct if the page was ever loaded from the Mac's LAN IP, wrong if someone opened
+  `localhost:5173` on the phone itself (which then means "this phone", not the Mac) and installed from there.
+  Add a device-only **Backend URL** field in Settings (`lib/settings.ts`, `SettingsPanel.tsx`) that overrides the
+  computed default; `api.ts` reads it per-request, not once at import time. Document in README under "Reach the
+  backend + Ollama from the phone".
+- **Edit mode can't remove markdown formatting.** `MarkdownEditor` (`features/editor/`) is a WYSIWYG surface
+  (Milkdown Crepe) everywhere, including message-edit. There's no way to select "**bold**" and see the `**` to
+  delete them. Give `MarkdownEditor` a raw mode — plain textarea bound to the same markdown string, same handle
+  contract (`getMarkdown`/`setMarkdown`/`insertAtCaret`/`insertImage` as a text-insert) — and use it for editing an
+  existing message. Build it generically enough that annotation-edit (below) can reuse it.
+- **Notes (annotations): finish the backend contract.** `editAnnotation` exists (`db.ts`, `server.ts` PATCH
+  `/api/threads/:id/annotations/:aid`) but there's no delete, and nothing stops a message from getting more than
+  one. Add: a unique index `annotations(message_id)` (DB constraint does the "one per message" work, not app code);
+  a `DELETE /api/threads/:id/annotations/:aid` route + `deleteAnnotation` in `db.ts`, mirrored in `local.ts` for the
+  device copy, threaded through the same places the original annotation work touched (`countUnsynced`,
+  `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, thread-hash, trash, backup import/export,
+  both image orphan scans); `appendAnnotation`'s sync-merge path (`db.ts` `mergeRemoteThread`, and `local.ts`'s
+  equivalent) needs to treat "a second annotation arrives for a message that already has one" as an edit onto the
+  existing row (content-wins, same as message edits), not a unique-constraint failure. `useThread.ts` needs
+  `deleteAnnotation`, and both need wiring into whatever UI the next item builds. Extend `tests/backend.test.ts`.
+- **Notes (annotations): the UI.** Today they render as a stacked block under the message
+  (`ThreadView.tsx` `EntryRow`), indistinguishable from another message. Redesign so a note reads as *attached to*
+  the message but clearly separate — collapsed by default (a small indicator/badge when one exists), expands inline
+  with a snappy, deliberate transition, not a 2005-style popover. Small and quiet by design: a note is a short
+  personal aside, not a reply. Wire in edit and delete (both now exist server-side) and the icon-only "add a note"
+  trigger. Good candidate for the `frontend-design` skill.
+- **Motion.** Backend is fine as-is; the frontend reads static next to what the redesigned notes UI needs to feel
+  like. Add a small animation library (research React Spring vs. Motion/Framer Motion vs. GSAP vs. plain CSS
+  transitions first — several already cover this without a new dependency) and apply restrained, subtle motion to
+  the popover, the notes UI and message entries. Don't turn this into a design-system rewrite; touch the existing
+  large views/components, not every primitive.
+
 ## Next — v1
 
 Goals: capture an idea in seconds without opening anything else, replace Obsidian and chat apps, stay 100% local.
