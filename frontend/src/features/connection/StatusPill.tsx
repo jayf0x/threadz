@@ -14,11 +14,11 @@ export const StatusPill = () => {
   const label = local ? "Local" : up ? "Live" : "Offline";
   const hint = local
     ? up
-      ? "Working on this device. Main is reachable — open to sync."
-      : "Working on this device. Main is not reachable."
+      ? "Working locally. Reachable — open to sync."
+      : "Working locally. No connection."
     : up
-      ? "Live on main. Open to work locally."
-      : "Main is unreachable. Open for options.";
+      ? "Live. Open to work locally."
+      : "Unreachable. Open for options.";
 
   return (
     <button
@@ -42,7 +42,7 @@ export const StatusPill = () => {
       {label}
       {pending > 0 && (
         <span className="text-primary">
-          {pending}↑<span className="sr-only"> changes not on main</span>
+          {pending}↑<span className="sr-only"> changes not yet synced</span>
         </span>
       )}
     </button>

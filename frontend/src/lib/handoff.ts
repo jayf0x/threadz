@@ -28,7 +28,7 @@ import { emitChange } from "./sync";
 // (Being cut off from main does the same flip automatically — see `via` in api.ts.)
 export const enterLocal = async () => {
   await pullMain().catch(() => {}); // best effort: even a slightly stale copy is a full copy
-  if (!replicaReady()) throw new Error("Connect to main once first, so a copy can be made for offline use.");
+  if (!replicaReady()) throw new Error("Connect once first, so a copy can be made for offline use.");
   setMode("local");
   emitChange();
 };
@@ -56,7 +56,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
   const refused = new Set<string>(); // photos main turned down for good: they stay dirty on the device
 
   for (let round = 0; round < 4; round++) {
-    phase?.("Reading main…");
+    phase?.("Reading…");
     report = { ...addReports(report, await pullMain()), pushed: report.pushed, skippedImages: report.skippedImages };
 
     const batch = await unsyncedBatch();
@@ -131,7 +131,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
     )
       return report;
   }
-  throw new Error("Main kept changing while syncing — nothing was lost; try again.");
+  throw new Error("Kept changing while syncing — nothing was lost; try again.");
 };
 
 // One sync at a time across tabs.

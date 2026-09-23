@@ -44,7 +44,7 @@ export const ConnectionDialog = () => {
   const goLocal = () =>
     run(async () => {
       await enterLocal();
-      setNote("You're on this device's copy. Main only changes when you sync.");
+      setNote("Now working from this device. Sync when ready.");
     });
 
   const syncAndGoLive = () =>
@@ -78,9 +78,9 @@ export const ConnectionDialog = () => {
     >
       <div className="flex flex-col gap-5 px-6 py-6">
         <header>
-          <Eyebrow>{local ? "Local · this device" : mainOk ? "Live · main" : "Live · offline"}</Eyebrow>
+          <Eyebrow>{local ? "Local" : mainOk ? "Live" : "Offline"}</Eyebrow>
           <h2 id="conn-title" className="mt-1 font-serif text-3xl leading-tight tracking-tight">
-            {local ? (up ? "Main is back." : "Working locally.") : mainOk ? "Live on main." : "Can't reach main."}
+            {local ? (up ? "Back online." : "Working offline.") : mainOk ? "Connected." : "Can't connect."}
           </h2>
         </header>
 
@@ -98,10 +98,7 @@ export const ConnectionDialog = () => {
 
         {local ? (
           <section className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              This device holds the latest copy. Notes are saved here; main only changes when you sync, and syncing also
-              brings in anything main gained meanwhile.
-            </p>
+            <p className="text-sm text-muted-foreground">Notes save here until you sync.</p>
             <p className="font-mono text-[11px] uppercase tracking-widest">
               {pending ? describeUnsynced(s.unsynced) : "Nothing waiting to sync"}
             </p>
@@ -109,23 +106,23 @@ export const ConnectionDialog = () => {
               <Button disabled={busy || !up} onClick={syncAndGoLive}>
                 {busy ? (phase ?? "Syncing…") : pending ? "Sync & go live" : "Go live"}
               </Button>
-              {!up && <span className="text-xs text-muted-foreground">Available when main is reachable.</span>}
+              {!up && <span className="text-xs text-muted-foreground">Available once back online.</span>}
             </div>
           </section>
         ) : (
           <section className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
               {mainOk
-                ? "Everything you write goes straight to main. If main drops away, the app carries on with this device's copy."
+                ? "Saves directly. Falls back to this device if the connection drops."
                 : replicaReady()
-                  ? "Main isn't reachable."
-                  : "Main isn't reachable, and this device has no copy yet. Connect once and it will make one."}
+                  ? "Can't connect. Working from the last saved copy."
+                  : "Can't connect, and there's no copy yet. Connect once to make one."}
             </p>
             {pending > 0 && (
               <div className="border border-primary bg-accent p-3">
-                <p className="text-sm">{describeUnsynced(s.unsynced)} from local work never reached main.</p>
+                <p className="text-sm">{describeUnsynced(s.unsynced)} not yet synced.</p>
                 <Button className="mt-2" size="sm" disabled={busy || !up} onClick={syncAndGoLive}>
-                  {busy ? (phase ?? "Syncing…") : "Sync to main"}
+                  {busy ? (phase ?? "Syncing…") : "Sync now"}
                 </Button>
               </div>
             )}
@@ -135,9 +132,7 @@ export const ConnectionDialog = () => {
                   <HardDriveDownload className="size-3.5" /> Work locally
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Switch to this device's copy on purpose — say, before you go offline. You choose when to sync back.
-              </p>
+              <p className="text-xs text-muted-foreground">You choose when to sync back.</p>
             </div>
           </section>
         )}
