@@ -67,7 +67,20 @@ export const useThread = (threadId: string | null) => {
     setUnsynced(pending);
     setAnnotations(annos);
     setUnsyncedAnnotations(pendingAnnos);
-    if (additions.length) setJustAdded((prev) => new Set([...prev, ...additions]));
+    // Self-clearing, not permanent: `isNew` only needs to be true long enough for the entrance
+    // animation to play once. Left set forever, it'd replay on every future remount of the same
+    // row — which a virtualized list does constantly as rows scroll in and out — and it'd retain
+    // every message id ever seen in a long-lived thread for nothing.
+    if (additions.length) {
+      setJustAdded((prev) => new Set([...prev, ...additions]));
+      setTimeout(() => {
+        setJustAdded((prev) => {
+          const next = new Set(prev);
+          for (const id of additions) next.delete(id);
+          return next;
+        });
+      }, 1000);
+    }
   }, [threadId]);
 
   const refresh = useCallback(async () => {

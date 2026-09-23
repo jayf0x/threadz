@@ -1,4 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
 import { ArrowLeft, Check, CloudOff, Copy, Mic, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { AnimatePresence, m as Motion, useReducedMotion } from "motion/react";
@@ -50,9 +51,23 @@ export const ThreadView = ({
   const [scratch, setScratch] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
+
+  // Windowed rendering: a long-lived thread can reach hundreds of entries, each its own
+  // MarkdownEditor (a lazy Milkdown/ProseMirror mount) — cheap to scroll past, not cheap to all
+  // exist at once. `estimateSize` is a rough starting guess (most entries are a line or two);
+  // `measureElement` (wired on each row below) corrects it against the real rendered height as
+  // rows come into view, including a later resize (opening edit mode, an image loading in).
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 120,
+    overscan: 8,
+    getItemKey: (index) => messages[index]?.id ?? index,
+  });
 
   // One note per message (DB-enforced), so this is a plain lookup, not a grouped list.
   const noteByMessage = useMemo(() => new Map(annotations.map((a) => [a.messageId, a])), [annotations]);
@@ -131,7 +146,7 @@ export const ThreadView = ({
         <p className="border-b border-destructive px-6 py-2 font-mono text-[11px] text-destructive md:px-10">{error}</p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 md:px-10">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 md:px-10">
         <div className="mx-auto max-w-3xl pb-6">
           {messages.length === 0 && !scratch && (
             <p className="py-16 font-serif text-lg italic text-muted-foreground">
@@ -139,22 +154,40 @@ export const ThreadView = ({
             </p>
           )}
 
-          {messages.map((m) => (
-            <EntryRow
-              key={m.id}
-              message={m}
-              pending={unsynced.has(m.id)}
-              busy={busy}
-              isNew={justAdded.has(m.id)}
-              onEdit={(text) => editMessage(m.id, text)}
-              onCopyThread={() => copyThreadFrom(m.id)}
-              note={noteByMessage.get(m.id)}
-              unsyncedAnnotations={unsyncedAnnotations}
-              onAddAnnotation={(text) => addAnnotation(m.id, text)}
-              onEditAnnotation={editAnnotation}
-              onDeleteAnnotation={deleteAnnotation}
-            />
-          ))}
+          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+            {rowVirtualizer.getVirtualItems().map((row) => {
+              const m = messages[row.index];
+              if (!m) return null;
+              return (
+                <div
+                  key={row.key}
+                  data-index={row.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${row.start}px)`,
+                  }}
+                >
+                  <EntryRow
+                    message={m}
+                    pending={unsynced.has(m.id)}
+                    busy={busy}
+                    isNew={justAdded.has(m.id)}
+                    onEdit={(text) => editMessage(m.id, text)}
+                    onCopyThread={() => copyThreadFrom(m.id)}
+                    note={noteByMessage.get(m.id)}
+                    unsyncedAnnotations={unsyncedAnnotations}
+                    onAddAnnotation={(text) => addAnnotation(m.id, text)}
+                    onEditAnnotation={editAnnotation}
+                    onDeleteAnnotation={deleteAnnotation}
+                  />
+                </div>
+              );
+            })}
+          </div>
 
           <AnimatePresence>
             {scratch && (
