@@ -12,11 +12,12 @@ AI metadata is out of v1: gated behind `THREADZ_METADATA` (off by default — se
 show/match title and note text only, `description`/`tags`/`embedding` stay nullable fields nothing new depends on.
 
 `Menu` (Radix `@radix-ui/react-dropdown-menu`, decided 2026-09-23, see below) and `MessageInput` are built;
-`Composer` wraps `MessageInput`. Each of your own notes has a ⋯
-(`ThreadView.tsx`'s `EntryRow`) opening **Edit** or **Copy thread from here**, plus its own always-there `StickyNote`
-icon that expands a small inline note editor (add/edit/delete) — no separate "Annotate" menu entry any more. The
-composer has its own ⋯ beside Send that copies at the last message and appends the typed draft as the copy's next
-note, in one call.
+`Composer` wraps `MessageInput`. Each of your own notes has a ⋯ (`ThreadView.tsx`'s `EntryRow`) opening **Edit**
+or **Copy thread from here**, plus its own always-there `StickyNote` icon that opens a Radix `Popover` (add/edit/
+delete) instead of expanding inline — a note used to push the rest of the thread down and out of view while it
+was open, which lost your place scrolling past it; a popover floats over the content instead, so reading down a
+long thread never gets interrupted by one. The composer has its own ⋯ beside Send that copies at the last message
+and appends the typed draft as the copy's next note, in one call.
 Copy (`POST /api/threads/:id/copy` + `localApi.copyThread`, one transaction each, idempotent on a client-minted
 `newThreadId`) and Annotations (own SQLite table + IndexedDB stores, own dirty flag threaded through every sync
 path — `countUnsynced`, `unsyncedBatch`, `commitPush`, `mergeRemoteThread`, `applyRemoteDelete`, the handoff verify
@@ -36,6 +37,15 @@ thread's messages live or local alike, so no new backend endpoint was needed. Re
 beside the settings gear.
 
 v1 is closed out; what's left of it is real-phone-only — see "Blocked on a real phone" below.
+
+**Decided 2026-09-23 (round two of the same feedback pass):** the note popover, the mobile header, the
+`html`/`body` overflow lock, the edit box's measured min-height and the message-list virtualizer (all above, and
+`AGENTS.md`) landed **without a browser or device available this session** — no `browser_tools`, no simulator
+with a full Xcode install. Verified: `bun run check` and `bun run --cwd frontend build`, and a careful read of
+each change against the framework's own documented behavior (Radix's collision handling, `@tanstack/react-virtual`'s
+dynamic-measurement recipe). Not verified: how any of it actually looks or feels, on a phone or otherwise. Treat
+the "everything is verified headless in Chrome" line below as true through the 390px-viewport work that predates
+this round, not this round itself, until someone actually opens it.
 
 **Decided 2026-09-23:** hand-rolled `components/ui/popover.tsx` is gone, replaced by
 `@radix-ui/react-dropdown-menu` inside `components/ui/menu.tsx` (same `{trigger, items, align}` call shape, zero

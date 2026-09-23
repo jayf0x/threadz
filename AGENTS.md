@@ -45,13 +45,24 @@ label — reserve text labels for actions without an obvious icon, or where the 
   `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
 - **Menus, popovers, dropdowns, dialogs: a real primitives library, never hand-rolled.** `components/ui/menu.tsx`
-  wraps `@radix-ui/react-dropdown-menu` — positioning (flip/shift to stay on screen), the portal, outside-click,
-  Escape and focus management are Radix's, not ours. A hand-rolled popover (custom `getBoundingClientRect`
-  flip math, manual outside-click/focus-trap listeners) lived here before and broke twice in one week (open
-  wouldn't fit the viewport, then a later change made it not open at all). Reach for the matching `@radix-ui/react-*`
-  primitive first for anything popover/menu/dialog-shaped; write the positioning/focus/dismissal logic yourself
-  only if no primitive fits. (The native `<dialog>` in `ConnectionDialog` and the native `<select>` in
-  `components/ui/select.tsx` are the platform already covering this — leave those as they are, no library needed.)
+  wraps `@radix-ui/react-dropdown-menu`; a message's note (`ThreadView.tsx`) is `@radix-ui/react-popover` directly —
+  positioning (flip/shift to stay on screen, `--radix-popover-content-available-width` for a max-width that can
+  never overflow), the portal, outside-click, Escape and focus management are Radix's, not ours. A hand-rolled
+  popover (custom `getBoundingClientRect` flip math, manual outside-click/focus-trap listeners) lived here before
+  and broke twice in one week (open wouldn't fit the viewport, then a later change made it not open at all).
+  Reach for the matching `@radix-ui/react-*` primitive first for anything popover/menu/dialog-shaped; write the
+  positioning/focus/dismissal logic yourself only if no primitive fits. (The native `<dialog>` in
+  `ConnectionDialog` and the native `<select>` in `components/ui/select.tsx` are the platform already covering
+  this — leave those as they are, no library needed.)
+- **`html`/`body` never scroll** (`styles.css`: `overflow: hidden`). Every scrollable region is its own
+  `overflow-y-auto` element (`ThreadView`'s message list, `ThreadList`'s index) — the page itself doesn't, on
+  purpose: it stops a too-wide child from becoming a horizontal scrollbar instead of just clipping, and it stops
+  iOS from scrolling the whole page to "reveal" a focused input when nothing actually needs scrolling (which
+  otherwise leaves dead space the size of the keyboard under whatever you were looking at).
+- **A long message list is virtualized** (`ThreadView.tsx`, `@tanstack/react-virtual`) — each entry is its own
+  lazy-loaded Milkdown editor, not cheap to all mount at once. Rows are measured (`measureElement`), not a fixed
+  guess, since edit mode, an image, or a note popover all change a row's real height. Follow the same "measure,
+  don't guess" pattern for any other list that can get long instead of a fixed row-height virtualizer.
 - **Motion** (`motion/react`; `LazyMotion`/`domAnimation` wraps the app once in `App.tsx`, components use the
   lean `m` component, not `motion`) is the app's animation library — the only case plain CSS transitions can't
   cover is an element actually leaving the tree (`AnimatePresence`: a new message's entrance, the voice-recovery
