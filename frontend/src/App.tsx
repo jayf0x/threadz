@@ -1,9 +1,10 @@
 import { domAnimation, LazyMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { ConnectionDialog } from "@/features/connection";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
+import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
 import { shortcutBlocked } from "@/lib/dom";
 import { useStatus } from "@/lib/status";
 
@@ -16,20 +17,50 @@ import { useStatus } from "@/lib/status";
 // layout animation code this app never uses) — one provider up here covers all of them.
 export const App = () => {
   const { mode } = useStatus();
-  const [selected, setSelected] = useState<string | null>(null); // survives a mode switch: same thread, other store
+  const [selected, setSelectedRaw] = useState<string | null>(null); // survives a mode switch: same thread, other store
+  // The open thread's currently-selected message — thread-scoped (cleared any time `selected`
+  // changes), mirrors `selected`/its setters exactly: a controlled value down to ThreadView plus
+  // an `onSelectMessage` callback for a plain in-thread click. Reflected in `?msg=` by the URL-sync
+  // effect below, same as `selected` is reflected in `?thread=`.
+  const [selectedMessageId, setSelectedMessageIdRaw] = useState<string | null>(null);
   // Set once by a `/capture` deep link (the manifest's `shortcuts` entry, or `?capture` typed
   // directly): scopes the composer autofocus to that one freshly-opened thread, not every thread
   // you open afterward — `selected` moves on the moment you navigate away.
   const [captureId, setCaptureId] = useState<string | null>(null);
-  // Set by the `?thread=<id>&msg=<id>` deep link (below) or a todo row's click (TodosPanel, via
-  // ThreadList): the message to scroll to and flash once the thread is open. `openThreadAt` is the
-  // one place that does this — the query-param effect and the todo click both call it instead of
-  // each carrying their own copy of "open this thread, then jump to this message".
-  const [scrollTarget, setScrollTarget] = useState<{ threadId: string; messageId: string } | null>(null);
+  // A one-shot "this message just arrived via navigation" signal — a todo row's click or landing
+  // on a `?thread=&msg=` link — as opposed to `selectedMessageId` changing from a plain in-thread
+  // click. Only this case gets scrolled into view and pulsed (ThreadView's `pulseMessageId`);
+  // `openThreadAt` is the one place that sets it, same message any of those paths carry.
+  const [pulseTarget, setPulseTarget] = useState<{ threadId: string; messageId: string } | null>(null);
+  // Seeds the URL-sync effect below so the very first write after a `?thread=&msg=` deep link (or
+  // a `/capture` one) lands as a `replaceState`, not a `pushState` — it's establishing the URL for
+  // wherever the page already says it landed, not a new user-driven navigation.
+  const lastSyncedThread = useRef<string | null>(null);
+  const urlSyncPending = useRef(true); // true until the first post-mount render, so this effect's very first pass (before any deep-link effect below has resolved) never writes a premature "nothing selected" URL over one that's still being parsed
 
+  /** The one place that opens a thread — optionally jumping straight to one message in it (a todo
+   * row's click, or a `?thread=&msg=` deep link). Every navigational path funnels through here so
+   * the URL-sync effect only has one kind of state change to react to. */
   const openThreadAt = useCallback((threadId: string, messageId?: string) => {
-    setSelected(threadId);
-    setScrollTarget(messageId ? { threadId, messageId } : null);
+    setSelectedRaw(threadId);
+    setSelectedMessageIdRaw(messageId ?? null);
+    setPulseTarget(messageId ? { threadId, messageId } : null);
+  }, []);
+
+  /** Leaves the open thread entirely (the mobile back arrow, Escape, a deletion) — clears the
+   * message selection and pulse target right along with it, same as switching to a different
+   * thread does. */
+  const closeThread = useCallback(() => {
+    setSelectedRaw(null);
+    setSelectedMessageIdRaw(null);
+    setPulseTarget(null);
+  }, []);
+
+  /** A plain in-thread click (toggling which message is selected): message-scoped only, no thread
+   * change, and — unlike `openThreadAt` — no pulse. It's already on screen; there's nothing to
+   * scroll to or draw the eye to. */
+  const onSelectMessage = useCallback((id: string | null) => {
+    setSelectedMessageIdRaw(id);
   }, []);
 
   useEffect(() => {
@@ -39,23 +70,55 @@ export const App = () => {
     const search = params.toString();
     history.replaceState(null, "", location.pathname + (search ? `?${search}` : "") + location.hash);
     createOrReuseThread().then((id) => {
-      setSelected(id);
+      lastSyncedThread.current = id; // seed: the URL-sync effect's first write for this thread is a replace, not a push
+      setSelectedRaw(id);
       setCaptureId(id);
     });
   }, []);
 
   // `?thread=<id>&msg=<id>`: the shareable/back-button-able form of a todo jump (see TodosPanel).
+  // Reading is the only thing this effect does now — writing the canonical URL back (whether from
+  // this deep link or any later navigation) is the URL-sync effect below's job alone.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const threadId = params.get("thread");
+    const { threadId, messageId } = parseDeepLink(location.search);
     if (!threadId) return;
-    const messageId = params.get("msg") ?? undefined;
-    params.delete("thread");
-    params.delete("msg");
-    const search = params.toString();
-    history.replaceState(null, "", location.pathname + (search ? `?${search}` : "") + location.hash);
-    openThreadAt(threadId, messageId);
+    lastSyncedThread.current = threadId; // seed: same reasoning as the capture effect above
+    openThreadAt(threadId, messageId ?? undefined);
   }, [openThreadAt]);
+
+  // The pushes below only earn "the back button steps between threads" if back/forward actually
+  // lands somewhere: this re-applies whatever the URL now says. Seeding `lastSyncedThread` first
+  // (same trick as the two effects above) tells the sync effect this state change already matches
+  // the URL the browser just navigated to, so it replaces in place instead of pushing a new entry
+  // right back on top of the one the user just stepped off of.
+  useEffect(() => {
+    const onPopState = () => {
+      const { threadId, messageId } = parseDeepLink(location.search);
+      lastSyncedThread.current = threadId;
+      if (threadId) openThreadAt(threadId, messageId ?? undefined);
+      else closeThread();
+    };
+    addEventListener("popstate", onPopState);
+    return () => removeEventListener("popstate", onPopState);
+  }, [openThreadAt, closeThread]);
+
+  // The single place the URL is ever written from: `?thread=&msg=` always mirrors `selected`/
+  // `selectedMessageId`, however they got there (a click, a todo jump, a deep link). Push when the
+  // thread changes (so the back button steps between threads), replace when only the message
+  // selection changes within the same thread (toggling a selection shouldn't spam history).
+  useEffect(() => {
+    if (urlSyncPending.current) {
+      // Mount's first pass always sees the pre-effect state (null, or whatever a lazy initializer
+      // set) — the capture/deep-link effects above haven't run their `setState` yet this render.
+      // Skip writing anything until their result shows up as a real prop change on a later pass.
+      urlSyncPending.current = false;
+      return;
+    }
+    const url = deepLinkUrl(location.pathname, location.hash, selected, selectedMessageId);
+    if (selected === lastSyncedThread.current) history.replaceState(null, "", url);
+    else history.pushState(null, "", url);
+    lastSyncedThread.current = selected;
+  }, [selected, selectedMessageId]);
 
   return (
     <LazyMotion features={domAnimation}>
@@ -65,10 +128,12 @@ export const App = () => {
       <Shell
         key={mode}
         selected={selected}
-        setSelected={setSelected}
+        closeThread={closeThread}
         autofocus={!!selected && selected === captureId}
         openThreadAt={openThreadAt}
-        scrollToMessageId={selected && scrollTarget?.threadId === selected ? scrollTarget.messageId : undefined}
+        selectedMessageId={selectedMessageId}
+        onSelectMessage={onSelectMessage}
+        pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
       />
       <ConnectionDialog />
     </LazyMotion>
@@ -77,43 +142,45 @@ export const App = () => {
 
 const Shell = ({
   selected,
-  setSelected,
+  closeThread,
   autofocus,
   openThreadAt,
-  scrollToMessageId,
+  selectedMessageId,
+  onSelectMessage,
+  pulseMessageId,
 }: {
   selected: string | null;
-  setSelected: (id: string | null) => void;
+  closeThread: () => void;
   autofocus: boolean;
   openThreadAt: (threadId: string, messageId?: string) => void;
-  scrollToMessageId: string | undefined;
+  selectedMessageId: string | null;
+  onSelectMessage: (id: string | null) => void;
+  pulseMessageId: string | undefined;
 }) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !shortcutBlocked(e)) setSelected(null);
+      if (e.key === "Escape" && !shortcutBlocked(e)) closeThread();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [setSelected]);
+  }, [closeThread]);
 
   return (
     <div className="grid h-dvh lg:grid-cols-[23rem_1fr]">
       <aside className={cn("min-h-0 border-r border-border bg-secondary", selected && "hidden lg:block")}>
-        <ThreadList
-          onOpen={openThreadAt}
-          selectedId={selected}
-          onDeleted={(id) => id === selected && setSelected(null)}
-        />
+        <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
       </aside>
       <main className={cn("min-h-0", !selected && "hidden lg:block")}>
         {selected ? (
           <ThreadView
             key={selected}
             threadId={selected}
-            onBack={() => setSelected(null)}
-            onCopied={setSelected}
+            onBack={closeThread}
+            onCopied={(id) => openThreadAt(id)}
             autofocus={autofocus}
-            scrollToMessageId={scrollToMessageId}
+            selectedMessageId={selectedMessageId}
+            onSelectMessage={onSelectMessage}
+            pulseMessageId={pulseMessageId}
           />
         ) : (
           <Blank />

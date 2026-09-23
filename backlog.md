@@ -208,23 +208,38 @@ Still open, needs real implementation work (see the sub-sections below, each its
 Land in this order — item 1 first and solo (it touches the URL/selection plumbing every other message-row
 change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
 
-1. **URL always reflects what's open, message selection becomes a real thing, not a one-shot flash.** Today
-   only a todo-row click pushes `?thread=&msg=` (`ThreadList.tsx`'s inline `history.pushState`); picking a
-   thread from the Index does nothing to the URL at all — the one manual push call is the only reason todos
-   worked and everything else didn't. Fix at the root: stop pushing the URL from scattered click handlers and
-   sync it from state instead, in one place (`App.tsx`, alongside the existing mount-time `?thread=&msg=`
-   parse it already does for `?capture=1`-style deep links). `selected` (thread) already lives there; give
-   message selection the same status — a real `selectedMessageId`, not the current fire-and-forget
-   `scrollToMessageId` + `highlightId` that fades after 1.6s (`ThreadView.tsx`'s jump-to-message effect, landed
-   this session). Settled shape: clicking a message row selects it (persists, reflected in `?msg=`), clicking
-   it again or clicking another message changes/clears selection, and it's still scrolled-into-view + given an
-   arrival pulse the moment selection changes via navigation (a todo click, a pasted URL) but not from a plain
-   in-thread click (already visible, no scroll needed). Push vs. replace: pushState on a thread change (so back
-   steps between threads, matching today's todo-click precedent), replaceState on a message selection within
-   the same thread (toggling which line is selected shouldn't spam history). Click-target discipline: the
-   select-toggle must not fire from the ⋯ menu, the note trigger, a todo checkbox, or anything inside edit mode
-   — verify empirically (headless render + simulated clicks), don't assume Milkdown's read-only view doesn't
-   already swallow some of these.
+1. **Done.** URL always reflects what's open; message selection is real, persistent, toggleable state, not a
+   one-shot flash. `App.tsx` is now the one place that ever calls `history.pushState`/`replaceState` — a single
+   effect mirrors `?thread=&msg=` from `selected`/`selectedMessageId` however they got there (a click, a todo
+   jump, a deep link); `ThreadList.tsx`'s inline `history.pushState` for the Todos panel is gone, it just calls
+   `onOpen` like every other navigation path now. Pure URL logic (`deepLinkSearch`/`deepLinkUrl`/`parseDeepLink`)
+   lives in `lib/deepLink.ts`, tested in `deepLink.test.ts`. Added a `popstate` listener (not explicitly asked
+   for, but pushState alone doesn't make the back button *do* anything without one) so back/forward actually
+   step between threads, not just rewrite the address bar.
+   `selectedMessageId: string | null` + `onSelectMessage: (id: string | null) => void` live in `App.tsx` right
+   alongside `selected`/`openThreadAt`, passed down to `ThreadView` as a controlled prop + callback — same
+   ownership pattern as threads, not a separate one. Thread-scoped: `openThreadAt`/`closeThread` (the latter
+   replaces the old raw `setSelected(null)` at every call site — back arrow, Escape, delete, mode switch) clear
+   it whenever the open thread changes; a plain in-thread click only ever touches `selectedMessageId` via
+   `onSelectMessage`, never the thread or the URL's push/replace choice directly. Toggle (re-clicking the
+   selected row clears it) is computed at the call site in `ThreadView.tsx`, not inside `EntryRow`.
+   Visual split (point 4's "your call"): kept `.message-highlight`'s one-shot fade as-is in *spirit* but split
+   it into `.message-selected` (persistent, steady tint, no animation — the row's baseline look while selected)
+   and `.message-pulse` (the arrival keyframe, animating from a stronger tint down to `.message-selected`'s own
+   steady value, so the two don't visibly disagree the instant the animation ends). `ThreadView.tsx` renders
+   `EntryRow` with `selected`/`pulsing` (was one `highlighted` bool) — `pulsing` only ever true for a fresh
+   navigational arrival (App.tsx's one-shot `pulseMessageId`, renamed from `scrollToMessageId`), never for a
+   plain click. `EntryRow` is now exported (was module-private) so it's independently testable.
+   Click-target discipline is a pure, exported guard (`rowSelect.ts`'s `shouldSelectRow` + the
+   `ROW_SELECT_IGNORE` data-attribute marking the metadata bar as one zone) verified two ways, both real: a
+   DOM-only test (`rowSelect.test.ts`, happy-dom, no React) covers the `editing`-blocks-everything case and the
+   ignore-zone case including a nested target; a real component render (`EntryRow.test.tsx`, happy-dom +
+   `@testing-library/react`, `@/features/editor` mocked out — Milkdown itself isn't what's under test) clicks
+   the actual ⋯ trigger, note trigger, "edited" toggle, and plain content in the real tree and confirms
+   selection fires only for the last one. happy-dom isn't otherwise wired into this repo's tests yet — the
+   registration (skip Bun's own JS/timer globals, add everything happy-dom has that Bun doesn't, force-override
+   `window`/`document`/`navigator`/`location`/`history`) lives at the top of `EntryRow.test.tsx`; worth lifting
+   into a shared helper if a third test wants a headless render.
 2. **The full gutter** (parked in `inspiration.md`, promoted now). A per-message left rail, not inline text
    decoration — this is the fix for last round's "checkbox floats next to the text" complaint that goes further
    than CSS-only: keep the checkbox, just stop rendering it *inside the text flow*. Mechanism: `Decoration.widget`

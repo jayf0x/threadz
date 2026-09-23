@@ -29,6 +29,7 @@ import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
 import type { Annotation, Message, Thread } from "@/lib/types";
+import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 import { useThread } from "./useThread";
 
 export const ThreadView = ({
@@ -36,15 +37,28 @@ export const ThreadView = ({
   onBack,
   onCopied,
   autofocus,
-  scrollToMessageId,
+  selectedMessageId,
+  onSelectMessage,
+  pulseMessageId,
 }: {
   threadId: string;
   onBack: () => void;
   onCopied: (newThreadId: string) => void; // open the copy once it exists
   /** Land straight in a focused composer (a `/capture` deep link into a fresh thread). */
   autofocus?: boolean;
-  /** A todo jump or `?thread=&msg=` deep link: scroll to this message once loaded, then flash it. */
-  scrollToMessageId?: string;
+  /** The thread's persistently-selected message, if any (controlled — owned by App.tsx right
+   * alongside the open thread itself, mirrored in `?msg=`). Clicking a row selects it; clicking the
+   * selected row again, or a different row, changes/clears it via `onSelectMessage` below. */
+  selectedMessageId: string | null;
+  /** A plain in-thread click reporting the new selection (or `null` to clear it) — never called for
+   * navigational arrivals (see `pulseMessageId`), which App.tsx already reflects into
+   * `selectedMessageId` itself. */
+  onSelectMessage: (id: string | null) => void;
+  /** A todo jump or `?thread=&msg=` deep link *arriving* at a message: scroll it into view and pulse
+   * it once. Always one of the messages `selectedMessageId` already names — this only adds the
+   * one-shot "you just got here" motion on top of the (already-persistent) selected look; a plain
+   * click that changes `selectedMessageId` does not pulse, it's already on screen. */
+  pulseMessageId?: string;
 }) => {
   const {
     messages,
@@ -71,7 +85,7 @@ export const ThreadView = ({
   const [copying, setCopying] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [pulsingId, setPulsingId] = useState<string | null>(null); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
@@ -144,28 +158,29 @@ export const ThreadView = ({
   // a genuinely new message means "scroll to wherever newest now sits" — index 0 when reversed,
   // the end otherwise.
   useEffect(() => {
-    if (scrollToMessageId) return;
+    if (pulseMessageId) return;
     if (!scratch && reversed && orderedMessages.length) rowVirtualizer.scrollToIndex(0, { align: "start" });
     else end.current?.scrollIntoView({ block: "end" });
-  }, [orderedMessages.length, scratch, scrollToMessageId, reversed, rowVirtualizer]);
+  }, [orderedMessages.length, scratch, pulseMessageId, reversed, rowVirtualizer]);
 
   // Jump to a specific message (a todo row's click, or a `?thread=&msg=` deep link): scroll the
   // virtualizer to its index once it's actually in `orderedMessages` — a fresh mount's history load
   // can resolve after this prop is already set, so this keeps re-checking on every update instead of
   // scrolling once to an index that isn't there yet. Indexing into `orderedMessages` (not `messages`)
   // means this keeps landing on the right row whichever way the thread is currently sorted.
-  // `scrolledTo` guards against re-jumping (and re-flashing) on every later message list update once
-  // the target's been hit.
+  // `scrolledTo` guards against re-jumping (and re-pulsing) on every later message list update once
+  // the target's been hit — `selectedMessageId` itself (below) is what actually keeps the row looking
+  // selected; this effect only ever adds the one-shot arrival motion on top of it.
   useEffect(() => {
-    if (!scrollToMessageId || scrolledTo.current === scrollToMessageId) return;
-    const index = orderedMessages.findIndex((m) => m.id === scrollToMessageId);
+    if (!pulseMessageId || scrolledTo.current === pulseMessageId) return;
+    const index = orderedMessages.findIndex((m) => m.id === pulseMessageId);
     if (index === -1) return;
-    scrolledTo.current = scrollToMessageId;
+    scrolledTo.current = pulseMessageId;
     rowVirtualizer.scrollToIndex(index, { align: "center" });
-    setHighlightId(scrollToMessageId);
-    const t = setTimeout(() => setHighlightId(null), 1600);
+    setPulsingId(pulseMessageId);
+    const t = setTimeout(() => setPulsingId(null), 1600);
     return () => clearTimeout(t);
-  }, [scrollToMessageId, orderedMessages, rowVirtualizer]);
+  }, [pulseMessageId, orderedMessages, rowVirtualizer]);
 
   if (missing) return <NotFound onBack={onBack} />;
 
@@ -241,7 +256,9 @@ export const ThreadView = ({
                     pending={unsynced.has(m.id)}
                     busy={busy}
                     isNew={justAdded.has(m.id)}
-                    highlighted={highlightId === m.id}
+                    selected={selectedMessageId === m.id}
+                    pulsing={pulsingId === m.id}
+                    onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
                     onEdit={(text) => editMessage(m.id, text)}
                     onCopyThread={() => copyThreadFrom(m.id)}
                     onSetTodo={(done) => setMessageTodo(m.id, done)}
@@ -322,12 +339,14 @@ const EDIT_MAX_RATIO = 0.6;
 // dim until there's one to show, opens it in a popover instead of pushing the thread's own
 // layout around — reading down a long thread never loses its place to an expanding neighbour.
 // ponytail: every entry is its own read-only editor instance; virtualize if a thread reaches hundreds.
-const EntryRow = ({
+export const EntryRow = ({
   message: m,
   pending,
   busy,
   isNew,
-  highlighted,
+  selected,
+  pulsing,
+  onSelect,
   onEdit,
   onCopyThread,
   onSetTodo,
@@ -341,7 +360,9 @@ const EntryRow = ({
   pending: boolean;
   busy: boolean;
   isNew: boolean; // appended (or synced in) during this session — vs. part of the history load
-  highlighted: boolean; // landed on via a todo jump or `?thread=&msg=` link — flash it
+  selected: boolean; // this thread's persistently-selected message (`?msg=`) — until deselected, not a flash
+  pulsing: boolean; // landed on via a todo jump or `?thread=&msg=` link *this render* — brief arrival pulse on top of `selected`
+  onSelect: () => void; // row clicked: select it, or clear if it's already selected (toggle lives in the caller)
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
   onSetTodo: (done: boolean | null) => void; // ⋯ menu's Add/Remove Todos; null clears the flag
@@ -415,7 +436,19 @@ const EntryRow = ({
 
   return (
     <Motion.article
-      className={cn("group border-b border-rule py-4", highlighted && "message-highlight")}
+      className={cn(
+        "group border-b border-rule py-4",
+        !editing && "cursor-pointer",
+        selected && "message-selected",
+        pulsing && "message-pulse",
+      )}
+      // Row-select: click anywhere in the row selects it (toggling off on a re-click of the same
+      // row is the caller's job — see `onSelect`), except the ⋯ menu, the note trigger, and the
+      // "edited" toggle (all wrapped in one `data-row-select-ignore` zone, see rowSelect.ts) and
+      // anything in edit mode, where this is a live editor instead of a message to select.
+      onClick={(e) => {
+        if (shouldSelectRow(e.target as Element, editing)) onSelect();
+      }}
       // `initial={false}` starts a history-loaded row already in its resting state — only a
       // message that showed up after the fact (a note you just added, one that synced in) gets
       // the little rise-in; a long thread's first render never animates.
@@ -468,7 +501,10 @@ const EntryRow = ({
       )}
 
       {!editing && (
-        <p className={`mt-1.5 flex items-center gap-2 ${tiny}`}>
+        // The whole metadata bar is one row-select-ignore zone (see rowSelect.ts) — the ⋯ menu, the
+        // note trigger, and the "edited" toggle all live here, and none of them should select the
+        // row out from under their own click.
+        <p {...{ [ROW_SELECT_IGNORE]: "" }} className={`mt-1.5 flex items-center gap-2 ${tiny}`}>
           <time>{format(m.createdAt, "d MMM HH:mm")}</time>
           {!!m.meta?.voice && <Mic className="size-2.5" aria-label="voice" />}
           {pending && <CloudOff className="size-2.5" aria-label="only on this device so far" />}

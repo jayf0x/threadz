@@ -148,16 +148,12 @@ export const ThreadList = ({
         </View>
 
         <View shown={panel === "todos"} from="right">
-          <TodosPanel
-            onOpenThread={(threadId, messageId) => {
-              // Shareable/back-button-able: same pair App.tsx's mount effect reads.
-              const params = new URLSearchParams({ thread: threadId, msg: messageId });
-              history.pushState(null, "", `${location.pathname}?${params.toString()}${location.hash}`);
-              onOpen(threadId, messageId);
-              // Stays on Todos: opening a thread from here shouldn't lose your place in the list —
-              // the back arrow (mobile) or picking another thread from Index (desktop) is how you leave it.
-            }}
-          />
+          {/* `onOpen` alone: it's App.tsx's `openThreadAt`, which reflects `?thread=&msg=` into the
+              URL itself now (the centralized URL-sync effect) — no separate `history.pushState`
+              needed here. Staying on Todos (not switching to Index) is still this panel's own call:
+              opening a thread from here shouldn't lose your place in the list — the back arrow
+              (mobile) or picking another thread from Index (desktop) is how you leave it. */}
+          <TodosPanel onOpenThread={onOpen} />
         </View>
 
         <View shown={panel === "settings"} from="right">
