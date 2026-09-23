@@ -14,7 +14,6 @@ export const SettingsPanel = () => {
     <>
       <header className="px-5 pb-4 pt-6">
         <h1 className="font-serif text-4xl leading-none tracking-tight">Settings</h1>
-        <Eyebrow className="mt-2">This device only</Eyebrow>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
@@ -76,7 +75,7 @@ const BackendUrlField = ({ value }: { value: string | null }) => {
   return (
     <Field
       label="Backend URL"
-      hint="Leave blank to auto-detect. Override this if the installed app can't reach the Mac (e.g. it was opened as localhost instead of the Mac's LAN IP or Tailscale address)."
+      hint="Override if the app can't reach it automatically."
       placeholder={DEFAULT_BACKEND_URL}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
