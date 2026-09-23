@@ -203,6 +203,53 @@ Still open, needs real implementation work (see the sub-sections below, each its
    the right row; verified by tracing it through (both `count`/`getItemKey` and the render loop's `m` come from
    the identical array the `findIndex` searches) rather than assuming.
 
+## Next — Todo feedback round 2 (2026-09-23, further use of the above)
+
+Land in this order — item 1 first and solo (it touches the URL/selection plumbing every other message-row
+change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
+
+1. **URL always reflects what's open, message selection becomes a real thing, not a one-shot flash.** Today
+   only a todo-row click pushes `?thread=&msg=` (`ThreadList.tsx`'s inline `history.pushState`); picking a
+   thread from the Index does nothing to the URL at all — the one manual push call is the only reason todos
+   worked and everything else didn't. Fix at the root: stop pushing the URL from scattered click handlers and
+   sync it from state instead, in one place (`App.tsx`, alongside the existing mount-time `?thread=&msg=`
+   parse it already does for `?capture=1`-style deep links). `selected` (thread) already lives there; give
+   message selection the same status — a real `selectedMessageId`, not the current fire-and-forget
+   `scrollToMessageId` + `highlightId` that fades after 1.6s (`ThreadView.tsx`'s jump-to-message effect, landed
+   this session). Settled shape: clicking a message row selects it (persists, reflected in `?msg=`), clicking
+   it again or clicking another message changes/clears selection, and it's still scrolled-into-view + given an
+   arrival pulse the moment selection changes via navigation (a todo click, a pasted URL) but not from a plain
+   in-thread click (already visible, no scroll needed). Push vs. replace: pushState on a thread change (so back
+   steps between threads, matching today's todo-click precedent), replaceState on a message selection within
+   the same thread (toggling which line is selected shouldn't spam history). Click-target discipline: the
+   select-toggle must not fire from the ⋯ menu, the note trigger, a todo checkbox, or anything inside edit mode
+   — verify empirically (headless render + simulated clicks), don't assume Milkdown's read-only view doesn't
+   already swallow some of these.
+2. **The full gutter** (parked in `inspiration.md`, promoted now). A per-message left rail, not inline text
+   decoration — this is the fix for last round's "checkbox floats next to the text" complaint that goes further
+   than CSS-only: keep the checkbox, just stop rendering it *inside the text flow*. Mechanism: `Decoration.widget`
+   (same primitive `todoDecoration.ts` already used before this session's CSS-only pass) positioned with
+   `position: absolute` relative to its own paragraph (already `position: relative` via the existing
+   `Decoration.node` wrap) and a negative `left`, with the paragraph given matching `padding-left` — a true rail,
+   no DOM measurement needed, no gutter-as-separate-column layout. Hosts, per line: a todo checkbox for `@/todo`
+   and every `@/todos` item line (click toggles via the same `toggleTodoLine` path as the sidebar). Also hosts
+   the message-level note trigger (`ThreadView.tsx`'s `StickyNote` popover, currently sitting in the metadata
+   row under the content — move it into the same rail, one consistent left-edge x-coordinate for every icon in
+   it) — "whatever else wants a per-message affordance," per the original idea. Same pass: extend the highlight
+   from last round (`.threadz-todo-line`/`.threadz-todo-token`) to the `@/todos <title>` trigger line too — it
+   currently only matches bare `@/todo`, so a group header renders as plain text.
+3. **Closed-todo filter: 3 states, and groups stop hiding their own items.** A `@/todos` card's items are no
+   longer filtered at all — always shown in full inside the card; the closed filter only ever applied to
+   flat/message entries and hiding some of a list you're looking at (groceries) reads as broken, not tidy.
+   Replace the boolean `showClosed` toggle with three states — always show closed / never show closed / show
+   only recently closed (default: recently — today's default, "hide immediately," was the complaint) — as an
+   icon-segmented control, same fieldset-of-radio-icons pattern as `ThemeToggle`/the new `SidebarSwitcher`
+   (`ThreadList.tsx`), not raw text. "Recently" needs a closed-at timestamp per entry: exact for a `MessageTodo`
+   (`meta_edited_at`, already tracked, needs threading into `Todo`'s shape), approximate for a `LineTodo` (the
+   message's `editedAt ?? createdAt` — loose on purpose, consistent with this file's other "a false positive
+   here costs nothing" calls) — pick a window (24h is a reasonable default, not configurable, YAGNI) and say so
+   in a comment.
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
