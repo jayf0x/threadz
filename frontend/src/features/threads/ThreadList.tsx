@@ -23,7 +23,8 @@ export const ThreadList = ({
   onDeleted,
   selectedId,
 }: {
-  onOpen: (id: string) => void;
+  /** Open a thread — optionally jumping straight to one message in it (a todo row's click). */
+  onOpen: (threadId: string, messageId?: string) => void;
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
@@ -145,8 +146,11 @@ export const ThreadList = ({
 
         <View shown={panel === "todos"} from="right">
           <TodosPanel
-            onOpenThread={(id) => {
-              onOpen(id);
+            onOpenThread={(threadId, messageId) => {
+              // Shareable/back-button-able: same pair App.tsx's mount effect reads.
+              const params = new URLSearchParams({ thread: threadId, msg: messageId });
+              history.pushState(null, "", `${location.pathname}?${params.toString()}${location.hash}`);
+              onOpen(threadId, messageId);
               setPanel("index");
             }}
           />

@@ -11,8 +11,8 @@ import { useTodos } from "./useTodos";
 // newest first. Ticking a box rewrites that line in place (open<->closed) through the same
 // `editMessage` every other edit uses — text is the only source of truth, there's no separate "done"
 // flag anywhere. Closed todos are hidden by default; the header toggle reveals them. Tap the rest of
-// a row to jump to its thread.
-export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string) => void }) => {
+// a row to jump to its thread, scrolled and highlighted at the exact message.
+export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, messageId: string) => void }) => {
   const { todos, toggle } = useTodos();
   const [showClosed, setShowClosed] = useState(false);
 
@@ -65,7 +65,7 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string) 
               </button>
               <button
                 type="button"
-                onClick={() => onOpenThread(t.threadId)}
+                onClick={() => onOpenThread(t.threadId, t.messageId)}
                 className="min-w-0 text-left transition-colors hover:text-foreground"
               >
                 <span

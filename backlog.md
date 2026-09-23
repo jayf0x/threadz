@@ -85,10 +85,12 @@ each its own commit:
 2. **Tick-in-place.** `TodosPanel`'s checkbox calls `editMessage(messageId, newContent)` with the line's `~~`
    wrapped/unwrapped, the same call `ThreadView`'s edit mode already makes. Add a closed-todo filter, default
    hidden, and a count of each. Update README's "Open todos" section — it currently says read-only.
-3. **Jump to message.** Reuse the `?capture=1` query-param pattern (`App.tsx`) for `?thread=<id>&msg=<id>`:
-   parse once on mount and from the sidebar's click, open the thread, scroll the virtualizer
-   (`@tanstack/react-virtual`'s `scrollToIndex`) to the message, flash a highlight — plain CSS transition, not
-   Motion (nothing enters/leaves the tree, see AGENTS.md).
+3. **Done.** Jump to message. `?thread=<id>&msg=<id>` (`App.tsx`, same pattern as `?capture=1`), parsed once on
+   mount and shared with the sidebar's click through one `openThreadAt(threadId, messageId)` — the click also
+   `history.pushState`s the pair so it's shareable/back-button-able. `ThreadView` takes a `scrollToMessageId`
+   prop and calls the virtualizer's `scrollToIndex` once the message's index is known (re-checked as `messages`
+   loads, so it can't scroll to a stale index), then flashes it via `.message-highlight` (`styles.css`) — plain
+   CSS, not Motion.
 4. **Not required for the above to ship — do last, cut if it drags:** inline checkbox rendering for `@/todo`
    lines inside the Milkdown view (remark + node-view plugin, pattern in `imageView.ts`), and confirm/add GFM
    strikethrough support (not currently an installed Crepe feature — check before assuming `~~` even renders

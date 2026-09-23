@@ -22,12 +22,15 @@ export const ThreadView = ({
   onBack,
   onCopied,
   autofocus,
+  scrollToMessageId,
 }: {
   threadId: string;
   onBack: () => void;
   onCopied: (newThreadId: string) => void; // open the copy once it exists
   /** Land straight in a focused composer (a `/capture` deep link into a fresh thread). */
   autofocus?: boolean;
+  /** A todo jump or `?thread=&msg=` deep link: scroll to this message once loaded, then flash it. */
+  scrollToMessageId?: string;
 }) => {
   const {
     messages,
@@ -52,6 +55,8 @@ export const ThreadView = ({
   const [copying, setCopying] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
@@ -111,11 +116,29 @@ export const ThreadView = ({
     return onChange(load);
   }, [threadId]);
 
-  // A log reads top-down and you write at the bottom: follow the newest entry.
+  // A log reads top-down and you write at the bottom: follow the newest entry — unless a jump to a
+  // specific message (below) is pending, which wins.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the entry count changes
   useEffect(() => {
+    if (scrollToMessageId) return;
     end.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, scratch]);
+  }, [messages.length, scratch, scrollToMessageId]);
+
+  // Jump to a specific message (a todo row's click, or a `?thread=&msg=` deep link): scroll the
+  // virtualizer to its index once it's actually in `messages` — a fresh mount's history load can
+  // resolve after this prop is already set, so this keeps re-checking on every `messages` update
+  // instead of scrolling once to an index that isn't there yet. `scrolledTo` guards against
+  // re-jumping (and re-flashing) on every later message list update once the target's been hit.
+  useEffect(() => {
+    if (!scrollToMessageId || scrolledTo.current === scrollToMessageId) return;
+    const index = messages.findIndex((m) => m.id === scrollToMessageId);
+    if (index === -1) return;
+    scrolledTo.current = scrollToMessageId;
+    rowVirtualizer.scrollToIndex(index, { align: "center" });
+    setHighlightId(scrollToMessageId);
+    const t = setTimeout(() => setHighlightId(null), 1600);
+    return () => clearTimeout(t);
+  }, [scrollToMessageId, messages, rowVirtualizer]);
 
   if (missing) return <NotFound onBack={onBack} />;
 
@@ -176,6 +199,7 @@ export const ThreadView = ({
                     pending={unsynced.has(m.id)}
                     busy={busy}
                     isNew={justAdded.has(m.id)}
+                    highlighted={highlightId === m.id}
                     onEdit={(text) => editMessage(m.id, text)}
                     onCopyThread={() => copyThreadFrom(m.id)}
                     note={noteByMessage.get(m.id)}
@@ -260,6 +284,7 @@ const EntryRow = ({
   pending,
   busy,
   isNew,
+  highlighted,
   onEdit,
   onCopyThread,
   note,
@@ -272,6 +297,7 @@ const EntryRow = ({
   pending: boolean;
   busy: boolean;
   isNew: boolean; // appended (or synced in) during this session — vs. part of the history load
+  highlighted: boolean; // landed on via a todo jump or `?thread=&msg=` link — flash it
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
   note: Annotation | undefined; // one per message, DB-enforced
@@ -344,7 +370,7 @@ const EntryRow = ({
 
   return (
     <Motion.article
-      className="group border-b border-rule py-4"
+      className={cn("group border-b border-rule py-4", highlighted && "message-highlight")}
       // `initial={false}` starts a history-loaded row already in its resting state — only a
       // message that showed up after the fact (a note you just added, one that synced in) gets
       // the little rise-in; a long thread's first render never animates.

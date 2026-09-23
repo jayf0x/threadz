@@ -225,13 +225,19 @@ speech model. They are per device (`localStorage`), never synced.
 ### Open todos
 
 The list icon beside the gear flips the sidebar to every todo across every thread, newest first, tap to jump to
-its thread. Two syntaxes are recognized: the legacy `- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a
-line), and `@/todo <text>` — a command anchored to the start of a line, closed by wrapping it in real markdown
-strikethrough (`~~@/todo <text>~~`). Text is the only source of truth; there's no separate "done" flag stored
-anywhere. Tapping the checkbox rewrites that one line in place (open<->closed) through the same `editMessage`
-a normal edit uses. Closed todos are hidden by default; a header toggle shows them alongside a count of each.
-Pure derived data: `frontend/src/lib/todos.ts` scans messages already pulled into the device copy
-(`lib/local.ts`'s `exportSnapshot`), so there's no new store and nothing to sync.
+its thread, scrolled straight to that message and briefly highlighted (a plain CSS flash — `.message-highlight`
+in `styles.css` — not Motion, nothing enters or leaves the tree). Two syntaxes are recognized: the legacy
+`- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a line), and `@/todo <text>` — a command anchored to the
+start of a line, closed by wrapping it in real markdown strikethrough (`~~@/todo <text>~~`). Text is the only
+source of truth; there's no separate "done" flag stored anywhere. Tapping the checkbox rewrites that one line
+in place (open<->closed) through the same `editMessage` a normal edit uses. Closed todos are hidden by default;
+a header toggle shows them alongside a count of each. Pure derived data: `frontend/src/lib/todos.ts` scans
+messages already pulled into the device copy (`lib/local.ts`'s `exportSnapshot`), so there's no new store and
+nothing to sync. The jump itself reuses the `?capture=1` deep-link pattern: a row's click calls `App.tsx`'s
+`openThreadAt(threadId, messageId)` (also `history.pushState`s a shareable `?thread=<id>&msg=<id>` pair) which
+opens the thread and hands `ThreadView` a `scrollToMessageId`; once that message's index is known in the
+already-virtualized message list (`@tanstack/react-virtual`), it calls the virtualizer's `scrollToIndex`. The
+same query-param pair is parsed once on mount for a direct link, through the same `openThreadAt`.
 
 ### Photos in notes
 

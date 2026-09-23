@@ -103,6 +103,28 @@ body {
   }
 }
 
+@keyframes message-highlight {
+  from {
+    background-color: color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+/* A todo jump or `?thread=&msg=` link landing on one message (ThreadView.tsx): a brief flash, not an
+   entrance/exit — the row is already in the tree, so plain CSS, not Motion (see AGENTS.md). The class
+   is toggled off by a timeout in React; the animation just has to look right for however long that is. */
+.message-highlight {
+  animation: message-highlight 1.6s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-highlight {
+    animation: none;
+    background-color: color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+}
+
 /* One orchestrated reveal: rows fade up in sequence via --i (capped by callers). */
 @media (prefers-reduced-motion: no-preference) {
   .rise {

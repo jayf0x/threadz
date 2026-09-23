@@ -1,5 +1,5 @@
 import { domAnimation, LazyMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { ConnectionDialog } from "@/features/connection";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
@@ -21,6 +21,16 @@ export const App = () => {
   // directly): scopes the composer autofocus to that one freshly-opened thread, not every thread
   // you open afterward — `selected` moves on the moment you navigate away.
   const [captureId, setCaptureId] = useState<string | null>(null);
+  // Set by the `?thread=<id>&msg=<id>` deep link (below) or a todo row's click (TodosPanel, via
+  // ThreadList): the message to scroll to and flash once the thread is open. `openThreadAt` is the
+  // one place that does this — the query-param effect and the todo click both call it instead of
+  // each carrying their own copy of "open this thread, then jump to this message".
+  const [scrollTarget, setScrollTarget] = useState<{ threadId: string; messageId: string } | null>(null);
+
+  const openThreadAt = useCallback((threadId: string, messageId?: string) => {
+    setSelected(threadId);
+    setScrollTarget(messageId ? { threadId, messageId } : null);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -34,6 +44,19 @@ export const App = () => {
     });
   }, []);
 
+  // `?thread=<id>&msg=<id>`: the shareable/back-button-able form of a todo jump (see TodosPanel).
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const threadId = params.get("thread");
+    if (!threadId) return;
+    const messageId = params.get("msg") ?? undefined;
+    params.delete("thread");
+    params.delete("msg");
+    const search = params.toString();
+    history.replaceState(null, "", location.pathname + (search ? `?${search}` : "") + location.hash);
+    openThreadAt(threadId, messageId);
+  }, [openThreadAt]);
+
   return (
     <LazyMotion features={domAnimation}>
       {mode === "local" && (
@@ -44,6 +67,8 @@ export const App = () => {
         selected={selected}
         setSelected={setSelected}
         autofocus={!!selected && selected === captureId}
+        openThreadAt={openThreadAt}
+        scrollToMessageId={selected && scrollTarget?.threadId === selected ? scrollTarget.messageId : undefined}
       />
       <ConnectionDialog />
     </LazyMotion>
@@ -54,10 +79,14 @@ const Shell = ({
   selected,
   setSelected,
   autofocus,
+  openThreadAt,
+  scrollToMessageId,
 }: {
   selected: string | null;
   setSelected: (id: string | null) => void;
   autofocus: boolean;
+  openThreadAt: (threadId: string, messageId?: string) => void;
+  scrollToMessageId: string | undefined;
 }) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,7 +100,7 @@ const Shell = ({
     <div className="grid h-dvh lg:grid-cols-[23rem_1fr]">
       <aside className={cn("min-h-0 border-r border-border bg-secondary", selected && "hidden lg:block")}>
         <ThreadList
-          onOpen={setSelected}
+          onOpen={openThreadAt}
           selectedId={selected}
           onDeleted={(id) => id === selected && setSelected(null)}
         />
@@ -84,6 +113,7 @@ const Shell = ({
             onBack={() => setSelected(null)}
             onCopied={setSelected}
             autofocus={autofocus}
+            scrollToMessageId={scrollToMessageId}
           />
         ) : (
           <Blank />
