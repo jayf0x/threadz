@@ -185,11 +185,23 @@ Still open, needs real implementation work (see the sub-sections below, each its
      counts as "the same" — extended (not replaced) to also compare `meta`/`metaEditedAt`, with a small
      `mergeMeta` last-write-wins helper alongside the existing `mergeMessage` content merge, reusing the same
      shape rather than inventing a new rule.
-3. **Per-thread reverse order** ("recent at top" instead of "recent at bottom"). A view toggle in `ThreadView`,
-   local UI state (not synced — per-device, like Settings), that flips the virtualized list's order. Must not
-   break the jump-to-message scroll/highlight from step 3 above — that indexes into the *rendered* order, so
-   either index math accounts for the flip or the scroll target is found by id, not position, whichever is
-   less fragile once someone's actually in that code.
+3. **Done: per-thread reverse order.** An `ArrowDownUp` icon button in `ThreadView`'s header (next to the
+   title, `aria-pressed` + a "Newest first"/"Oldest first" title) flips a thread's virtualized list between
+   the default (oldest at top, newest at bottom) and reversed. Device-local, per-thread, not synced — same
+   `localStorage` + typed getter/setter + `useSyncExternalStore` shape as `lib/settings.ts`, just keyed by
+   thread id (`lib/threadOrder.ts`, one `threadz.reverseOrder` key holding `Record<threadId, true>`; a thread
+   never flipped has no entry rather than storing `false`). Went with the single-derived-array approach flagged
+   as less fragile: `orderMessages(messages, reversed)` (the one pure, tested piece — `threadOrder.test.ts`) is
+   the only place the flip happens, and every rendering-order consumer in `ThreadView` — the virtualizer's
+   `count`/`getItemKey`, the render loop's `orderedMessages[row.index]` lookup, and the jump-to-message effect's
+   `findIndex` — reads that same `orderedMessages`, never `messages` directly. `messages` itself stays
+   chronological and untouched, since `Composer`'s `messages.at(-1)` ("copy thread from here"'s target) and the
+   sidebar/`useThread` logic both assume oldest-last; only rendering order is derived. The "follow newest"
+   autoscroll (`ThreadView`'s effect near `scratch`) now scrolls to index 0 instead of the list's end when
+   reversed, since newest sits at the top there. Jump-to-message needed no special-casing for either order —
+   virtualizer index space, key, and lookup all come from `orderedMessages`, so `scrollToIndex` always lands on
+   the right row; verified by tracing it through (both `count`/`getItemKey` and the render loop's `m` come from
+   the identical array the `findIndex` searches) rather than assuming.
 
 ## v2 features (deferred by design)
 

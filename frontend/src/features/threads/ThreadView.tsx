@@ -2,6 +2,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
 import {
+  ArrowDownUp,
   ArrowLeft,
   Check,
   CloudOff,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
+import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
 import type { Annotation, Message, Thread } from "@/lib/types";
 import { useThread } from "./useThread";
 
@@ -62,6 +64,7 @@ export const ThreadView = ({
     ask,
   } = useThread(threadId);
   const local = useStatus().mode === "local";
+  const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
@@ -74,17 +77,23 @@ export const ThreadView = ({
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
 
+  // `messages` stays chronological (oldest→newest) — it's what Composer's "copy from here" and the
+  // autoscroll-to-newest logic below need. Rendering order is a separate, derived concern: every
+  // consumer that cares where a message sits on screen (the virtualizer, the render loop's index
+  // lookup, jump-to-message) reads `orderedMessages` instead, so the flip can't desync one from another.
+  const orderedMessages = useMemo(() => orderMessages(messages, reversed), [messages, reversed]);
+
   // Windowed rendering: a long-lived thread can reach hundreds of entries, each its own
   // MarkdownEditor (a lazy Milkdown/ProseMirror mount) — cheap to scroll past, not cheap to all
   // exist at once. `estimateSize` is a rough starting guess (most entries are a line or two);
   // `measureElement` (wired on each row below) corrects it against the real rendered height as
   // rows come into view, including a later resize (opening edit mode, an image loading in).
   const rowVirtualizer = useVirtualizer({
-    count: messages.length,
+    count: orderedMessages.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 120,
     overscan: 8,
-    getItemKey: (index) => messages[index]?.id ?? index,
+    getItemKey: (index) => orderedMessages[index]?.id ?? index,
   });
 
   // One note per message (DB-enforced), so this is a plain lookup, not a grouped list.
@@ -130,28 +139,33 @@ export const ThreadView = ({
   }, [threadId]);
 
   // A log reads top-down and you write at the bottom: follow the newest entry — unless a jump to a
-  // specific message (below) is pending, which wins.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the entry count changes
+  // specific message (below) is pending, which wins. The scratch answer always renders after the
+  // list, right above the composer, regardless of order, so it always means "scroll to the end";
+  // a genuinely new message means "scroll to wherever newest now sits" — index 0 when reversed,
+  // the end otherwise.
   useEffect(() => {
     if (scrollToMessageId) return;
-    end.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, scratch, scrollToMessageId]);
+    if (!scratch && reversed && orderedMessages.length) rowVirtualizer.scrollToIndex(0, { align: "start" });
+    else end.current?.scrollIntoView({ block: "end" });
+  }, [orderedMessages.length, scratch, scrollToMessageId, reversed, rowVirtualizer]);
 
   // Jump to a specific message (a todo row's click, or a `?thread=&msg=` deep link): scroll the
-  // virtualizer to its index once it's actually in `messages` — a fresh mount's history load can
-  // resolve after this prop is already set, so this keeps re-checking on every `messages` update
-  // instead of scrolling once to an index that isn't there yet. `scrolledTo` guards against
-  // re-jumping (and re-flashing) on every later message list update once the target's been hit.
+  // virtualizer to its index once it's actually in `orderedMessages` — a fresh mount's history load
+  // can resolve after this prop is already set, so this keeps re-checking on every update instead of
+  // scrolling once to an index that isn't there yet. Indexing into `orderedMessages` (not `messages`)
+  // means this keeps landing on the right row whichever way the thread is currently sorted.
+  // `scrolledTo` guards against re-jumping (and re-flashing) on every later message list update once
+  // the target's been hit.
   useEffect(() => {
     if (!scrollToMessageId || scrolledTo.current === scrollToMessageId) return;
-    const index = messages.findIndex((m) => m.id === scrollToMessageId);
+    const index = orderedMessages.findIndex((m) => m.id === scrollToMessageId);
     if (index === -1) return;
     scrolledTo.current = scrollToMessageId;
     rowVirtualizer.scrollToIndex(index, { align: "center" });
     setHighlightId(scrollToMessageId);
     const t = setTimeout(() => setHighlightId(null), 1600);
     return () => clearTimeout(t);
-  }, [scrollToMessageId, messages, rowVirtualizer]);
+  }, [scrollToMessageId, orderedMessages, rowVirtualizer]);
 
   if (missing) return <NotFound onBack={onBack} />;
 
@@ -175,6 +189,21 @@ export const ThreadView = ({
           <h1 className="min-w-0 truncate text-sm font-medium lg:font-serif lg:text-2xl lg:font-normal lg:leading-tight lg:tracking-tight">
             {thread?.title ?? "…"}
           </h1>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="ml-auto shrink-0"
+            aria-label={
+              reversed
+                ? "Showing newest first — switch to oldest first"
+                : "Showing oldest first — switch to newest first"
+            }
+            title={reversed ? "Newest first" : "Oldest first"}
+            aria-pressed={reversed}
+            onClick={() => setThreadReversed(threadId, !reversed)}
+          >
+            <ArrowDownUp className="size-4" />
+          </Button>
         </div>
       </header>
 
@@ -192,7 +221,7 @@ export const ThreadView = ({
 
           <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
             {rowVirtualizer.getVirtualItems().map((row) => {
-              const m = messages[row.index];
+              const m = orderedMessages[row.index];
               if (!m) return null;
               return (
                 <div
