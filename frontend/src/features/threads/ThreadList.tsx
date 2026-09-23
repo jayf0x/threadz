@@ -219,7 +219,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             className="sr-only"
           />
           <Icon className="size-3.5" aria-hidden />
-          <span className="text-xs">{label}</span>
+          <span className="sr-only">{label}</span>
         </label>
       );
     })}
