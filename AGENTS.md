@@ -40,6 +40,19 @@ extract a helper when the same code shows up a third time; delete dead code and 
 primary actions (send, add, create) use an icon once an established one exists for the action, not a text
 label — reserve text labels for actions without an obvious icon, or where the icon alone would be ambiguous.
 
+- **UI copy: terse, icon-first, no restating what's already obvious.** A tab labelled by its own icon and
+  position doesn't also need a text title (decided 2026-09-24, reversing this session's earlier
+  `SidebarSwitcher` labels — the icon-over-text rule above applies to navigation, not just actions). A
+  device-only settings panel doesn't need a subtitle saying so; nothing else in this app implies otherwise. A
+  hint/description earns its place only if it says something the label genuinely doesn't (Settings' naming
+  toggle's hint, "a title you typed is never replaced," is the bar — a real behavior the label can't carry;
+  "leave blank to auto-detect" restating the placeholder is not). **"Main" is backend jargon — never show it to
+  the user.** The user-facing pair is **Local** (this device, works offline — already `getMode() === "local"`
+  internally) and **Live** (backend reachable — already `"live"` internally); a status/dialog says "Local" /
+  "Live" / "Offline" (already `StatusPill`'s three states), never "main is reachable" or "can't reach main."
+  Keep "main" itself for internal code/comments/docs (this file, README, `lib/mode.ts`) — it's accurate
+  shorthand for engineers, just not for the person using the app.
+
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".

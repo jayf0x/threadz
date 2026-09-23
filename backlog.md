@@ -289,6 +289,28 @@ change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
    function rather than inline in the component, so the 24h boundary is unit-tested directly
    (`todos.test.ts`) instead of needing a component-render test.
 
+## Next — Copy pass: icon-first, kill redundant text (2026-09-24)
+
+A general sweep, not scoped to one feature — see AGENTS.md's new "UI copy" guideline (terse, icon-first, no
+restating what's already obvious, "Local"/"Live" never "main") for the rule this pass applies everywhere.
+Known offenders to start from, not the full list — the task is every hardcoded string in `frontend/src`, not
+just these:
+
+- `ThreadList.tsx`'s `SidebarSwitcher` (this session's own work, superseded already) — drop the text labels,
+  icon + tooltip only, same as `ThemeToggle` always was.
+- `SettingsPanel.tsx` — "This device only" subtitle (drop), the Backend URL field's long hint (drop or cut to
+  one clause), the naming toggle's hint stays (it earns its place, see AGENTS.md).
+- `ConnectionDialog.tsx` — the worst offender: "Main is back," "Can't reach main," "Available when main is
+  reachable," multiple full-paragraph explanations of what syncing does. Rewrite around Local/Live, cut every
+  paragraph down to what it actually adds. `StatusPill.tsx`'s `title` hints have the same "main" wording.
+- `ThreadView.tsx`'s ⋯ menu — "Copy thread from here" → "Copy"/"Copy here"; "Add to Todos"/"Remove from Todos"
+  → an icon (`StickyNotePlus`/`NotebookPen` floated as options) + a short word, if a word's needed at all.
+- `TodosPanel.tsx`, `Composer.tsx`, and anywhere else with a button/label/menu-item string — same treatment.
+
+Guardrail: an icon-only control still needs its meaning somewhere a screen reader (and a mouse-hover human)
+can get it — `aria-label`/`title` stay even when visible text goes. This is a copy/UI pass, not a refactor —
+don't restructure components beyond what removing/replacing text actually requires.
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
