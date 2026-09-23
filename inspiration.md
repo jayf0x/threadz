@@ -174,6 +174,12 @@ Not in the backlog. Draw from here when picking the next features.
 - **One-off import scripts** for an Obsidian vault (folder names could seed theme hints) and for ChatGPT/Claude
   exports; personal scripts, not features.
 - **Undo toast for Copy**, if Copy ever gets an always-visible button.
+- **A gutter, VS Code-style.** Floated 2026-09-23 feedback on the `@/todo` checkbox reading as UI bolted onto
+  markdown (see `backlog.md`): instead of decorating text inline, a thin action rail down the left of a message
+  could host a todo checkbox, the note (`StickyNote`) trigger, and whatever else wants a per-message affordance
+  without touching the markdown flow itself. Real reuse potential — one rail, several features — but real
+  layout work (every message row gains a fixed-width column, interacts with the virtualizer's row measurement).
+  Not started; the checkbox went CSS-only instead for now.
 - **Commands beyond `@/todo`.** Multi-line snapshot todos (capture everything until the next blank line or command,
   not just to end-of-line). Args after the command for alternate interpretation (`@/todo(summarize)` runs the note
   below through `askModel()` so the sidebar shows a clean line instead of raw text; `@/todo(image)` pulls in the

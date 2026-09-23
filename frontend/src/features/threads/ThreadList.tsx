@@ -1,4 +1,4 @@
-import { ListTodo, type LucideIcon, Plus, RefreshCw, Settings } from "lucide-react";
+import { List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -29,7 +29,7 @@ export const ThreadList = ({
   selectedId?: string | null;
 }) => {
   const { threads, query, setQuery, sort, setSort, syncing, error, refresh } = useThreads();
-  const [panel, setPanel] = useState<"index" | "settings" | "todos">("index");
+  const [panel, setPanel] = useState<Panel>("index");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
@@ -70,6 +70,9 @@ export const ThreadList = ({
 
   return (
     <div className="flex h-full flex-col">
+      <nav className="flex items-center justify-center border-b border-border px-5 py-2.5">
+        <SidebarSwitcher panel={panel} setPanel={setPanel} />
+      </nav>
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <View shown={panel === "index"} from="left">
           <header className="px-5 pb-4 pt-6">
@@ -151,7 +154,8 @@ export const ThreadList = ({
               const params = new URLSearchParams({ thread: threadId, msg: messageId });
               history.pushState(null, "", `${location.pathname}?${params.toString()}${location.hash}`);
               onOpen(threadId, messageId);
-              setPanel("index");
+              // Stays on Todos: opening a thread from here shouldn't lose your place in the list —
+              // the back arrow (mobile) or picking another thread from Index (desktop) is how you leave it.
             }}
           />
         </View>
@@ -176,18 +180,6 @@ export const ThreadList = ({
               <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
             </button>
           )}
-          <PanelButton
-            active={panel === "todos"}
-            label="Todos"
-            icon={ListTodo}
-            onClick={() => setPanel((p) => (p === "todos" ? "index" : "todos"))}
-          />
-          <PanelButton
-            active={panel === "settings"}
-            label="Settings"
-            icon={Settings}
-            onClick={() => setPanel((p) => (p === "settings" ? "index" : "settings"))}
-          />
         </div>
         <ThemeToggle />
       </footer>
@@ -195,34 +187,47 @@ export const ThreadList = ({
   );
 };
 
-// The footer's Todos/Settings toggles: same look, same "press to flip the sidebar to this view, press
-// again to go back to the index" behaviour.
-const PanelButton = ({
-  active,
-  label,
-  icon: Icon,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  icon: LucideIcon;
-  onClick: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    aria-pressed={active}
-    aria-label={label}
-    title={label}
-    className={cn(
-      "grid size-6 place-items-center rounded-md border transition-all duration-300 ease-in-out active:scale-90",
-      active
-        ? "scale-125 border-primary bg-accent text-primary shadow-sm"
-        : "border-transparent text-muted-foreground/60 hover:text-foreground",
-    )}
-  >
-    <Icon className="size-3.5" />
-  </button>
+type Panel = "index" | "settings" | "todos";
+
+const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
+  { value: "index", label: "Threads", icon: List },
+  { value: "todos", label: "Todos", icon: ListTodo },
+  { value: "settings", label: "Settings", icon: Settings },
+];
+
+// The header's view switcher — same segmented-fieldset pattern as `ThemeToggle`, so the two
+// three-way toggles in this sidebar (this one, and appearance in the footer) read as one family
+// instead of two different button styles. Replaces the old footer icon buttons (easy to miss,
+// no label until you hovered) with something that reads as navigation on sight.
+const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Panel) => void }) => (
+  <fieldset className="flex gap-px border border-border p-px">
+    <legend className="sr-only">Sidebar view</legend>
+    {PANELS.map(({ value, label, icon: Icon }) => {
+      const active = panel === value;
+      return (
+        <label
+          key={value}
+          title={label}
+          className={cn(
+            "flex cursor-pointer items-center gap-1.5 px-3 py-1.5 transition-colors has-focus-visible:outline",
+            "has-focus-visible:outline-ring",
+            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <input
+            type="radio"
+            name="sidebar-panel"
+            value={value}
+            checked={active}
+            onChange={() => setPanel(value)}
+            className="sr-only"
+          />
+          <Icon className="size-3.5" aria-hidden />
+          <span className="text-xs">{label}</span>
+        </label>
+      );
+    })}
+  </fieldset>
 );
 
 // One of the sidebar's three views. All stay mounted (the index keeps its scroll and search) and cross-fade;

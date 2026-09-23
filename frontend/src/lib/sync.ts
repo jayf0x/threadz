@@ -31,10 +31,11 @@ const keepReplicaWarm = () => (getMode() === "live" ? pullMain().catch(() => {})
 export const pullThreads = async () => {
   const threads = await api.listThreads();
   await putThreads(threads);
-  emitChange();
+  emitChange(); // fast mirror (lib/db.ts) is current — ThreadList/useThread can redraw now
   if (getMode() === "live") {
     await updateMeta(threads).catch(() => {});
     await keepReplicaWarm();
+    emitChange(); // threadz-local just changed too — anyone reading it (useTodos) was stale until now
   }
   return threads;
 };
@@ -44,7 +45,8 @@ export const pullThread = async (id: string) => {
   await putThread(thread);
   await replaceThreadMessages(id, messages);
   await replaceThreadAnnotations(id, annotations);
-  emitChange();
+  emitChange(); // fast mirror (lib/db.ts) is current — ThreadList/useThread can redraw now
   await keepReplicaWarm();
+  emitChange(); // threadz-local just changed too — anyone reading it (useTodos) was stale until now
   return { thread, messages, annotations };
 };

@@ -109,6 +109,57 @@ each its own commit:
 
 No backend table, no new IndexedDB store, no new sync/merge rule — deliberate, see `inspiration.md`.
 
+## Next — Todo feedback round (2026-09-23, real use of the above)
+
+First real feedback on the four items above. Two were bugs, not opinions — fixed directly, no agent needed:
+
+- **Fixed: cross-view state lag, including the "closed todo needs two clicks" symptom.** Root cause was in
+  `lib/sync.ts`, not React state management (no signals/Jotai needed) — `pullThread`/`pullThreads` called
+  `emitChange()` *before* `keepReplicaWarm()` (the `pullMain()` call that actually updates `threadz-local`,
+  which `useTodos` reads via `exportSnapshot`) resolved, and nothing emitted again once it did. Any listener
+  reading the fast mirror (`ThreadView`'s `useThread`, via `lib/db.ts`) redrew correctly, since that store *is*
+  current by the first `emitChange()`; `useTodos` redrew from stale data and stayed stale until some unrelated
+  change happened to fire `emitChange()` again. A second click's own `pullThread` cycle would, by the time its
+  *own* early `emitChange()` fired, often find the *first* click's `keepReplicaWarm()` had finished in the
+  background — which is exactly the "needs a second click" symptom. Fix: emit again after `keepReplicaWarm()`
+  resolves too (`lib/sync.ts`).
+- **Fixed: Todos panel closing itself after you open a thread from it.** `ThreadList.tsx`'s todo-row click
+  handler called `setPanel("index")` right after opening the thread — so clicking a second todo meant reopening
+  the Todos panel every time. Removed; the panel now only changes on an explicit switcher click or the mobile
+  back arrow.
+- **Fixed: footer icon buttons → header switcher.** The Index/Todos/Settings toggle was two unlabelled 24px
+  buttons buried in the footer next to sync/theme controls. Moved to a `SidebarSwitcher` in a new header bar,
+  same segmented-`fieldset`-of-radios pattern as `ThemeToggle` (so the sidebar's two three-way toggles now read
+  as one visual family) — labelled, not icon-only. `ThreadList.tsx`.
+
+Still open, needs real implementation work (see the sub-sections below, each its own agent hand-off):
+
+1. **Checkbox in the message view reads as UI bolted onto markdown, not markdown.** Went with the feedback's
+   own first option: drop the clickable checkbox widget entirely, keep `@/todo`/`~~@/todo~~` recognizable with
+   CSS only (e.g. style the `@/todo` token, keep strikethrough for closed — already free via GFM). State edits
+   stay sidebar-or-raw-edit-mode only, same as the legacy `- [ ] ` syntax already was before step 4 above. The
+   gutter idea (VS Code-style, a reusable action rail down the left of a message — could also host the note
+   icon) is real but bigger scope; parked in `inspiration.md`, not built now.
+2. **Grouped todo lists + convert-a-message action ("Todo model v2").** Two asks that turned out to be one
+   change to the `Todo` shape (a sidebar entry becomes: one command line, *or* a titled group of list items,
+   *or* a whole flagged message):
+   - `@/todos <title>` followed by a contiguous run of `- ` list lines (own todo per item, own toggle; stop at
+     the first blank line or non-list line) — sidebar shows these as one card under `<title>` with its items,
+     not N flat rows.
+   - A message-level "Add to Todos" action (the existing ⋯ menu, `ThreadView.tsx`'s `EntryRow`) that flags the
+     *whole message* as a todo **without inserting `@/todo` text** — deliberately a second mechanism producing
+     the same sidebar outcome by a different UX flow (see `inspiration.md`), not a shortcut for typing the
+     command. Needs non-textual state since there's nothing to parse: the `meta` field already on `Message`
+     (`backend/schemas.ts`'s `AppendMessage`) is unused today — extend `EditMessage`/a small edit-meta path to
+     let it carry `{ todo?: { done: boolean } }`, synced like any other field. Sidebar shows these as one entry,
+     truncated content, own checkbox (toggling here IS non-textual — flips `meta.todo.done`, no `editMessage`
+     content rewrite).
+3. **Per-thread reverse order** ("recent at top" instead of "recent at bottom"). A view toggle in `ThreadView`,
+   local UI state (not synced — per-device, like Settings), that flips the virtualized list's order. Must not
+   break the jump-to-message scroll/highlight from step 3 above — that indexes into the *rendered* order, so
+   either index math accounts for the flip or the scroll target is found by id, not position, whichever is
+   less fragile once someone's actually in that code.
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
