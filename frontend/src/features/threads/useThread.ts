@@ -158,6 +158,29 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
+  // Flags/unflags a whole message as a todo (the ⋯ menu's "Add/Remove Todos") — non-textual
+  // (`meta.todo`), never a content edit, so this never touches `editMessage`. `done: null` clears
+  // the flag entirely; `false`/`true` sets it (see lib/api.ts's toggleMessageTodo/removeMessageTodo).
+  const setMessageTodo = useCallback(
+    async (id: string, done: boolean | null): Promise<boolean> => {
+      if (!threadId) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        if (done === null) await api.removeMessageTodo(threadId, id);
+        else await api.toggleMessageTodo(threadId, id, done);
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+      await pullThread(threadId).catch(() => {});
+      return true;
+    },
+    [threadId],
+  );
+
   // Ask Claude. commit=false → disposable scratch answer (returned, not stored).
   // commit=true → appended at commit time.
   const ask = useCallback(
@@ -261,6 +284,7 @@ export const useThread = (threadId: string | null) => {
     justAdded,
     addMessage,
     editMessage,
+    setMessageTodo,
     addAnnotation,
     editAnnotation,
     deleteAnnotation,

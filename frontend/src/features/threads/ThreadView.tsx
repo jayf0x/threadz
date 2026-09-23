@@ -1,7 +1,19 @@
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
-import { ArrowLeft, Check, CloudOff, Copy, Mic, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CloudOff,
+  Copy,
+  ListTodo,
+  Mic,
+  MoreHorizontal,
+  Pencil,
+  StickyNote,
+  Trash2,
+  X,
+} from "lucide-react";
 import { AnimatePresence, m as Motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +55,7 @@ export const ThreadView = ({
     justAdded,
     addMessage,
     editMessage,
+    setMessageTodo,
     addAnnotation,
     editAnnotation,
     deleteAnnotation,
@@ -202,6 +215,7 @@ export const ThreadView = ({
                     highlighted={highlightId === m.id}
                     onEdit={(text) => editMessage(m.id, text)}
                     onCopyThread={() => copyThreadFrom(m.id)}
+                    onSetTodo={(done) => setMessageTodo(m.id, done)}
                     note={noteByMessage.get(m.id)}
                     unsyncedAnnotations={unsyncedAnnotations}
                     onAddAnnotation={(text) => addAnnotation(m.id, text)}
@@ -287,6 +301,7 @@ const EntryRow = ({
   highlighted,
   onEdit,
   onCopyThread,
+  onSetTodo,
   note,
   unsyncedAnnotations,
   onAddAnnotation,
@@ -300,6 +315,7 @@ const EntryRow = ({
   highlighted: boolean; // landed on via a todo jump or `?thread=&msg=` link — flash it
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
+  onSetTodo: (done: boolean | null) => void; // ⋯ menu's Add/Remove Todos; null clears the flag
   note: Annotation | undefined; // one per message, DB-enforced
   unsyncedAnnotations: Set<string>;
   onAddAnnotation: (text: string) => Promise<boolean>;
@@ -564,6 +580,9 @@ const EntryRow = ({
               items={[
                 { label: "Edit", icon: Pencil, onClick: startEdit },
                 { label: "Copy thread from here", icon: Copy, onClick: onCopyThread },
+                m.meta?.todo
+                  ? { label: "Remove from Todos", icon: ListTodo, onClick: () => onSetTodo(null) }
+                  : { label: "Add to Todos", icon: ListTodo, onClick: () => onSetTodo(false) },
               ]}
             />
           )}

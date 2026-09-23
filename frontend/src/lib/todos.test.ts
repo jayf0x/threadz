@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { collectTodos, parseTodos, stripTodoMarker, toggleTodoLine } from "./todos";
+import { collectTodos, type LineTodo, parseTodoGroups, parseTodos, stripTodoMarker, toggleTodoLine } from "./todos";
 import type { Message, Thread } from "./types";
 
 test("matches a plain unchecked legacy checkbox", () => {
@@ -89,15 +89,27 @@ const thread = (id: string, title: string): Thread => ({
   hasEmbedding: false,
 });
 
-const message = (id: string, threadId: string, content: string, createdAt: number): Message => ({
+const message = (
+  id: string,
+  threadId: string,
+  content: string,
+  createdAt: number,
+  meta: Message["meta"] = null,
+): Message => ({
   id,
   threadId,
   role: "user",
   content,
   createdAt,
   seq: 1,
-  meta: null,
+  meta,
 });
+
+const asLines = (todos: ReturnType<typeof collectTodos>) =>
+  todos.map((t) => {
+    if (t.kind !== "line") throw new Error(`expected a line todo, got ${t.kind}`);
+    return t as LineTodo;
+  });
 
 test("collectTodos scans every thread's messages, newest first, and skips threads/messages with none", () => {
   const threads = [thread("t1", "Groceries"), thread("t2", "Errands")];
@@ -106,7 +118,7 @@ test("collectTodos scans every thread's messages, newest first, and skips thread
     message("m2", "t2", "- [ ] call the bank", 200),
     message("m3", "t2", "nothing to do here", 300),
   ];
-  const todos = collectTodos(threads, messages);
+  const todos = asLines(collectTodos(threads, messages));
   expect(todos.map((t) => t.text)).toEqual(["- [ ] call the bank", "- [ ] milk", "@/todo eggs"]);
   expect(todos[0]).toMatchObject({ threadId: "t2", threadTitle: "Errands", messageId: "m2", done: false });
   const ids = todos.map((t) => t.id);
@@ -116,8 +128,88 @@ test("collectTodos scans every thread's messages, newest first, and skips thread
 test("collectTodos returns both open and closed todos, each carrying done and enough to edit back", () => {
   const threads = [thread("t1", "Groceries")];
   const messages = [message("m1", "t1", "@/todo milk\n~~@/todo eggs~~", 100)];
-  const todos = collectTodos(threads, messages);
+  const todos = asLines(collectTodos(threads, messages));
   expect(todos.map((t) => t.done)).toEqual([false, true]);
   expect(todos.every((t) => t.messageContent === messages[0]?.content)).toBe(true);
   expect(todos.map((t) => t.lineIndex)).toEqual([0, 1]);
+});
+
+// --- @/todos grouped lists (backlog.md "Grouped todo lists + convert-a-message action") ---
+
+test("parseTodoGroups: a trigger followed by list items becomes one group, marker stripped", () => {
+  const content = "@/todos Groceries\n- milk\n- [x] eggs\n- [ ] bread";
+  const { groups } = parseTodoGroups(content);
+  expect(groups).toHaveLength(1);
+  expect(groups[0]).toMatchObject({ title: "Groceries", titleLineIndex: 0 });
+  expect(groups[0]?.items).toEqual([
+    { text: "milk", done: false, lineIndex: 1 },
+    { text: "eggs", done: true, lineIndex: 2 },
+    { text: "bread", done: false, lineIndex: 3 },
+  ]);
+});
+
+test("parseTodoGroups stops at the first blank line", () => {
+  const content = "@/todos List\n- one\n- two\n\n- not in the group";
+  const { groups } = parseTodoGroups(content);
+  expect(groups[0]?.items.map((i) => i.text)).toEqual(["one", "two"]);
+});
+
+test("parseTodoGroups stops at the first line that isn't a list item", () => {
+  const content = "@/todos List\n- one\nsome prose resumes here\n- two (not counted)";
+  const { groups } = parseTodoGroups(content);
+  expect(groups[0]?.items.map((i) => i.text)).toEqual(["one"]);
+});
+
+test("a trigger with nothing under it isn't a group", () => {
+  expect(parseTodoGroups("@/todos Empty\nnot a list item").groups).toEqual([]);
+});
+
+test("a plain `- item` (no checkbox) parses open; a mixed run keeps each item's own state", () => {
+  const { groups } = parseTodoGroups("@/todos Mixed\n- plain open\n- [x] done\n- [ ] open with box");
+  expect(groups[0]?.items.map((i) => [i.text, i.done])).toEqual([
+    ["plain open", false],
+    ["done", true],
+    ["open with box", false],
+  ]);
+});
+
+test("parseTodos excludes lines a @/todos group already consumed, so a group item isn't also a flat todo", () => {
+  const content = "@/todos Groceries\n- [ ] milk\n- [x] eggs\n\n@/todo separate one";
+  expect(parseTodos(content)).toEqual([{ text: "@/todo separate one", done: false, lineIndex: 4 }]);
+});
+
+test("toggleTodoLine on a plain list item (no checkbox) ADDS the checkbox syntax", () => {
+  expect(toggleTodoLine("- buy milk", 0)).toBe("- [x] buy milk");
+  expect(toggleTodoLine("* buy milk", 0)).toBe("* [x] buy milk");
+});
+
+test("collectTodos surfaces a @/todos group as one entry carrying its items", () => {
+  const threads = [thread("t1", "List")];
+  const messages = [message("m1", "t1", "@/todos Groceries\n- milk\n- [x] eggs", 100)];
+  const todos = collectTodos(threads, messages);
+  expect(todos).toHaveLength(1);
+  const group = todos[0]!;
+  if (group.kind !== "group") throw new Error("expected a group todo");
+  expect(group.title).toBe("Groceries");
+  expect(group.items.map((i) => [i.text, i.done])).toEqual([
+    ["milk", false],
+    ["eggs", true],
+  ]);
+});
+
+// --- message-level "Add to Todos" flag (meta.todo, not text) ---
+
+test("collectTodos surfaces a message flagged via meta.todo as its own entry, independent of its text", () => {
+  const threads = [thread("t1", "Notes")];
+  const messages = [
+    message("m1", "t1", "plain note, no todo syntax at all", 100, { todo: { done: false } }),
+    message("m2", "t1", "closed one", 200, { todo: { done: true } }),
+    message("m3", "t1", "not flagged", 300),
+  ];
+  const todos = collectTodos(threads, messages);
+  expect(todos).toHaveLength(2);
+  expect(todos.map((t) => (t.kind === "message" ? [t.messageId, t.done, t.messageContent] : null))).toEqual([
+    ["m2", true, "closed one"],
+    ["m1", false, "plain note, no todo syntax at all"],
+  ]);
 });
