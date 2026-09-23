@@ -150,20 +150,41 @@ Still open, needs real implementation work (see the sub-sections below, each its
    checkbox is untouched — out of scope, the feedback was specifically about the widget this feature added). The
    gutter idea (VS Code-style, a reusable action rail down the left of a message — could also host the note
    icon) is real but bigger scope; parked in `inspiration.md`, not built now.
-2. **Grouped todo lists + convert-a-message action ("Todo model v2").** Two asks that turned out to be one
-   change to the `Todo` shape (a sidebar entry becomes: one command line, *or* a titled group of list items,
-   *or* a whole flagged message):
-   - `@/todos <title>` followed by a contiguous run of `- ` list lines (own todo per item, own toggle; stop at
-     the first blank line or non-list line) — sidebar shows these as one card under `<title>` with its items,
-     not N flat rows.
-   - A message-level "Add to Todos" action (the existing ⋯ menu, `ThreadView.tsx`'s `EntryRow`) that flags the
-     *whole message* as a todo **without inserting `@/todo` text** — deliberately a second mechanism producing
-     the same sidebar outcome by a different UX flow (see `inspiration.md`), not a shortcut for typing the
-     command. Needs non-textual state since there's nothing to parse: the `meta` field already on `Message`
-     (`backend/schemas.ts`'s `AppendMessage`) is unused today — extend `EditMessage`/a small edit-meta path to
-     let it carry `{ todo?: { done: boolean } }`, synced like any other field. Sidebar shows these as one entry,
-     truncated content, own checkbox (toggling here IS non-textual — flips `meta.todo.done`, no `editMessage`
-     content rewrite).
+2. **Done: grouped todo lists + convert-a-message action ("Todo model v2").** `lib/todos.ts`'s `Todo` is now a
+   discriminated union (`kind: "line" | "group" | "message"`) instead of one flat shape; `TodosPanel.tsx` renders
+   each kind differently (a plain row, a titled card of items, or a truncated-content row) instead of N flat rows.
+   - `@/todos <title>` (own trigger, `parseTodoGroups`) followed by a contiguous run of list-item lines — `- `,
+     `* `, `+ `, with or without `[ ]`/`[x]` — stops at the first blank line or the first non-list line. A plain
+     `- item` with no checkbox parses as open; toggling it now *adds* the checkbox (`- [x] item`), it doesn't
+     require one up front. Checked what Crepe/`@milkdown/preset-commonmark` actually round-trips first: its
+     markdown serializer always emits `-` regardless of what bullet character was typed (remark-stringify's
+     default), so `*`/`+` support is for raw/pasted/imported content, not anything the app itself produces.
+     `parseTodos` (the flat single-line scan) now skips whatever a group already consumed, so a `- [ ]` list item
+     under a `@/todos` header isn't also counted as its own flat todo. `todoDecoration.ts` untouched — it only
+     ever cared about single `@/todo` lines, and a group's items already render as Crepe's native GFM task list.
+   - A message-level "Add to Todos" / "Remove from Todos" action in the existing ⋯ menu (`ThreadView.tsx`'s
+     `EntryRow`) flags the *whole message* as a todo without inserting any `@/todo` text — non-textual state in
+     `meta.todo: { done: boolean }` (`frontend/src/lib/types.ts`'s new `MessageMeta`, `backend/schemas.ts`'s
+     `MessageMeta`/`EditMessageMeta`). Its own small route, `PATCH /api/threads/:id/messages/:mid/meta`
+     (`editMessageMeta` in `backend/db.ts`) — `EditMessage` keeps `content` required, so meta needed a route of
+     its own rather than an awkward optional-content edit; a patch always *merges* into `meta`, a key set to
+     `null` deletes it (used by "Remove"), so an unrelated future `meta` field is never clobbered. `lib/api.ts`'s
+     `toggleMessageTodo`/`removeMessageTodo` (both `remoteApi` and `localApi`, `via()`-wrapped in `api`); the
+     sidebar's checkbox on this kind of entry calls these directly, never `editMessage`.
+   - **The sync-path gap flagged going in was real and got fixed, not just checked.** `meta` was already in
+     `SyncPayload` and already sent on every push, but `applySync` never actually applied an incoming `meta` to a
+     message that already existed (`appendMessage` no-ops once the id is taken, and nothing else touched `meta`
+     after that) — a device's meta change would reach main's `/api/sync` and be silently dropped. Fixed by giving
+     `meta` its own last-write-wins clock, `meta_edited_at` (`addColumn`, mirrors `edited_at`'s shape but kept
+     separate — a meta-only change must not read as a content edit, no history entry, no "edited" label), applied
+     in `applySync` the same way `editedAt` already was. `threadHash` was the second gap: it only ever hashed
+     `edited_at`, so a meta-only change on main would never move the hash a device compares against, and a pull
+     would never notice — fixed by hashing `max(edited_at, meta_edited_at)` per message (byte-for-byte the old
+     formula when neither has ever moved, so every untouched thread's hash is unchanged). On the device side,
+     `local.ts`'s `mergeRemoteThread`/`commitPush` compared only `content`/`editedAt`/`edits` when deciding what
+     counts as "the same" — extended (not replaced) to also compare `meta`/`metaEditedAt`, with a small
+     `mergeMeta` last-write-wins helper alongside the existing `mergeMessage` content merge, reusing the same
+     shape rather than inventing a new rule.
 3. **Per-thread reverse order** ("recent at top" instead of "recent at bottom"). A view toggle in `ThreadView`,
    local UI state (not synced — per-device, like Settings), that flips the virtualized list's order. Must not
    break the jump-to-message scroll/highlight from step 3 above — that indexes into the *rendered* order, so

@@ -226,14 +226,34 @@ speech model. They are per device (`localStorage`), never synced.
 
 The list icon beside the gear flips the sidebar to every todo across every thread, newest first, tap to jump to
 its thread, scrolled straight to that message and briefly highlighted (a plain CSS flash — `.message-highlight`
-in `styles.css` — not Motion, nothing enters or leaves the tree). Two syntaxes are recognized: the legacy
-`- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a line), and `@/todo <text>` — a command anchored to the
-start of a line, closed by wrapping it in real markdown strikethrough (`~~@/todo <text>~~`). Text is the only
-source of truth; there's no separate "done" flag stored anywhere. Tapping the checkbox rewrites that one line
-in place (open<->closed) through the same `editMessage` a normal edit uses. Closed todos are hidden by default;
-a header toggle shows them alongside a count of each. Pure derived data: `frontend/src/lib/todos.ts` scans
-messages already pulled into the device copy (`lib/local.ts`'s `exportSnapshot`), so there's no new store and
-nothing to sync. The jump itself reuses the `?capture=1` deep-link pattern: a row's click calls `App.tsx`'s
+in `styles.css` — not Motion, nothing enters or leaves the tree). A sidebar entry is one of three shapes
+(`lib/todos.ts`'s `Todo`, a discriminated union on `kind`):
+
+- **A single line.** The legacy `- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a line), or `@/todo <text>`
+  — a command anchored to the start of a line, closed by wrapping it in real markdown strikethrough
+  (`~~@/todo <text>~~`). Text is the only source of truth; tapping the checkbox rewrites that one line in place
+  (open<->closed) through the same `editMessage` a normal edit uses.
+- **A titled group.** `@/todos <title>` followed immediately by a run of list-item lines (`- `, `- [ ]`, `- [x]`
+  — stops at the first blank line or the first line that isn't a list item) renders as one card under `<title>`
+  with its own items underneath, each independently tickable. A plain `- item` with no checkbox parses as open;
+  ticking it adds the checkbox rather than requiring one up front. Still text-is-truth: every toggle is the same
+  `editMessage` rewrite, just targeting that item's own line.
+- **A flagged message.** The message's own ⋯ menu ("Add to Todos" / "Remove from Todos") flags the *whole
+  message* as a todo without inserting any `@/todo` text — a second, non-textual mechanism for the same sidebar
+  outcome (see `inspiration.md`'s "Commands: a content primitive"). State lives in `meta.todo: { done: boolean }`
+  on the message (`backend/schemas.ts`'s `MessageMeta`), its own small sync-safe route
+  (`PATCH /api/threads/:id/messages/:mid/meta`, merges into `meta` rather than replacing it) rather than a
+  content edit — the sidebar shows truncated message content with its own checkbox, and toggling it calls
+  `lib/api.ts`'s `toggleMessageTodo`/`removeMessageTodo` directly, never `editMessage`.
+
+Closed todos (lines, group items, and flagged messages alike) are hidden by default; a header toggle shows them
+alongside a count of each. Lines and groups are pure derived data — `frontend/src/lib/todos.ts` scans messages
+already pulled into the device copy (`lib/local.ts`'s `exportSnapshot`) — so neither needed a new store or a sync
+change. The flagged-message shape is the one real addition: `meta` already rode along in `SyncPayload`, but main
+never actually applied an incoming `meta` to a message it already had, and `threadHash` never reflected a
+meta-only change either, so a flag set on one device could silently never reach (or be pulled by) another — both
+fixed (`meta`'s own `metaEditedAt` clock, mirroring `editedAt`'s shape without treating a flag as a content edit;
+see `backlog.md`). The jump itself reuses the `?capture=1` deep-link pattern: a row's click calls `App.tsx`'s
 `openThreadAt(threadId, messageId)` (also `history.pushState`s a shareable `?thread=<id>&msg=<id>` pair) which
 opens the thread and hands `ThreadView` a `scrollToMessageId`; once that message's index is known in the
 already-virtualized message list (`@tanstack/react-virtual`), it calls the virtualizer's `scrollToIndex`. The
