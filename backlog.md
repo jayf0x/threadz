@@ -291,25 +291,62 @@ change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
 
 ## Next — Copy pass: icon-first, kill redundant text (2026-09-24)
 
-A general sweep, not scoped to one feature — see AGENTS.md's new "UI copy" guideline (terse, icon-first, no
-restating what's already obvious, "Local"/"Live" never "main") for the rule this pass applies everywhere.
-Known offenders to start from, not the full list — the task is every hardcoded string in `frontend/src`, not
-just these:
+**Done.** A full sweep of every hardcoded label/title/hint/placeholder/button/menu/error string under
+`frontend/src`, not just the five starting points below — see AGENTS.md's "UI copy" guideline (terse,
+icon-first, no restating what's already obvious, "Local"/"Live"/"Offline" never "main") for the rule.
 
-- `ThreadList.tsx`'s `SidebarSwitcher` (this session's own work, superseded already) — drop the text labels,
-  icon + tooltip only, same as `ThemeToggle` always was.
-- `SettingsPanel.tsx` — "This device only" subtitle (drop), the Backend URL field's long hint (drop or cut to
-  one clause), the naming toggle's hint stays (it earns its place, see AGENTS.md).
-- `ConnectionDialog.tsx` — the worst offender: "Main is back," "Can't reach main," "Available when main is
-  reachable," multiple full-paragraph explanations of what syncing does. Rewrite around Local/Live, cut every
-  paragraph down to what it actually adds. `StatusPill.tsx`'s `title` hints have the same "main" wording.
-- `ThreadView.tsx`'s ⋯ menu — "Copy thread from here" → "Copy"/"Copy here"; "Add to Todos"/"Remove from Todos"
-  → an icon (`StickyNotePlus`/`NotebookPen` floated as options) + a short word, if a word's needed at all.
-- `TodosPanel.tsx`, `Composer.tsx`, and anywhere else with a button/label/menu-item string — same treatment.
+The five starting points, as landed:
+- `ThreadList.tsx`'s `SidebarSwitcher` — visible `"Threads"`/`"Todos"`/`"Settings"` text dropped; each pill is
+  now icon + `title` + `sr-only` label, same pattern as `ThemeToggle`. The `aria-label`-equivalent accessible
+  name survives via the `sr-only` span, nothing lost for a screen reader.
+- `SettingsPanel.tsx` — the `Eyebrow` "This device only" subtitle under the Settings heading is gone (the
+  sidebar switcher already establishes the panel). Backend URL field's hint cut from a three-clause paragraph
+  to "Override if the app can't reach it automatically." The naming toggle's hint was left untouched, per the
+  guideline's own example of a hint that earns its place.
+- `ConnectionDialog.tsx` — rewritten. Eyebrow is now exactly `"Local"` / `"Live"` / `"Offline"` (StatusPill's
+  own three words) instead of `"Local · this device"` / `"Live · main"` / `"Live · offline"`. Headers: "Back
+  online." / "Working offline." / "Connected." / "Can't connect." (was "Main is back."/"Can't reach main."/
+  etc). Every body paragraph cut to one short clause ("Notes save here until you sync.", "Saves directly.
+  Falls back to this device if the connection drops.", "You choose when to sync back." — the "switch on
+  purpose, say before you go offline" scene-setting dropped). `connectionCopy.ts`'s `describeReport` (the
+  post-sync summary line) also rewritten without "main" ("Sent 3 changes." / "deleted remotely" / etc, was
+  "Sent 3 changes to main." / "deleted on main"). `StatusPill.tsx`'s `title` hints: "Working locally.
+  Reachable — open to sync." / "Live. Open to work locally." / "Unreachable. Open for options." (was "Main is
+  reachable"/"Live on main"/"Main is unreachable"), plus its `sr-only` "changes not on main" → "changes not
+  yet synced".
+- `ThreadView.tsx`'s ⋯ menu — "Copy thread from here" → "Copy here". "Add to Todos"/"Remove from Todos" → one
+  word ("Todo") with the icon carrying the add/remove distinction: `Square` (not flagged, click to add) /
+  `SquareCheck` (flagged, click to remove) — reusing the same checkbox visual language `TodosPanel.tsx`
+  already uses for open/closed, instead of introducing a new icon (`StickyNotePlus`/`NotebookPen` would have
+  read as "notes", a different concept already owned by the per-message `StickyNote` popover). `Composer.tsx`'s
+  own ⋯ menu ("Copy thread from here", the same action from the composer) got the same "Copy here" treatment
+  for consistency.
+- `TodosPanel.tsx` — already compliant on inspection (open/closed counts are a terse `Eyebrow` string, the
+  closed-filter switcher is already icon + `title` + `sr-only`, no visible label). No change needed.
 
-Guardrail: an icon-only control still needs its meaning somewhere a screen reader (and a mouse-hover human)
-can get it — `aria-label`/`title` stay even when visible text goes. This is a copy/UI pass, not a refactor —
-don't restructure components beyond what removing/replacing text actually requires.
+Found and fixed beyond the five starting points (the same "main" leak, missed by the known-offenders list):
+- `ThreadRow.tsx`'s delete confirmation (local mode): "leaves this device now and **main** on the next sync"
+  → "leaves this device now, and everywhere else on the next sync".
+- `lib/local.ts`'s local-mode `ask()` rejection: "Claude needs the **main** backend — go live to ask." →
+  "Claude isn't available offline — go live to ask." (surfaces as a real error if Ask is ever reached in local
+  mode).
+- `lib/handoff.ts`: the sync-in-progress phase label `"Reading main…"` (shown as the button's own text while
+  busy) → `"Reading…"`; the "no device copy yet" error `"Connect to main once first…"` → `"Connect once
+  first…"`; the retry-loop error `"Main kept changing while syncing…"` → `"Kept changing while syncing…"`.
+
+Everywhere else checked and left as-is: `Composer.tsx`'s Note/Ask mode toggle and "Keep exchange in thread"
+checkbox (real distinct behavior, not restating an icon); `MessageInput.tsx`, `ImageButton`, `Field`, `Button`,
+`Select`, `Input`, `Eyebrow`, `VoiceSettings.tsx`, `VoiceMeter.tsx`, `App.tsx`'s blank-state shortcuts hint —
+all either icon-only with a real `aria-label`/`title` already, or short text that isn't restating anything.
+`lib/status.ts`, `lib/replica.ts`, `lib/api.ts`, `lib/images.ts`, `lib/mode.ts` and code comments throughout
+keep "main" — internal/engineer-facing, per AGENTS.md, never rendered.
+
+Guardrail held: every place a visible label was removed (`SidebarSwitcher`) kept its accessible name via a
+`sr-only` span, same as `ThemeToggle`. No component was restructured beyond the text/icon change itself.
+
+Verified: `bun run check` (typecheck + Biome + token lint + 181 tests, all green) and
+`bun run --cwd frontend build`, both clean. No test asserted on any of the exact strings changed, so nothing
+needed updating on that side.
 
 ## v2 features (deferred by design)
 
