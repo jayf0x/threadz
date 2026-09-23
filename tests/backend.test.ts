@@ -693,6 +693,122 @@ describe("POST /api/threads/:id/copy (invariant: A untouched, B is new ids on a 
   });
 });
 
+describe("message meta (invariant: the 'Add to Todos' flag merges into `meta`, never replaces it, and syncs)", () => {
+  const patchMeta = (threadId: string, mid: string, body: unknown) =>
+    fetch(`${BASE}/api/threads/${threadId}/messages/${mid}/meta`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+  const sync = (body: unknown) =>
+    fetch(`${BASE}/api/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+
+  test("PATCH .../meta sets the flag, merges alongside an unrelated existing key, and null clears just that key", async () => {
+    const t = createThread(crypto.randomUUID(), "meta-merge");
+    const { message } = appendMessage({
+      id: crypto.randomUUID(),
+      threadId: t.id,
+      role: "user",
+      content: "m",
+      meta: { voice: true },
+    });
+
+    const flagged = await patchMeta(t.id, message.id, { meta: { todo: { done: false } } });
+    expect(flagged.message.meta).toEqual({ voice: true, todo: { done: false } }); // merged, not replaced
+
+    const done = await patchMeta(t.id, message.id, { meta: { todo: { done: true } } });
+    expect(done.message.meta).toEqual({ voice: true, todo: { done: true } });
+
+    const removed = await patchMeta(t.id, message.id, { meta: { todo: null } });
+    expect(removed.message.meta).toEqual({ voice: true }); // only `todo` was cleared
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("404s for an unknown message or one addressed via the wrong thread", async () => {
+    const t = createThread(crypto.randomUUID(), "meta-404");
+    const other = createThread(crypto.randomUUID(), "meta-404-other");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: other.id, role: "user", content: "m" });
+    const missing = await fetch(`${BASE}/api/threads/${t.id}/messages/not-a-message/meta`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ meta: { todo: { done: true } } }),
+    });
+    expect(missing.status).toBe(404);
+    const wrongThread = await fetch(`${BASE}/api/threads/${t.id}/messages/${message.id}/meta`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ meta: { todo: { done: true } } }),
+    });
+    expect(wrongThread.status).toBe(404);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+    await fetch(`${BASE}/api/threads/${other.id}`, { method: "DELETE" });
+  });
+
+  test("threadHash moves on a meta-only change (no content edit) so a pull actually notices", async () => {
+    const t = createThread(crypto.randomUUID(), "meta-hash");
+    const { message } = appendMessage({ id: crypto.randomUUID(), threadId: t.id, role: "user", content: "m" });
+    const before = threadHash(getThread(t.id)!);
+    await patchMeta(t.id, message.id, { meta: { todo: { done: true } } });
+    const after = threadHash(getThread(t.id)!);
+    expect(after).not.toBe(before);
+    // still no `edited_at`/history: a meta flag must not read as a content edit
+    const got = await fetch(`${BASE}/api/threads/${t.id}`).then((r) => r.json());
+    expect(got.messages[0].editedAt).toBeNull();
+    expect(got.messages[0].edits).toEqual([]);
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+
+  test("POST /api/sync applies an incoming meta change to a message main ALREADY has — the gap appendMessage's no-op used to leave open", async () => {
+    const t = createThread(crypto.randomUUID(), "meta-sync-existing");
+    const { message } = appendMessage({
+      id: crypto.randomUUID(),
+      threadId: t.id,
+      role: "user",
+      content: "already on main",
+    });
+    const at = Date.now();
+    const r = await sync({
+      threads: [],
+      messages: [
+        {
+          id: message.id,
+          threadId: t.id,
+          content: "already on main",
+          meta: { todo: { done: true } },
+          metaEditedAt: at,
+        },
+      ],
+      deletes: [],
+    });
+    expect(r.appended).toBe(0); // appendMessage no-ops: the message already existed
+    const got = await fetch(`${BASE}/api/threads/${t.id}`).then((res) => res.json());
+    expect(got.messages[0].meta).toEqual({ todo: { done: true } }); // but the meta patch still landed
+
+    // A replay (or an older metaEditedAt) never regresses a newer value already applied.
+    const stale = await sync({
+      threads: [],
+      messages: [
+        {
+          id: message.id,
+          threadId: t.id,
+          content: "already on main",
+          meta: { todo: { done: false } },
+          metaEditedAt: at - 5000,
+        },
+      ],
+      deletes: [],
+    });
+    expect(stale.appended).toBe(0);
+    const stillTrue = await fetch(`${BASE}/api/threads/${t.id}`).then((res) => res.json());
+    expect(stillTrue.messages[0].meta).toEqual({ todo: { done: true } });
+    await fetch(`${BASE}/api/threads/${t.id}`, { method: "DELETE" });
+  });
+});
+
 describe("annotations (invariant: own row, same fields as a message minus role, hash only grows when non-empty)", () => {
   const post = (path: string, body: unknown) =>
     fetch(`${BASE}${path}`, {
@@ -1360,6 +1476,46 @@ describe("local mode (invariant: no data lost across sync)", () => {
       expect(x.content).toBe("device edit");
       expect(x.edits.map((v) => v.content)).toEqual(["base", "main edit"]);
     }
+    await cleanUp(t.id);
+  });
+
+  test("a message-todo flag set offline reaches main on sync, merged alongside an unrelated meta key", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ meta-flag-offline", seed: "flag me" });
+    await handoff.syncNow();
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+
+    const flagged = await local.localApi.toggleMessageTodo(t.id, m.id, false);
+    expect(flagged.message.meta).toEqual({ todo: { done: false } });
+    expect((await local.countUnsynced()).messages).toBe(1); // a meta-only change is still a pending push
+
+    await handoff.syncNow();
+    const main = await mainMessages(t.id);
+    expect(main[0].meta).toEqual({ todo: { done: false } });
+    expect(main[0].editedAt).toBeNull(); // never read as a content edit
+    expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, annotations: 0, deletions: 0 });
+
+    // "Remove from Todos" clears the flag the same way, and that reaches main too.
+    await local.localApi.removeMessageTodo(t.id, m.id);
+    await handoff.syncNow();
+    expect((await mainMessages(t.id))[0].meta).toBeNull();
+    await cleanUp(t.id);
+  });
+
+  test("a message-todo flag set on main is pulled down to the device without a content edit", async () => {
+    const t = await local.localApi.createThread({ title: "__local__ meta-flag-from-main", seed: "flag me too" });
+    await handoff.syncNow();
+    const m = (await local.localApi.getThread(t.id)).messages[0]!;
+
+    await fetch(`${BASE}/api/threads/${t.id}/messages/${m.id}/meta`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ meta: { todo: { done: true } } }),
+    });
+
+    await handoff.syncNow(); // pulls first, same as any live re-read
+    const survivor = (await local.localApi.getThread(t.id)).messages[0]!;
+    expect(survivor.meta).toEqual({ todo: { done: true } });
+    expect(survivor.content).toBe("flag me too"); // untouched
     await cleanUp(t.id);
   });
 

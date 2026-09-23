@@ -8,6 +8,15 @@ export type Role = z.infer<typeof Role>;
 
 const Version = z.object({ content: z.string(), at: z.number() });
 
+// Non-textual per-message state (the ⋯ menu's "Add to Todos", not a `@/todo` line — see
+// backlog.md's "Grouped todo lists + convert-a-message action"). `catchall` so a key this shape
+// doesn't know about yet still round-trips instead of being stripped — editMessageMeta merges by
+// key, never replaces the whole object, so an unrelated future field surviving validation matters.
+export const MessageMeta = z
+  .object({ todo: z.object({ done: z.boolean() }).nullable().optional() })
+  .catchall(z.unknown());
+export type MessageMeta = z.infer<typeof MessageMeta>;
+
 export const SyncPayload = z.object({
   threads: z
     .array(
@@ -30,6 +39,7 @@ export const SyncPayload = z.object({
         createdAt: z.number().optional(),
         editedAt: z.number().nullish(),
         edits: z.array(Version).optional(),
+        metaEditedAt: z.number().nullish(),
       }),
     )
     .default([]),
@@ -73,6 +83,10 @@ export const AppendMessage = z.object({
 export const RenameThread = z.object({ title: z.string().optional(), renamedAt: z.number().optional() });
 
 export const EditMessage = z.object({ content: z.string().optional(), editedAt: z.number().optional() });
+
+// A message's `meta` patch (see MessageMeta above) — its own small route, like an annotation's:
+// EditMessage's `content` stays required, this never touches content/edits/edited_at.
+export const EditMessageMeta = z.object({ meta: MessageMeta, metaEditedAt: z.number().optional() });
 
 export const AskThread = z.object({
   prompt: z.string().optional(),

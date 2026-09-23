@@ -25,9 +25,11 @@ CREATE TABLE IF NOT EXISTS messages (
   content     TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
   seq         INTEGER NOT NULL,     -- append order within the thread
-  meta        TEXT,                 -- JSON object, e.g. {"voice":true}
+  meta        TEXT,                 -- JSON object, e.g. {"voice":true} or {"todo":{"done":false}}
   edited_at   INTEGER,              -- when content was last edited (NULL = never)
-  edits       TEXT                  -- JSON [{content, at}] previous versions, oldest first
+  edits       TEXT,                 -- JSON [{content, at}] previous versions, oldest first
+  meta_edited_at INTEGER            -- when meta was last patched (NULL = never); own clock from edited_at,
+                                     -- so a meta-only change (no content touched) still moves threadHash
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id, seq);
 CREATE TABLE IF NOT EXISTS annotations (
@@ -104,6 +106,7 @@ export type MessageRow = {
   meta: string | null;
   edited_at: number | null;
   edits: string | null;
+  meta_edited_at: number | null;
 };
 
 // Same fields as a message minus `role` (only the user writes annotations in v1), plus the thread
@@ -184,6 +187,7 @@ const addColumn = (table: string, col: string, type: string) => {
 addColumn("threads", "renamed_at", "INTEGER");
 addColumn("messages", "edited_at", "INTEGER");
 addColumn("messages", "edits", "TEXT");
+addColumn("messages", "meta_edited_at", "INTEGER");
 
 export const now = () => Date.now();
 
@@ -327,8 +331,19 @@ export const copyThread = db.transaction(
     const toCopy = all.slice(0, cut + 1);
     for (const m of toCopy) {
       db.query(
-        "INSERT INTO messages (id, thread_id, role, content, created_at, seq, meta, edited_at, edits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).run(copyMessageId(newId, m.id), newId, m.role, m.content, m.created_at, m.seq, m.meta, m.edited_at, m.edits);
+        "INSERT INTO messages (id, thread_id, role, content, created_at, seq, meta, edited_at, edits, meta_edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        copyMessageId(newId, m.id),
+        newId,
+        m.role,
+        m.content,
+        m.created_at,
+        m.seq,
+        m.meta,
+        m.edited_at,
+        m.edits,
+        m.meta_edited_at,
+      );
       // Annotations on a copied message are copied too, with `message_id` remapped to the copy.
       for (const a of getAnnotationsForMessage(m.id)) {
         db.query(
@@ -424,6 +439,48 @@ export const editMessage = (id: string, incoming: Version[]) => {
     id,
   );
   db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(current.at, m.thread_id);
+  return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
+};
+
+// Patch a message's `meta` (the "Add to Todos" flag and anything else that lands there later) —
+// merged into the existing object, never replacing it wholesale: a key set to `null` in `patch` is
+// removed, any other key is set/overwritten, and keys `patch` doesn't mention are left alone. Own
+// clock (`meta_edited_at`), not `edited_at` — a meta-only change must not read as a content edit (no
+// history entry, no "edited" label) but still has to move threadHash so a pull picks it up. Same
+// last-write-wins shape as content's `edited_at`, just without a version history — nothing here needs
+// an undo trail for a boolean flag.
+export const editMessageMeta = (id: string, patch: Record<string, unknown>, at: number) => {
+  const m = getMessage(id);
+  if (!m) return null;
+  if (at < (m.meta_edited_at ?? 0)) return m; // an older write loses to a newer one already applied
+  const current: Record<string, unknown> = m.meta ? JSON.parse(m.meta) : {};
+  const merged: Record<string, unknown> = { ...current };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete merged[k];
+    else merged[k] = v;
+  }
+  const metaOut = Object.keys(merged).length ? JSON.stringify(merged) : null;
+  db.query("UPDATE messages SET meta = ?, meta_edited_at = ? WHERE id = ?").run(metaOut, at, id);
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(at, m.thread_id);
+  return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
+};
+
+// Sync's counterpart to editMessageMeta above — used by applySync, NOT the live PATCH route.
+// A device syncing up sends its whole current `meta` value for a row (same idea as `content`: the
+// entire string is replaced wholesale on a newer edit, not merged character-by-character), so this
+// REPLACES `meta` outright when `at` is newer, exactly like editMessage does for content — it does
+// NOT merge key-by-key like editMessageMeta. Merging here would be wrong: a device's `meta` can be
+// stale on keys it never touched (e.g. dirty only because of a content edit, still carrying whatever
+// meta it last pulled), and merging that stale snapshot over a genuinely newer value some other
+// device wrote directly on main would silently resurrect the stale one. The `at < meta_edited_at`
+// guard is what makes replacing safe: a stale device's older meta is a no-op here.
+export const setMessageMeta = (id: string, meta: Record<string, unknown> | null, at: number) => {
+  const m = getMessage(id);
+  if (!m) return null;
+  if (at < (m.meta_edited_at ?? 0)) return m;
+  const metaOut = meta && Object.keys(meta).length ? JSON.stringify(meta) : null;
+  db.query("UPDATE messages SET meta = ?, meta_edited_at = ? WHERE id = ?").run(metaOut, at, id);
+  db.query("UPDATE threads SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(at, m.thread_id);
   return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
 };
 
@@ -525,6 +582,7 @@ export const messageJson = (m: MessageRow) => ({
   meta: m.meta ? JSON.parse(m.meta) : null,
   editedAt: m.edited_at,
   edits: m.edits ? (JSON.parse(m.edits) as Version[]) : [],
+  metaEditedAt: m.meta_edited_at,
 });
 
 export const annotationJson = (a: AnnotationRow) => ({
@@ -549,11 +607,17 @@ export const annotationJson = (a: AnnotationRow) => ({
 // changed" and refused pending deletes. A thread with zero annotations hashes exactly as before.
 export const threadHash = (t: ThreadRow) => {
   const ids = db
-    .query<{ id: string; edited_at: number | null }, [string]>(
-      "SELECT id, edited_at FROM messages WHERE thread_id = ? ORDER BY id",
+    .query<{ id: string; edited_at: number | null; meta_edited_at: number | null }, [string]>(
+      "SELECT id, edited_at, meta_edited_at FROM messages WHERE thread_id = ? ORDER BY id",
     )
     .all(t.id)
-    .map((r) => (r.edited_at ? `${r.id}@${r.edited_at}` : r.id));
+    .map((r) => {
+      // A message with only `meta` touched (never a content edit) must still move the hash, so a pull
+      // notices — same suffix shape as before (`id@at`) when either clock has ever moved, bare id
+      // when neither has (byte-for-byte the pre-meta_edited_at formula for every message untouched by this).
+      const at = Math.max(r.edited_at ?? 0, r.meta_edited_at ?? 0);
+      return at ? `${r.id}@${at}` : r.id;
+    });
   const annotations = db
     .query<{ id: string; edited_at: number | null }, [string]>(
       "SELECT id, edited_at FROM annotations WHERE thread_id = ? ORDER BY id",
@@ -628,6 +692,13 @@ export const applySync = db.transaction((p: SyncPayload) => {
     const r = appendMessage({ ...m, content: m.edits?.[0]?.content ?? m.content, role: m.role || "user" });
     if (r.inserted) appended++;
     if (m.editedAt) editMessage(m.id, [...(m.edits ?? []), { content: m.content, at: m.editedAt }]);
+    // `meta` at creation is covered by appendMessage above; a LATER meta-only change (the message
+    // already existed on main) only lands through this — appendMessage no-ops for an id it already
+    // has, so without this a device's meta change would silently never reach main. `setMessageMeta`
+    // (not editMessageMeta — that one merges key-by-key for the live PATCH route, this replaces the
+    // whole value like `editedAt` does for content, see its own comment) applied the same way the
+    // `editedAt` line above already is.
+    if (m.metaEditedAt) setMessageMeta(m.id, (m.meta as Record<string, unknown> | null) ?? null, m.metaEditedAt);
     touched.add(m.threadId);
   }
   for (const a of p.annotations ?? []) {

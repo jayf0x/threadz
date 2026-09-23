@@ -14,6 +14,7 @@ import {
   deleteThread,
   editAnnotation,
   editMessage,
+  editMessageMeta,
   getAnnotation,
   getAnnotations,
   getMessage,
@@ -38,6 +39,7 @@ import {
   CreateThread,
   EditAnnotation,
   EditMessage,
+  EditMessageMeta,
   RenameThread,
   SyncPayload,
 } from "./schemas";
@@ -284,6 +286,23 @@ const server = Bun.serve({
         const message = editMessage(p.mid, [{ content: body.content.trim(), at }]);
         if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
         refreshMetadata(p.id);
+        return json({ message: messageJson(message) });
+      }),
+    },
+
+    // Non-textual message state (the ⋯ menu's "Add/Remove Todos", the sidebar's message-todo
+    // checkbox) — merged into `meta`, never replaces it; a key set to `null` clears it. Its own
+    // route, not EditMessage above: `content` stays required there, and a meta patch has no content
+    // to send. `metaEditedAt` gets its own clock (never `editedAt`) so this never reads as a content
+    // edit (no history entry, no "edited" label) but still moves threadHash for sync (see db.ts).
+    "/api/threads/:id/messages/:mid/meta": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      PATCH: wrap(async (req, p) => {
+        requireThread(p.id);
+        const body = await readBody(req, EditMessageMeta);
+        const at = Math.min(body.metaEditedAt || Date.now(), Date.now());
+        const message = editMessageMeta(p.mid, body.meta, at);
+        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
         return json({ message: messageJson(message) });
       }),
     },

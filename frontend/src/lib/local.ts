@@ -2,7 +2,7 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { Api } from "./api";
 import { ApiError } from "./errors";
 import { combineScore, matchScore } from "./search";
-import type { Annotation, Message, Snapshot, SyncResult, Thread, Unsynced, Version } from "./types";
+import type { Annotation, Message, MessageMeta, Snapshot, SyncResult, Thread, Unsynced, Version } from "./types";
 import { byCreatedThenId, bySeq, mergeMessage, versionsOf } from "./versions";
 
 // The device's own database. Unlike the `threadz` mirror (lib/db.ts) this is
@@ -301,7 +301,7 @@ export const localApi: Api = {
       content: text,
       createdAt: ts,
       seq,
-      meta: (meta as Record<string, unknown> | null | undefined) ?? null,
+      meta: (meta as MessageMeta | null | undefined) ?? null,
       dirty: 1,
     };
     await tx.objectStore("messages").put(message);
@@ -325,6 +325,42 @@ export const localApi: Api = {
       ...mergeMessage(old, { ...old, content: text, editedAt: at, edits: versionsOf(old) }),
       dirty: 1,
     };
+    await tx.objectStore("messages").put(message);
+    await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, at) });
+    await tx.done;
+    return { message: strip(message) };
+  },
+
+  // Flags/unflags a whole message as a todo (the ⋯ menu's "Add/Remove Todos", the sidebar's
+  // message-todo checkbox) — non-textual, merged into `meta` like the backend's editMessageMeta,
+  // never a content edit. `done: null` clears the flag entirely (see removeMessageTodo below).
+  // Own clock (`metaEditedAt`, not `editedAt`): mergeRemoteThread's `same()` check treats the two
+  // independently, so a pending meta change never gets mistaken for (or clobbered by) a content merge.
+  toggleMessageTodo: async (threadId, id, done) => {
+    const db = await getDB();
+    const tx = db.transaction(["threads", "messages"], "readwrite");
+    const thread = await tx.objectStore("threads").get(threadId);
+    const old = await tx.objectStore("messages").get(id);
+    if (!thread || !old || old.threadId !== threadId) throw notFound();
+    const at = Date.now();
+    const meta: MessageMeta = { ...(old.meta ?? {}), todo: { done } };
+    const message: LMessage = { ...old, meta, metaEditedAt: at, dirty: 1 };
+    await tx.objectStore("messages").put(message);
+    await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, at) });
+    await tx.done;
+    return { message: strip(message) };
+  },
+
+  removeMessageTodo: async (threadId, id) => {
+    const db = await getDB();
+    const tx = db.transaction(["threads", "messages"], "readwrite");
+    const thread = await tx.objectStore("threads").get(threadId);
+    const old = await tx.objectStore("messages").get(id);
+    if (!thread || !old || old.threadId !== threadId) throw notFound();
+    const at = Date.now();
+    const meta: MessageMeta = { ...(old.meta ?? {}) };
+    delete meta.todo;
+    const message: LMessage = { ...old, meta: Object.keys(meta).length ? meta : null, metaEditedAt: at, dirty: 1 };
     await tx.objectStore("messages").put(message);
     await tx.objectStore("threads").put({ ...thread, updatedAt: Math.max(thread.updatedAt, at) });
     await tx.done;
@@ -487,10 +523,23 @@ export const commitPush = async (sent: Batch, r: SyncResult) => {
 
 // What /api/sync carries for a thread / a note; another field changing (updatedAt) is no reason to resend.
 const sameThread = (a: Thread, b: Thread) => a.title === b.title && (a.renamedAt ?? null) === (b.renamedAt ?? null);
-const sameMessage = (a: { content: string; editedAt?: number | null; edits?: Version[] }, b: typeof a) =>
+// `meta`/`metaEditedAt` are optional on the generic shape (an annotation has neither) so this one
+// function still serves both call sites below.
+const sameMessage = (
+  a: {
+    content: string;
+    editedAt?: number | null;
+    edits?: Version[];
+    meta?: MessageMeta | null;
+    metaEditedAt?: number | null;
+  },
+  b: typeof a,
+) =>
   a.content === b.content &&
   (a.editedAt ?? null) === (b.editedAt ?? null) &&
-  JSON.stringify(a.edits ?? []) === JSON.stringify(b.edits ?? []);
+  JSON.stringify(a.edits ?? []) === JSON.stringify(b.edits ?? []) &&
+  JSON.stringify(a.meta ?? null) === JSON.stringify(b.meta ?? null) &&
+  (a.metaEditedAt ?? null) === (b.metaEditedAt ?? null);
 
 // Something we thought main had, it doesn't: make it a pending change again.
 export const markDirty = async (messageIds: string[]) => {
@@ -514,6 +563,15 @@ export const markAnnotationsDirty = async (annotationIds: string[]) => {
 };
 
 // --- pulling main's changes into the device copy ------------------------------
+
+// `meta`'s own last-write-wins merge, parallel to mergeMessage's content merge but on its own clock
+// (`metaEditedAt`, not `editedAt`) — a meta-only change on one side must not be judged against the
+// other side's content edit time. Newest `metaEditedAt` wins outright (no version history to keep:
+// there's nothing to show an "edited" trail for on a boolean flag, unlike content).
+const mergeMeta = (mine: Message, theirs: Message): Pick<Message, "meta" | "metaEditedAt"> =>
+  (theirs.metaEditedAt ?? 0) >= (mine.metaEditedAt ?? 0)
+    ? { meta: theirs.meta, metaEditedAt: theirs.metaEditedAt ?? null }
+    : { meta: mine.meta, metaEditedAt: mine.metaEditedAt ?? null };
 
 // Union main's version of a thread into ours. Never drops a local note; a thread we
 // deleted but main changed comes back ("content wins"), along with our own notes and annotations.
@@ -545,12 +603,16 @@ export const mergeRemoteThread = async (
       added++;
       continue;
     }
-    // Same note edited on both sides: newest text wins, the other stays in its history.
-    const merged = mergeMessage(mine, m);
+    // Same note edited on both sides: newest text wins, the other stays in its history. `meta`
+    // merges on its own clock (mergeMeta), independently — a pending meta-only change here must
+    // survive a pull that brings in main's (older) meta, and vice versa.
+    const merged = { ...mergeMessage(mine, m), ...mergeMeta(mine, m) };
     const same = (x: Message) =>
       x.content === merged.content &&
       (x.editedAt ?? null) === merged.editedAt &&
-      (x.edits?.length ?? 0) === merged.edits?.length;
+      (x.edits?.length ?? 0) === merged.edits?.length &&
+      JSON.stringify(x.meta ?? null) === JSON.stringify(merged.meta ?? null) &&
+      (x.metaEditedAt ?? null) === (merged.metaEditedAt ?? null);
     if (!same(m))
       await tx.objectStore("messages").put({ ...merged, dirty: 1 }); // main lacks something we hold
     else if (!same(mine)) await tx.objectStore("messages").put({ ...merged, dirty: 0 });
@@ -737,6 +799,7 @@ export const parseSnapshot = (raw: unknown): Snapshot | null => {
     (m.role === "user" || m.role === "assistant") &&
     opt(m.meta, rec) &&
     opt(m.editedAt, num) &&
+    opt(m.metaEditedAt, num) &&
     (m.edits === undefined || versions(m.edits));
   const annotation = (a: unknown) =>
     rec(a) &&

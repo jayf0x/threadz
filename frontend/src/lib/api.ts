@@ -40,6 +40,22 @@ export const remoteApi = {
       body: JSON.stringify({ content }),
     }),
 
+  // Non-textual message state (the ⋯ menu's "Add/Remove Todos", the sidebar's message-todo
+  // checkbox) — merged into `meta`, never a content edit, so this hits its own small route instead
+  // of editMessage above (see backend/server.ts). `removeMessageTodo` clears the flag entirely
+  // (`meta.todo: null`, which editMessageMeta on the backend deletes rather than sets).
+  toggleMessageTodo: (threadId: string, id: string, done: boolean) =>
+    req<{ message: Message }>(`/api/threads/${threadId}/messages/${id}/meta`, {
+      method: "PATCH",
+      body: JSON.stringify({ meta: { todo: { done } } }),
+    }),
+
+  removeMessageTodo: (threadId: string, id: string) =>
+    req<{ message: Message }>(`/api/threads/${threadId}/messages/${id}/meta`, {
+      method: "PATCH",
+      body: JSON.stringify({ meta: { todo: null } }),
+    }),
+
   deleteThread: (id: string) => req<{ ok: true }>(`/api/threads/${id}`, { method: "DELETE" }),
 
   // Idempotent append. Backend dedupes on `id`.
@@ -186,6 +202,16 @@ export const api: Api = {
     via(
       () => remoteApi.editMessage(threadId, id, content),
       () => localApi.editMessage(threadId, id, content),
+    ),
+  toggleMessageTodo: (threadId, id, done) =>
+    via(
+      () => remoteApi.toggleMessageTodo(threadId, id, done),
+      () => localApi.toggleMessageTodo(threadId, id, done),
+    ),
+  removeMessageTodo: (threadId, id) =>
+    via(
+      () => remoteApi.removeMessageTodo(threadId, id),
+      () => localApi.removeMessageTodo(threadId, id),
     ),
   deleteThread: (id) =>
     via(

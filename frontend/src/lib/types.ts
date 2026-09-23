@@ -12,6 +12,13 @@ export type Thread = {
 // A previous text of a message; `at` (when that text was written) identifies it.
 export type Version = { content: string; at: number };
 
+// `meta`'s one typed field so far: the ⋯ menu's "Add to Todos" (see features/todos), a whole
+// message flagged as a todo without inserting `@/todo` text. Still a bag, not a closed shape — an
+// index signature, so a future key can ride along without every reader needing to know about it.
+// `editMessageMeta` (backend) / `toggleMessageTodo`/`removeMessageTodo` (lib/api.ts) always merge a
+// patch into this, never replace it wholesale.
+export type MessageMeta = { todo?: { done: boolean } } & Record<string, unknown>;
+
 export type Message = {
   id: string;
   threadId: string;
@@ -19,9 +26,10 @@ export type Message = {
   content: string;
   createdAt: number;
   seq: number;
-  meta: Record<string, unknown> | null;
+  meta: MessageMeta | null;
   editedAt?: number | null; // null/absent = never edited
   edits?: Version[]; // previous texts, oldest first
+  metaEditedAt?: number | null; // when meta was last patched; null/absent = never — own clock from editedAt
 };
 
 // A note attached to one message. Same fields as a message minus `role` (only the user writes
@@ -81,6 +89,7 @@ export type SyncPayload = {
     createdAt: number;
     editedAt: number | null;
     edits: Version[];
+    metaEditedAt: number | null;
   }[];
   annotations: {
     id: string;

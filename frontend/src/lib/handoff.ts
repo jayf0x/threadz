@@ -94,6 +94,7 @@ export const syncNow = async (phase?: Phase): Promise<SyncReport> => {
           createdAt: m.createdAt,
           editedAt: m.editedAt ?? null,
           edits: m.edits ?? [],
+          metaEditedAt: m.metaEditedAt ?? null,
         })),
         annotations: batch.annotations.map((a) => ({
           id: a.id,
