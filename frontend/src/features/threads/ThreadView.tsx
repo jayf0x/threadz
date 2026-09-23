@@ -7,10 +7,11 @@ import {
   Check,
   CloudOff,
   Copy,
-  ListTodo,
   Mic,
   MoreHorizontal,
   Pencil,
+  Square,
+  SquareCheck,
   StickyNote,
   Trash2,
   X,
@@ -665,10 +666,10 @@ export const EntryRow = ({
               }
               items={[
                 { label: "Edit", icon: Pencil, onClick: startEdit },
-                { label: "Copy thread from here", icon: Copy, onClick: onCopyThread },
+                { label: "Copy here", icon: Copy, onClick: onCopyThread },
                 m.meta?.todo
-                  ? { label: "Remove from Todos", icon: ListTodo, onClick: () => onSetTodo(null) }
-                  : { label: "Add to Todos", icon: ListTodo, onClick: () => onSetTodo(false) },
+                  ? { label: "Todo", icon: SquareCheck, onClick: () => onSetTodo(null) }
+                  : { label: "Todo", icon: Square, onClick: () => onSetTodo(false) },
               ]}
             />
           )}

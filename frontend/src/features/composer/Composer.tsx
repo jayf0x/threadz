@@ -230,7 +230,7 @@ export const Composer = ({
             lastMessage && (
               <Menu
                 align="end"
-                items={[{ label: "Copy thread from here", icon: Copy, onClick: copyThreadFromHere }]}
+                items={[{ label: "Copy here", icon: Copy, onClick: copyThreadFromHere }]}
                 trigger={
                   <button
                     type="button"
