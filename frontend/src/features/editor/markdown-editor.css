@@ -154,3 +154,25 @@
 }
 .threadz-md .threadz-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .threadz-md .ProseMirror-selectednode.threadz-img { outline: 2px solid var(--ring); }
+
+/* `@/todo` command lines (lib/todos.ts, ./todoDecoration.ts): a clickable checkbox in front of the
+ * line, matching TodosPanel's Square/SquareCheck. Decoration-only — no new node type, no change to
+ * the underlying markdown beyond what a click's toggle already writes back. */
+.threadz-md .milkdown .ProseMirror p.threadz-todo-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-left: 0;
+}
+.threadz-todo-check {
+  flex: none;
+  display: inline-flex;
+  margin-top: 0.2em;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.threadz-todo-check:hover { color: var(--foreground); }
+.threadz-todo-check svg { width: 14px; height: 14px; }
+.threadz-todo-check--done { color: var(--muted-foreground); }
+.threadz-todo-line del { color: var(--muted-foreground); }

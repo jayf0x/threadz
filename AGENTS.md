@@ -63,6 +63,17 @@ label — reserve text labels for actions without an obvious icon, or where the 
   lazy-loaded Milkdown editor, not cheap to all mount at once. Rows are measured (`measureElement`), not a fixed
   guess, since edit mode, an image, or a note popover all change a row's real height. Follow the same "measure,
   don't guess" pattern for any other list that can get long instead of a fixed row-height virtualizer.
+- **Custom rendering inside the Milkdown view** (`features/editor/MarkdownEditor.tsx`): every `@milkdown/*`
+  and `prosemirror-*` module is loaded with a dynamic `import()` inside the mount effect, never a static
+  top-level import — that keeps ProseMirror out of the static import graph (and so out of `bun test`/typecheck
+  and the initial bundle; `vite build` warns if something breaks this). A node view for an existing markdown
+  construct (`![]()` images) is `imageView.ts` — a plain function returning `{ dom, destroy }`, registered with
+  `utils.$view(schema.node, () => view)`. Decorating something that *isn't* real markdown (`@/todo` lines —
+  they're a plain-text convention, not an AST node) is `todoDecoration.ts` — a `prosemirror-state` `Plugin`
+  returning widget/node `Decoration`s, registered with `utils.$prose(() => plugin(...))`. Either way, only
+  type-only imports (`import type … from "@milkdown/kit/prose/*"`) belong at a helper file's top level; the
+  real `Plugin`/`PluginKey`/`Decoration`/`DecorationSet`/etc. classes are handed in as arguments from
+  `MarkdownEditor.tsx`'s already-dynamically-loaded modules, not imported fresh in the helper.
 - **Motion** (`motion/react`; `LazyMotion`/`domAnimation` wraps the app once in `App.tsx`, components use the
   lean `m` component, not `motion`) is the app's animation library — the only case plain CSS transitions can't
   cover is an element actually leaving the tree (`AnimatePresence`: a new message's entrance, the voice-recovery

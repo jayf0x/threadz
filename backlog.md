@@ -91,10 +91,21 @@ each its own commit:
    prop and calls the virtualizer's `scrollToIndex` once the message's index is known (re-checked as `messages`
    loads, so it can't scroll to a stale index), then flashes it via `.message-highlight` (`styles.css`) — plain
    CSS, not Motion.
-4. **Not required for the above to ship — do last, cut if it drags:** inline checkbox rendering for `@/todo`
-   lines inside the Milkdown view (remark + node-view plugin, pattern in `imageView.ts`), and confirm/add GFM
-   strikethrough support (not currently an installed Crepe feature — check before assuming `~~` even renders
-   struck-through today). Falls back to a plain text line without this, which is already correct, just not pretty.
+4. **Done, decoration-only (not the full remark-node route originally sketched here).** Checked first: GFM
+   strikethrough already rendered (`~~x~~` → `<del>`) with zero changes — `CrepeBuilder` bundles the full
+   `@milkdown/kit/preset/gfm` preset unconditionally (`@milkdown/crepe`'s own `builder.js`), confirmed by booting
+   a headless editor and inspecting the output HTML rather than assuming. `@/todo` itself still isn't a markdown
+   construct, so rather than adding a remark plugin + ProseMirror node schema + serializer (real work, and this
+   step was explicitly cuttable), went with option (b) from the start: a ProseMirror decoration plugin
+   (`features/editor/todoDecoration.ts`) that finds top-level paragraphs whose rendered text starts with
+   `@/todo`, prepends a clickable checkbox widget (same `Square`/`SquareCheck` visual language as `TodosPanel`),
+   and reads `done` off the `strike_through` mark already on the text. No new node type, no parser/serializer
+   changes. A click maps the paragraph's doc-order position back to the matching entry in `parseTodos(value)`
+   and calls `toggleTodoLine`, same as the sidebar. Wired only into the message's read-only view
+   (`ThreadView.tsx`'s `EntryRow`, via a new `onTodoToggle` prop on `MarkdownEditor`) — edit mode renders the
+   raw markdown textarea (`raw` prop), not Crepe, so there's nothing to decorate there; toggling from inside a
+   message is read-mode only, same as the sidebar already was. Verified end-to-end (checkbox renders,
+   click rewrites only that line, other content untouched) with a headless render, not just typechecking.
 
 No backend table, no new IndexedDB store, no new sync/merge rule — deliberate, see `inspiration.md`.
 
