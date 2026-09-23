@@ -224,10 +224,14 @@ speech model. They are per device (`localStorage`), never synced.
 
 ### Open todos
 
-The list icon beside the gear flips the sidebar to every unchecked `- [ ] ` line across every thread, newest first,
-tap to jump to its thread. Read-only, on purpose — see "Load-bearing decisions" and `backlog.md` for why ticking a
-box isn't wired up. Pure derived data: `frontend/src/lib/todos.ts` scans messages already pulled into the device
-copy (`lib/local.ts`'s `exportSnapshot`), so there's no new store and nothing to sync.
+The list icon beside the gear flips the sidebar to every todo across every thread, newest first, tap to jump to
+its thread. Two syntaxes are recognized: the legacy `- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a
+line), and `@/todo <text>` — a command anchored to the start of a line, closed by wrapping it in real markdown
+strikethrough (`~~@/todo <text>~~`). Text is the only source of truth; there's no separate "done" flag stored
+anywhere. Tapping the checkbox rewrites that one line in place (open<->closed) through the same `editMessage`
+a normal edit uses. Closed todos are hidden by default; a header toggle shows them alongside a count of each.
+Pure derived data: `frontend/src/lib/todos.ts` scans messages already pulled into the device copy
+(`lib/local.ts`'s `exportSnapshot`), so there's no new store and nothing to sync.
 
 ### Photos in notes
 
