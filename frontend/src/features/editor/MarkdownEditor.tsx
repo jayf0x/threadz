@@ -14,7 +14,7 @@
 // stay out of the static import graph.
 import type { Ctx } from "@milkdown/kit/ctx";
 import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
-import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { type CSSProperties, type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { housekeeping } from "@/lib/images";
 import { padForInsert } from "@/lib/voice/text";
@@ -88,6 +88,9 @@ export const MarkdownEditor = ({
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
    * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
   className?: string;
+  /** For a var that has to be a computed runtime value (a measured height), not a static
+   * Tailwind arbitrary class — e.g. `{ "--md-min-height": "220px" }`. */
+  style?: CSSProperties;
   /** Plain-text mode: a `<textarea>` showing the literal markdown source instead of WYSIWYG
    * rendering, for surfaces where the point is to select and delete raw syntax characters
    * (editing a message that already has `**bold**` etc. — there's no toolbar to undo it via
@@ -130,6 +133,7 @@ const RawEditor = ({
   onKeyDownCapture,
   onImageFile,
   className,
+  style,
   autofocus,
 }: {
   value: string;
@@ -140,6 +144,7 @@ const RawEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
   className?: string;
+  style?: CSSProperties;
   autofocus?: boolean;
 }) => {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -182,6 +187,7 @@ const RawEditor = ({
     <textarea
       ref={ref}
       className={cn("threadz-md-raw", className)}
+      style={style}
       value={value}
       readOnly={readOnly}
       placeholder={placeholder}
@@ -206,6 +212,7 @@ const CrepeEditor = ({
   onKeyDownCapture,
   onImageFile,
   className,
+  style,
   autofocus,
 }: {
   value: string;
@@ -216,6 +223,7 @@ const CrepeEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
   className?: string;
+  style?: CSSProperties;
   autofocus?: boolean;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -365,6 +373,7 @@ const CrepeEditor = ({
     <div
       ref={containerRef}
       className={cn("threadz-md", className)}
+      style={style}
       onKeyDownCapture={onKeyDownCapture}
       onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
       onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}

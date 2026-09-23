@@ -35,24 +35,16 @@ export const markReplicaReady = () => {
   } catch {}
 };
 
-// Main became unreachable: switch to the device copy on our own, once, and say so.
-// Coming back is never automatic — that needs a click (lib/handoff.ts).
-let auto = false;
+// Main became unreachable: switch to the device copy on our own. Coming back is never
+// automatic — that needs a click (lib/handoff.ts).
 export const detach = () => {
-  if (current === "local") return; // already there: nothing went away, and a stale flag would lie after the next goLive
-  auto = true;
+  if (current === "local") return; // already there: nothing to do
   setMode("local");
-};
-export const takeDetached = () => {
-  const was = auto;
-  auto = false;
-  return was;
 };
 
 export const setMode = (mode: Mode) => {
   if (mode === current) return;
   current = mode;
-  if (mode === "live") auto = false; // an unclaimed "main went away" must not outlive going live
   try {
     localStorage.setItem(KEY, mode);
   } catch {}

@@ -1,7 +1,8 @@
+import * as Popover from "@radix-ui/react-popover";
 import { format } from "date-fns";
 import { ArrowLeft, Check, CloudOff, Copy, Mic, MoreHorizontal, Pencil, StickyNote, Trash2, X } from "lucide-react";
 import { AnimatePresence, m as Motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Menu } from "@/components/ui/menu";
@@ -105,12 +106,24 @@ export const ThreadView = ({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-border px-6 py-3 md:px-10">
-        <div className="mx-auto flex max-w-3xl items-center gap-2">
-          <Button size="sm" variant="ghost" className="-ml-2 lg:hidden" onClick={onBack}>
-            <ArrowLeft className="size-3.5" /> Index
+      {/* A breadcrumb on a phone (back arrow + small title, one compact row) — the sidebar is
+          hidden while a thread is open there, so this is the only way back, not a place for a
+          full editorial heading. `lg:` gets the roomier one back: the sidebar is already visible
+          beside it, so the title can afford to be a real heading. */}
+      <header className="border-b border-border px-3 py-2 md:px-10 lg:py-3">
+        <div className="mx-auto flex max-w-3xl items-center gap-1 lg:gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Back to index"
+            className="shrink-0 lg:hidden"
+            onClick={onBack}
+          >
+            <ArrowLeft className="size-4" />
           </Button>
-          <h1 className="min-w-0 truncate font-serif text-2xl leading-tight tracking-tight">{thread?.title ?? "…"}</h1>
+          <h1 className="min-w-0 truncate text-sm font-medium lg:font-serif lg:text-2xl lg:font-normal lg:leading-tight lg:tracking-tight">
+            {thread?.title ?? "…"}
+          </h1>
         </div>
       </header>
 
@@ -196,10 +209,18 @@ const NotFound = ({ onBack }: { onBack: () => void }) => (
 
 const tiny = "font-mono text-[10px] text-muted-foreground";
 
+// Edit box starts close to the size of the text it's replacing, not a fixed one-size box that's
+// too cramped for a long note and too roomy for a one-liner — floor so a short message still gets
+// a comfortable box, ceiling matching the editor's own `60dvh` scroll cap so a giant message
+// doesn't measure into an edit box taller than the thread pane itself.
+const EDIT_MIN_PX = 96;
+const EDIT_MAX_RATIO = 0.6;
+
 // One entry: the content, then a hairline of tiny metadata under it. Your notes can be
 // edited in place (the previous text is kept and can be shown under "edited").
-// A note (annotation) is a quiet aside attached to the entry, not another entry: collapsed to a
-// small icon by default, expands in place (see the `noteOpen` panel below).
+// A note (annotation) is a quiet aside attached to the entry, not another entry: a small icon,
+// dim until there's one to show, opens it in a popover instead of pushing the thread's own
+// layout around — reading down a long thread never loses its place to an expanding neighbour.
 // ponytail: every entry is its own read-only editor instance; virtualize if a thread reaches hundreds.
 const EntryRow = ({
   message: m,
@@ -228,12 +249,10 @@ const EntryRow = ({
 }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.content);
+  const [editMinHeight, setEditMinHeight] = useState(EDIT_MIN_PX);
   const [history, setHistory] = useState(false);
-  // Collapsed by default. `noteMounted` is one-way (set once opened, never back to false): the
-  // panel then only ever *animates* closed instead of unmounting, which is what makes the collapse
-  // transition smooth instead of the content just vanishing mid-shrink.
+  const contentRef = useRef<HTMLDivElement>(null);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [noteMounted, setNoteMounted] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false); // editing existing note text, vs. its read view
   const [noteText, setNoteText] = useState(note?.content ?? "");
   const editor = useRef<MarkdownEditorHandle>(null);
@@ -252,15 +271,16 @@ const EntryRow = ({
   };
   const startEdit = () => {
     setText(m.content);
+    const measured = contentRef.current?.getBoundingClientRect().height ?? 0;
+    setEditMinHeight(Math.min(Math.max(measured, EDIT_MIN_PX), window.innerHeight * EDIT_MAX_RATIO));
     setEditing(true);
   };
 
-  // Collapsed ⇄ expanded. Reopening (or closing) an existing note always lands on its quiet read
-  // view, not wherever editing was left — composing a brand-new note keeps whatever was typed.
-  const toggleNote = () => {
-    setNoteMounted(true);
-    setNoteOpen((open) => !open);
-    if (note) setNoteEditing(false);
+  // Reopening (or closing) an existing note always lands on its quiet read view, not wherever
+  // editing was left — composing a brand-new note keeps whatever was typed.
+  const onNoteOpenChange = (open: boolean) => {
+    setNoteOpen(open);
+    if (open && note) setNoteEditing(false);
   };
   const startNoteEdit = () => {
     if (!note) return;
@@ -310,8 +330,10 @@ const EntryRow = ({
               value={text}
               onChange={setText}
               readOnly={busy}
+              autofocus
               onImageFile={(f) => attach([f])}
-              className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:60dvh] [--md-min-height:8rem] [--md-padding:10px_44px_10px_12px]"
+              className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:60dvh] [--md-padding:10px_44px_10px_12px]"
+              style={{ "--md-min-height": `${editMinHeight}px` } as CSSProperties}
               onKeyDownCapture={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -336,7 +358,9 @@ const EntryRow = ({
           </div>
         </>
       ) : (
-        <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" />
+        <div ref={contentRef}>
+          <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" />
+        </div>
       )}
 
       {!editing && (
@@ -350,21 +374,120 @@ const EntryRow = ({
             </button>
           )}
           {mine && (
-            <button
-              type="button"
-              aria-label={note ? "Note" : "Add a note"}
-              title={note ? "Note" : "Add a note"}
-              aria-expanded={noteOpen}
-              onClick={toggleNote}
-              className={cn(
-                "ml-auto p-1 transition-colors",
-                note
-                  ? "text-primary/70 hover:text-primary"
-                  : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-              )}
-            >
-              <StickyNote className="size-3" />
-            </button>
+            <Popover.Root open={noteOpen} onOpenChange={onNoteOpenChange}>
+              <Popover.Trigger asChild>
+                <button
+                  type="button"
+                  aria-label={note ? "Note" : "Add a note"}
+                  title={note ? "Note" : "Add a note"}
+                  className={cn(
+                    "ml-auto p-1 transition-colors",
+                    note
+                      ? "text-primary/70 hover:text-primary"
+                      : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+                  )}
+                >
+                  <StickyNote className="size-3" />
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={8}
+                  collisionPadding={8}
+                  className="z-50 w-80 max-w-[min(20rem,var(--radix-popover-content-available-width))] rounded-md border border-border bg-card p-3 shadow-lg outline-none"
+                >
+                  {composingNote ? (
+                    <>
+                      <div className="relative">
+                        <MarkdownEditor
+                          raw
+                          handleRef={noteEditor}
+                          value={noteText}
+                          onChange={setNoteText}
+                          readOnly={busy}
+                          autofocus
+                          placeholder="A quick note…"
+                          onImageFile={(f) => noteAttach([f])}
+                          className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
+                          onKeyDownCapture={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              saveNote();
+                            } else if (e.key === "Escape") {
+                              e.stopPropagation();
+                              cancelNoteEdit();
+                            }
+                          }}
+                        />
+                        <ImageButton onFiles={noteAttach} disabled={busy} className="absolute right-1 top-1" />
+                      </div>
+                      {noteImageError && (
+                        <p className="mt-1 truncate font-mono text-[11px] text-destructive">{noteImageError}</p>
+                      )}
+                      <div className="mt-1.5 flex justify-end gap-1">
+                        <button
+                          type="button"
+                          aria-label="Cancel"
+                          title="Cancel"
+                          onClick={cancelNoteEdit}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Save note"
+                          title="Save note"
+                          disabled={noteSaveDisabled}
+                          onClick={saveNote}
+                          className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
+                        >
+                          <Check className="size-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    note && (
+                      <>
+                        <div className="flex items-start gap-2">
+                          <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <button
+                              type="button"
+                              aria-label="Edit note"
+                              title="Edit note"
+                              onClick={startNoteEdit}
+                              className="p-1 text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil className="size-3" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Delete note"
+                              title="Delete note"
+                              onClick={deleteNote}
+                              className="p-1 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="size-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
+                          <time>{format(note.createdAt, "d MMM HH:mm")}</time>
+                          {unsyncedAnnotations.has(note.id) && (
+                            <CloudOff className="size-2.5" aria-label="only on this device so far" />
+                          )}
+                          {!!note.edits?.length && <span>edited</span>}
+                        </p>
+                      </>
+                    )
+                  )}
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
           )}
           {mine && (
             <Menu
@@ -396,110 +519,6 @@ const EntryRow = ({
             <MarkdownEditor readOnly value={v.content} className="[--md-padding:0]" />
           </div>
         ))}
-
-      {/* The note panel: a CSS grid row animated between 0fr/1fr (not height:auto — that can't
-          transition) so it opens and closes with a smooth height+opacity glide, never a jump. */}
-      {mine && (
-        <div
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
-            noteOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-          )}
-        >
-          <div className="overflow-hidden">
-            {noteMounted && (
-              <div className="mt-2 border-l-2 border-primary/40 py-0.5 pl-3">
-                {composingNote ? (
-                  <>
-                    <div className="relative">
-                      <MarkdownEditor
-                        raw
-                        handleRef={noteEditor}
-                        value={noteText}
-                        onChange={setNoteText}
-                        readOnly={busy}
-                        placeholder="A quick note…"
-                        onImageFile={(f) => noteAttach([f])}
-                        className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
-                        onKeyDownCapture={(e) => {
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            saveNote();
-                          } else if (e.key === "Escape") {
-                            e.stopPropagation();
-                            cancelNoteEdit();
-                          }
-                        }}
-                      />
-                      <ImageButton onFiles={noteAttach} disabled={busy} className="absolute right-1 top-1" />
-                    </div>
-                    {noteImageError && (
-                      <p className="mt-1 truncate font-mono text-[11px] text-destructive">{noteImageError}</p>
-                    )}
-                    <div className="mt-1.5 flex justify-end gap-1">
-                      <button
-                        type="button"
-                        aria-label="Cancel"
-                        title="Cancel"
-                        onClick={cancelNoteEdit}
-                        className="p-1 text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Save note"
-                        title="Save note"
-                        disabled={noteSaveDisabled}
-                        onClick={saveNote}
-                        className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
-                      >
-                        <Check className="size-3.5" />
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  note && (
-                    <>
-                      <div className="flex items-start gap-2">
-                        <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
-                        <div className="flex shrink-0 items-center gap-0.5">
-                          <button
-                            type="button"
-                            aria-label="Edit note"
-                            title="Edit note"
-                            onClick={startNoteEdit}
-                            className="p-1 text-muted-foreground hover:text-foreground"
-                          >
-                            <Pencil className="size-3" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Delete note"
-                            title="Delete note"
-                            onClick={deleteNote}
-                            className="p-1 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
-                        <time>{format(note.createdAt, "d MMM HH:mm")}</time>
-                        {unsyncedAnnotations.has(note.id) && (
-                          <CloudOff className="size-2.5" aria-label="only on this device so far" />
-                        )}
-                        {!!note.edits?.length && <span>edited</span>}
-                      </p>
-                    </>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </Motion.article>
   );
 };

@@ -1509,13 +1509,13 @@ describe("local mode (invariant: no data lost across sync)", () => {
     await cleanUp(id);
   });
 
-  test("detach() when already local leaves no stale 'main went away' flag for the next goLive", () => {
+  test("detach() when already local is a no-op, not a redundant setMode", () => {
     modeLib.setMode("local");
     modeLib.detach();
-    expect(modeLib.takeDetached()).toBe(false);
+    expect(modeLib.getMode()).toBe("local");
     modeLib.setMode("live");
     modeLib.detach();
-    expect(modeLib.takeDetached()).toBe(true);
+    expect(modeLib.getMode()).toBe("local");
     modeLib.setMode("live");
   });
 

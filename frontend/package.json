@@ -13,6 +13,7 @@
     "@milkdown/crepe": "^7.22.0",
     "@milkdown/kit": "^7.22.0",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-popover": "^1.1.23",
     "@ricky0123/vad-web": "^0.0.30",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

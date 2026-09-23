@@ -9,7 +9,6 @@ import { replicaReady } from "@/lib/mode";
 import { closePanel, total, useStatus } from "@/lib/status";
 import { BackupSection } from "./BackupSection";
 import { describeReport, describeUnsynced } from "./connectionCopy";
-import { Nudge } from "./Nudge";
 
 // The one place mode changes happen. Nothing switches on its own: going local and
 // going live are both buttons here, and going live syncs first.
@@ -65,95 +64,92 @@ export const ConnectionDialog = () => {
   }, [s.panel]);
 
   return (
-    <>
-      <dialog
-        ref={ref}
-        aria-labelledby="conn-title"
-        // Esc must not dismiss a running sync.
-        onCancel={(e) => (busy ? e.preventDefault() : closePanel())}
-        onClose={() => {
-          setNote(null);
-          setError(null);
-          closePanel();
-        }}
-        className="m-auto w-[min(32rem,calc(100vw-2rem))] border border-border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-foreground/40"
-      >
-        <div className="flex flex-col gap-5 px-6 py-6">
-          <header>
-            <Eyebrow>{local ? "Local · this device" : mainOk ? "Live · main" : "Live · offline"}</Eyebrow>
-            <h2 id="conn-title" className="mt-1 font-serif text-3xl leading-tight tracking-tight">
-              {local ? (up ? "Main is back." : "Working locally.") : mainOk ? "Live on main." : "Can't reach main."}
-            </h2>
-          </header>
+    <dialog
+      ref={ref}
+      aria-labelledby="conn-title"
+      // Esc must not dismiss a running sync.
+      onCancel={(e) => (busy ? e.preventDefault() : closePanel())}
+      onClose={() => {
+        setNote(null);
+        setError(null);
+        closePanel();
+      }}
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] border border-border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-foreground/40"
+    >
+      <div className="flex flex-col gap-5 px-6 py-6">
+        <header>
+          <Eyebrow>{local ? "Local · this device" : mainOk ? "Live · main" : "Live · offline"}</Eyebrow>
+          <h2 id="conn-title" className="mt-1 font-serif text-3xl leading-tight tracking-tight">
+            {local ? (up ? "Main is back." : "Working locally.") : mainOk ? "Live on main." : "Can't reach main."}
+          </h2>
+        </header>
 
-          {note && <p className="border-l-2 border-primary pl-3 text-sm">{note}</p>}
-          {error && (
-            <p className="border-l-2 border-destructive pl-3 font-mono text-[11px] text-destructive">
-              {error}
-              {local && (
-                <span className="block text-muted-foreground">
-                  Nothing was lost — everything is still on this device. Retry when ready.
-                </span>
-              )}
+        {note && <p className="border-l-2 border-primary pl-3 text-sm">{note}</p>}
+        {error && (
+          <p className="border-l-2 border-destructive pl-3 font-mono text-[11px] text-destructive">
+            {error}
+            {local && (
+              <span className="block text-muted-foreground">
+                Nothing was lost — everything is still on this device. Retry when ready.
+              </span>
+            )}
+          </p>
+        )}
+
+        {local ? (
+          <section className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              This device holds the latest copy. Notes are saved here; main only changes when you sync, and syncing also
+              brings in anything main gained meanwhile.
             </p>
-          )}
-
-          {local ? (
-            <section className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                This device holds the latest copy. Notes are saved here; main only changes when you sync, and syncing
-                also brings in anything main gained meanwhile.
-              </p>
-              <p className="font-mono text-[11px] uppercase tracking-widest">
-                {pending ? describeUnsynced(s.unsynced) : "Nothing waiting to sync"}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button disabled={busy || !up} onClick={syncAndGoLive}>
-                  {busy ? (phase ?? "Syncing…") : pending ? "Sync & go live" : "Go live"}
+            <p className="font-mono text-[11px] uppercase tracking-widest">
+              {pending ? describeUnsynced(s.unsynced) : "Nothing waiting to sync"}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={busy || !up} onClick={syncAndGoLive}>
+                {busy ? (phase ?? "Syncing…") : pending ? "Sync & go live" : "Go live"}
+              </Button>
+              {!up && <span className="text-xs text-muted-foreground">Available when main is reachable.</span>}
+            </div>
+          </section>
+        ) : (
+          <section className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              {mainOk
+                ? "Everything you write goes straight to main. If main drops away, the app carries on with this device's copy."
+                : replicaReady()
+                  ? "Main isn't reachable."
+                  : "Main isn't reachable, and this device has no copy yet. Connect once and it will make one."}
+            </p>
+            {pending > 0 && (
+              <div className="border border-primary bg-accent p-3">
+                <p className="text-sm">{describeUnsynced(s.unsynced)} from local work never reached main.</p>
+                <Button className="mt-2" size="sm" disabled={busy || !up} onClick={syncAndGoLive}>
+                  {busy ? (phase ?? "Syncing…") : "Sync to main"}
                 </Button>
-                {!up && <span className="text-xs text-muted-foreground">Available when main is reachable.</span>}
               </div>
-            </section>
-          ) : (
-            <section className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                {mainOk
-                  ? "Everything you write goes straight to main. If main drops away, the app carries on with this device's copy."
-                  : replicaReady()
-                    ? "Main isn't reachable."
-                    : "Main isn't reachable, and this device has no copy yet. Connect once and it will make one."}
+            )}
+            <div className="flex flex-col gap-1.5">
+              <div>
+                <Button variant="outline" disabled={busy} onClick={goLocal}>
+                  <HardDriveDownload className="size-3.5" /> Work locally
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Switch to this device's copy on purpose — say, before you go offline. You choose when to sync back.
               </p>
-              {pending > 0 && (
-                <div className="border border-primary bg-accent p-3">
-                  <p className="text-sm">{describeUnsynced(s.unsynced)} from local work never reached main.</p>
-                  <Button className="mt-2" size="sm" disabled={busy || !up} onClick={syncAndGoLive}>
-                    {busy ? (phase ?? "Syncing…") : "Sync to main"}
-                  </Button>
-                </div>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <div>
-                  <Button variant="outline" disabled={busy} onClick={goLocal}>
-                    <HardDriveDownload className="size-3.5" /> Work locally
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Switch to this device's copy on purpose — say, before you go offline. You choose when to sync back.
-                </p>
-              </div>
-            </section>
-          )}
+            </div>
+          </section>
+        )}
 
-          {local && <BackupSection busy={busy} run={run} setNote={setNote} backupAt={backupAt} persisted={persisted} />}
+        {local && <BackupSection busy={busy} run={run} setNote={setNote} backupAt={backupAt} persisted={persisted} />}
 
-          <footer className="flex justify-end">
-            <Button variant="ghost" disabled={busy} onClick={closePanel}>
-              Close
-            </Button>
-          </footer>
-        </div>
-      </dialog>
-      <Nudge />
-    </>
+        <footer className="flex justify-end">
+          <Button variant="ghost" disabled={busy} onClick={closePanel}>
+            Close
+          </Button>
+        </footer>
+      </div>
+    </dialog>
   );
 };

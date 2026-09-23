@@ -2,22 +2,23 @@ import { useSyncExternalStore } from "react";
 import { ping } from "./api";
 import { HAS_BACKEND } from "./config";
 import { countUnsynced } from "./local";
-import { detach, getMode, onMode, replicaReady, takeDetached } from "./mode";
+import { detach, getMode, onMode, replicaReady } from "./mode";
 import { pullMain } from "./replica";
 import { onChange } from "./sync";
 import type { Mode, Unsynced } from "./types";
 
-// One shared view of "where am I, can I reach main, what's unsynced". Nothing
-// here changes the mode: connectivity only ever raises a hint (`nudge`) that
-// the user acts on.
+// One shared view of "where am I, can I reach main, what's unsynced". Nothing here changes the
+// mode — a mode switch is always the user's own click (`lib/handoff.ts`) or `detach()`'s own
+// auto-fallback; connectivity is only ever read, never acted on, from the status pill / dialog
+// the user opens on their own terms. No proactive "main is back" popup: the pill already shows
+// mode passively (and a hatched bar while local, see `App.tsx`), and the dialog explains the
+// rest once opened — a banner nagging on top of that just repeated it.
 export type Status = {
   mode: Mode;
   checked: boolean; // has the first probe answered yet
   reachable: boolean;
   unsynced: Unsynced;
   panel: boolean; // connection dialog open
-  nudge: boolean; // "main is back" banner
-  detached: boolean; // "main went away, you're on the device copy" banner
 };
 
 const NONE: Unsynced = { threads: 0, messages: 0, annotations: 0, deletions: 0 };
@@ -29,8 +30,6 @@ let state: Status = {
   reachable: false,
   unsynced: NONE,
   panel: false,
-  nudge: false,
-  detached: false,
 };
 const listeners = new Set<() => void>();
 
@@ -41,9 +40,8 @@ const set = (patch: Partial<Status>) => {
 
 export const total = (u: Unsynced) => u.threads + u.messages + u.annotations + u.deletions;
 
-export const openPanel = () => set({ panel: true, nudge: false });
+export const openPanel = () => set({ panel: true });
 export const closePanel = () => set({ panel: false });
-export const dismissNudge = () => set({ nudge: false, detached: false });
 
 export const refreshUnsynced = async () => {
   const u = await countUnsynced().catch(() => NONE);
@@ -61,12 +59,12 @@ export const probe = async () => {
   const ok = await ping();
   misses = ok ? 0 : misses + 1;
   if (!state.checked) {
-    set({ checked: true, reachable: ok, nudge: ok && state.mode === "local" });
+    set({ checked: true, reachable: ok });
   } else if (ok === state.reachable) {
     streak = 0;
   } else if (++streak >= 2) {
     streak = 0;
-    set({ reachable: ok, nudge: ok && state.mode === "local" });
+    set({ reachable: ok });
   }
   // Cut off from main while live, with a full copy on the device: carry on locally.
   if (misses >= DETACH_AFTER && state.mode === "live" && replicaReady()) detach();
@@ -96,7 +94,7 @@ const start = () => {
     () => document.removeEventListener("visibilitychange", onVisibility),
     onChange(refreshUnsynced),
     onMode(() => {
-      set({ mode: getMode(), nudge: false, detached: takeDetached() });
+      set({ mode: getMode() });
       refreshUnsynced();
     }),
   ];

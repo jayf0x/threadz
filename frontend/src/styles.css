@@ -55,6 +55,14 @@ html,
 body,
 #root {
   height: 100%;
+  /* The app owns its own scrolling (ThreadView's message list, the sidebar index) — the page
+     itself never scrolls. Two things this fixes: any child briefly wider than the viewport
+     (an icon row, a menu) bleeding into a horizontal scrollbar instead of just clipping at the
+     edge, and — the bigger one — iOS Safari's habit of scrolling the whole page to "help" bring
+     a focused input into view even when nothing needs scrolling, which leaves dead space below
+     the composer sized like the keyboard that's covering it. With nothing at the page level to
+     scroll, it can't do that.  */
+  overflow: hidden;
 }
 
 body {
