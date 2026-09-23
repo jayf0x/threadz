@@ -72,7 +72,6 @@ export const MarkdownEditor = ({
   raw = false,
   placeholder = "start writing…",
   readOnly = false,
-  onTodoToggle,
   ...rest
 }: {
   value: string;
@@ -80,11 +79,6 @@ export const MarkdownEditor = ({
   placeholder?: string;
   /** Display mode: same rendering, no caret. Toggles live. */
   readOnly?: boolean;
-  /** Called with the message's full next markdown when a `@/todo` line's checkbox decoration
-   * (see `todoDecoration.ts`) is clicked — the caller persists it (e.g. `editMessage`). Falls back
-   * to `onChange` when omitted, so a still-unsent composer draft can still be toggled in place.
-   * WYSIWYG only (`raw` mode has no decorations to click). */
-  onTodoToggle?: (nextMarkdown: string) => void;
   handleRef?: Ref<MarkdownEditorHandle>;
   /** Capture phase — runs before ProseMirror's own handlers, so a caller can
    * claim a chord (e.g. ⌘Enter to send) with preventDefault + stopPropagation. */
@@ -113,7 +107,7 @@ export const MarkdownEditor = ({
   raw ? (
     <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
   ) : (
-    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} onTodoToggle={onTodoToggle} />
+    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
   );
 
 // Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
@@ -215,7 +209,6 @@ const CrepeEditor = ({
   onChange,
   placeholder,
   readOnly,
-  onTodoToggle,
   handleRef,
   onKeyDownCapture,
   onImageFile,
@@ -227,7 +220,6 @@ const CrepeEditor = ({
   onChange?: (markdown: string) => void;
   placeholder: string;
   readOnly: boolean;
-  onTodoToggle?: (nextMarkdown: string) => void;
   handleRef?: Ref<MarkdownEditorHandle>;
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
@@ -239,8 +231,6 @@ const CrepeEditor = ({
   const loadedRef = useRef<Loaded | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const onTodoToggleRef = useRef(onTodoToggle);
-  onTodoToggleRef.current = onTodoToggle;
   // Latest markdown Crepe emitted — lets the value-sync effect skip the echo
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
@@ -291,15 +281,8 @@ const CrepeEditor = ({
         .addFeature(placeholderFeature, { text, mode: "doc" });
       // Photos: `img:` refs render as lazy grey boxes (./imageView.ts).
       crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
-      // `@/todo` lines: a checkbox widget decoration, no new node type (./todoDecoration.ts).
-      crepe.editor.use(
-        utils.$prose(() =>
-          todoDecorationPlugin(state, proseView, {
-            getValue: () => latest.current.value,
-            onToggle: (next) => (onTodoToggleRef.current ?? onChangeRef.current)?.(next),
-          }),
-        ),
-      );
+      // `@/todo` lines: CSS-only highlight decoration, no new node type (./todoDecoration.ts).
+      crepe.editor.use(utils.$prose(() => todoDecorationPlugin(state, proseView)));
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;

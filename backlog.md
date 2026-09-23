@@ -134,10 +134,20 @@ First real feedback on the four items above. Two were bugs, not opinions — fix
 
 Still open, needs real implementation work (see the sub-sections below, each its own agent hand-off):
 
-1. **Checkbox in the message view reads as UI bolted onto markdown, not markdown.** Went with the feedback's
-   own first option: drop the clickable checkbox widget entirely, keep `@/todo`/`~~@/todo~~` recognizable with
-   CSS only (e.g. style the `@/todo` token, keep strikethrough for closed — already free via GFM). State edits
-   stay sidebar-or-raw-edit-mode only, same as the legacy `- [ ] ` syntax already was before step 4 above. The
+1. **Done: checkbox in the message view reads as UI bolted onto markdown, not markdown.** Went with the
+   feedback's own first option: the clickable checkbox widget (`checkboxWidget()`, a `<button>` decoration
+   prepended to the paragraph) is gone from `todoDecoration.ts` — the plugin no longer takes `getValue`/`onToggle`
+   at all, since there's nothing left to click. What's left: a `Decoration.inline` around the literal `@/todo`
+   token (`.threadz-todo-token` — accent color, semibold) plus the existing `Decoration.node` line wrap
+   (`.threadz-todo-line` — accent background wash, `var(--primary)` left rule), both in
+   `markdown-editor.css`, both semantic tokens per AGENTS.md. Closed (`~~@/todo …~~`) still gets real GFM
+   strikethrough for free; the highlight itself fades (`.threadz-todo-line--done`: background back to
+   transparent, rule to `var(--border)`, token color inherits the muted strikethrough color) instead of
+   fighting it. `onTodoToggle` is gone from `MarkdownEditor`/`CrepeEditor` and its one call site
+   (`ThreadView.tsx`'s `EntryRow`, the read-only `MarkdownEditor` for `m.content`); `commandTodoLines` (the
+   click→line-index mapping) is deleted with it, nothing else used it. State edits are sidebar-or-raw-edit-mode
+   only again, same as the legacy `- [ ] ` syntax already was before step 4 above (Crepe's native GFM task-list
+   checkbox is untouched — out of scope, the feedback was specifically about the widget this feature added). The
    gutter idea (VS Code-style, a reusable action rail down the left of a message — could also host the note
    icon) is real but bigger scope; parked in `inspiration.md`, not built now.
 2. **Grouped todo lists + convert-a-message action ("Todo model v2").** Two asks that turned out to be one

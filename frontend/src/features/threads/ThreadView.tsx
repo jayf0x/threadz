@@ -418,7 +418,7 @@ const EntryRow = ({
         </>
       ) : (
         <div ref={contentRef}>
-          <MarkdownEditor readOnly value={m.content} onTodoToggle={onEdit} className="[--md-padding:0]" />
+          <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" />
         </div>
       )}
 
