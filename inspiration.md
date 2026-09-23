@@ -64,6 +64,35 @@ Zulip's answer to folders is two flat levels and cheap relabelling.
 - In-thread branching (one tree per conversation, a switcher at the fork) is the common LLM-chat pattern: editing a
   message or regenerating a reply creates a sibling branch and keeps the original (Nodea).
 
+## Commands: a content primitive (2026-09-23)
+
+Prompted by an unplanned Todos view landing (`a5fc9a0`, read-only, plain `- [ ] ` scan) — the user liked the
+result but not as a standalone todo app; the insight worth keeping is treating a todo as one instance of a
+general "command" written inline in a note, not a separate feature. Researched how other tools attach state to
+inline text before settling this: GitHub/GitLab task lists and Logseq's `TODO`/`DOING`/`DONE` keyword both keep
+the checkbox/keyword as the single source of truth (toggling rewrites the text, nothing else is authoritative);
+Obsidian's Tasks plugin appends trailing emoji-metadata after the checkbox (the "pass args" idea below, already
+proven); Roam gives blocks stable ids for cross-graph reference; Notion's `/` is the odd one out — it inserts a
+structured block into non-markdown storage, the opposite of this app's plain-portable-markdown premise, so it's
+the trigger character, not the model, that threadz borrows from Notion.
+
+**Settled for v1** (see `backlog.md`): `@/<word> <rest of line>` — a command at the start of a line, content is
+everything after the space to end of line. `@` was free to take (grepped, nothing else in the app treats it as a
+trigger). Only `todo` exists today; the parser is written so a second command is a small diff, not a framework —
+no plugin registry until there is a second command that needs one.
+
+**Todo is the first command, and it's still text-is-truth.** `@/todo write more docs` is open;
+`~~@/todo write more docs~~` is closed — real markdown strikethrough, so it degrades to something sane in any
+plain markdown viewer, and the state has nowhere to drift out of sync with the text because there is no second
+copy of it. Ticking a box in the sidebar rewrites the line and calls the same `editMessage` every other edit
+uses; typing `~~` by hand does the same thing on the next parse. This is deliberately the GitHub/Logseq model,
+not a new one.
+
+**No backend table for todos**, reversing what was floated in conversation — every device already holds the
+full replica (`lib/local.ts`'s `exportSnapshot`, kept warm by `pullMain`), so a derived index would be a second
+copy of the same truth to keep consistent for no win at today's scale. Revisit only if a backend-only client
+ever exists (none planned — see "main is the brain, phones are shadow clones" in README).
+
 ## Ideas that came out (candidates)
 
 - **Two planes.** Content (notes, edits, images, thread membership; written anywhere; union merge) and derived
@@ -145,6 +174,15 @@ Not in the backlog. Draw from here when picking the next features.
 - **One-off import scripts** for an Obsidian vault (folder names could seed theme hints) and for ChatGPT/Claude
   exports; personal scripts, not features.
 - **Undo toast for Copy**, if Copy ever gets an always-visible button.
+- **Commands beyond `@/todo`.** Multi-line snapshot todos (capture everything until the next blank line or command,
+  not just to end-of-line). Args after the command for alternate interpretation (`@/todo(summarize)` runs the note
+  below through `askModel()` so the sidebar shows a clean line instead of raw text; `@/todo(image)` pulls in the
+  nearest image). Both need a real second data point (people actually wanting longer todos, or wanting the noise
+  cut) before building — the flat one-line command covers the common case cheaply today. Any second command type
+  (not just todo) is also the trigger to build the small parser into an actual registry — not before.
+  Inline checkbox rendering for `@/todo` in the Milkdown view (a remark + node-view plugin, same pattern as
+  `imageView.ts`) is cosmetic polish, not required for the feature to work — the sidebar and raw edit mode already
+  read/write it fine without it.
 
 ## Sources
 

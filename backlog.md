@@ -65,10 +65,36 @@ custom logic, so they weren't touched.
 recovered later if this turns out to matter (e.g. for collapsing near-duplicates once search/trend-detection
 exist).
 
-**Decided 2026-09-22:** Open Todos ships read-only, no tick-in-place. Ticking a box is a content edit — it would
-need the same edit-with-history machinery as any other message edit (`editMessage`), and two devices ticking
-different boxes offline would silently lose one under "newest text wins." Real complexity for a feature whose
-whole value here is "see everything I meant to do"; tick-in-place can come later if it's actually missed.
+**Superseded 2026-09-23** (was: "Decided 2026-09-22," read-only, no tick-in-place). The edit-with-history
+machinery this was waiting on already exists (`editMessage`, used by every other note edit); "two devices tick
+different boxes offline" is the same newest-text-wins collision any concurrent edit to one message already has,
+not a new risk specific to todos. Missed sooner than expected — see "Next — Todo commands" below, which replaces
+this feature with a small general one (`@/` commands, `inspiration.md`) instead of just unlocking the checkbox.
+
+## Next — Todo commands (`@/todo`, see `inspiration.md` "Commands: a content primitive")
+
+Turns the read-only Todos view into the real thing: a todo declared inline in any thread with `@/todo <text>`
+(kept alongside the existing `- [ ] ` scan, not replacing it), tickable from the sidebar, jumps back to its
+message. Text stays the single source of truth throughout — see `inspiration.md` for why. Land in this order,
+each its own commit:
+
+1. **`lib/todos.ts` parser.** Recognize `@/todo <rest of line>` (open) and `~~@/todo <rest of line>~~` (closed,
+   real markdown strikethrough) as well as the existing `- [ ] `/`- [x]`. One function, not a command-plugin
+   framework — there's only one command. Return `done` on every entry instead of only open ones; update
+   `collectOpenTodos`'s callers for the new shape. Pure function, needs a `bun test` case per syntax variant.
+2. **Tick-in-place.** `TodosPanel`'s checkbox calls `editMessage(messageId, newContent)` with the line's `~~`
+   wrapped/unwrapped, the same call `ThreadView`'s edit mode already makes. Add a closed-todo filter, default
+   hidden, and a count of each. Update README's "Open todos" section — it currently says read-only.
+3. **Jump to message.** Reuse the `?capture=1` query-param pattern (`App.tsx`) for `?thread=<id>&msg=<id>`:
+   parse once on mount and from the sidebar's click, open the thread, scroll the virtualizer
+   (`@tanstack/react-virtual`'s `scrollToIndex`) to the message, flash a highlight — plain CSS transition, not
+   Motion (nothing enters/leaves the tree, see AGENTS.md).
+4. **Not required for the above to ship — do last, cut if it drags:** inline checkbox rendering for `@/todo`
+   lines inside the Milkdown view (remark + node-view plugin, pattern in `imageView.ts`), and confirm/add GFM
+   strikethrough support (not currently an installed Crepe feature — check before assuming `~~` even renders
+   struck-through today). Falls back to a plain text line without this, which is already correct, just not pretty.
+
+No backend table, no new IndexedDB store, no new sync/merge rule — deliberate, see `inspiration.md`.
 
 ## v2 features (deferred by design)
 
