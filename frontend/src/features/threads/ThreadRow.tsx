@@ -70,7 +70,7 @@ export const ThreadRow = ({
   const del = async () => {
     const warn =
       getMode() === "local"
-        ? "Delete this thread? It leaves this device now and main on the next sync. A copy stays in your backups."
+        ? "Delete this thread? It leaves this device now, and everywhere else on the next sync. A copy stays in your backups."
         : "Delete this thread? This cannot be undone.";
     if (!confirm(warn)) return;
     try {

@@ -369,7 +369,7 @@ export const localApi: Api = {
 
   // No Claude on the device. Local mode is capture-only; the UI does not offer Ask.
   ask: async () => {
-    throw new ApiError(503, "Claude needs the main backend — go live to ask.");
+    throw new ApiError(503, "Claude isn't available offline — go live to ask.");
   },
 
   // Idempotent append, exactly like `appendMessage` (own row, not part of the message's dirty flag).
