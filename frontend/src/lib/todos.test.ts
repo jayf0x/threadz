@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { collectTodos, type LineTodo, parseTodoGroups, parseTodos, stripTodoMarker, toggleTodoLine } from "./todos";
+import {
+  collectTodos,
+  isTodoVisible,
+  type LineTodo,
+  parseTodoGroups,
+  parseTodos,
+  RECENT_CLOSED_MS,
+  stripTodoMarker,
+  type Todo,
+  toggleTodoLine,
+} from "./todos";
 import type { Message, Thread } from "./types";
 
 test("matches a plain unchecked legacy checkbox", () => {
@@ -95,6 +105,7 @@ const message = (
   content: string,
   createdAt: number,
   meta: Message["meta"] = null,
+  extra: Partial<Pick<Message, "editedAt" | "metaEditedAt">> = {},
 ): Message => ({
   id,
   threadId,
@@ -103,6 +114,7 @@ const message = (
   createdAt,
   seq: 1,
   meta,
+  ...extra,
 });
 
 const asLines = (todos: ReturnType<typeof collectTodos>) =>
@@ -212,4 +224,100 @@ test("collectTodos surfaces a message flagged via meta.todo as its own entry, in
     ["m2", true, "closed one"],
     ["m1", false, "plain note, no todo syntax at all"],
   ]);
+});
+
+// --- closed-at derivation + the "recent" filter window (backlog.md "Closed-todo filter") ---
+
+test("a LineTodo's closedAt approximates via the message's editedAt, falling back to createdAt", () => {
+  const threads = [thread("t1", "List")];
+  const untouched = message("m1", "t1", "~~@/todo milk~~", 100);
+  const edited = message("m2", "t1", "~~@/todo eggs~~", 100, null, { editedAt: 250 });
+  const todos = asLines(collectTodos(threads, [untouched, edited]));
+  expect(todos.find((t) => t.messageId === "m1")?.closedAt).toBe(100);
+  expect(todos.find((t) => t.messageId === "m2")?.closedAt).toBe(250);
+});
+
+test("a MessageTodo's closedAt is exact — the message's metaEditedAt, falling back to createdAt", () => {
+  const threads = [thread("t1", "Notes")];
+  const untouched = message("m1", "t1", "no meta edit yet", 100, { todo: { done: true } });
+  const edited = message("m2", "t1", "flagged then flipped", 100, { todo: { done: true } }, { metaEditedAt: 300 });
+  const todos = collectTodos(threads, [untouched, edited]);
+  const closedAtOf = (id: string) => {
+    const t = todos.find((t) => t.messageId === id);
+    if (t?.kind !== "message") throw new Error("expected a message todo");
+    return t.closedAt;
+  };
+  expect(closedAtOf("m1")).toBe(100);
+  expect(closedAtOf("m2")).toBe(300);
+});
+
+test("isTodoVisible: a group and its items are never filtered, open or closed", () => {
+  const group: Todo = {
+    kind: "group",
+    id: "g1",
+    threadId: "t1",
+    threadTitle: "List",
+    messageId: "m1",
+    messageContent: "@/todos List\n- [x] eggs",
+    title: "List",
+    items: [{ text: "eggs", done: true, lineIndex: 1 }],
+    createdAt: 0,
+  };
+  expect(isTodoVisible(group, "never", 1_000_000)).toBe(true);
+  expect(isTodoVisible(group, "always", 1_000_000)).toBe(true);
+  expect(isTodoVisible(group, "recent", 1_000_000)).toBe(true);
+});
+
+test("isTodoVisible: an open flat todo is always visible regardless of filter", () => {
+  const openLine: LineTodo = {
+    kind: "line",
+    id: "l1",
+    threadId: "t1",
+    threadTitle: "List",
+    messageId: "m1",
+    messageContent: "@/todo milk",
+    lineIndex: 0,
+    text: "@/todo milk",
+    done: false,
+    createdAt: 0,
+    closedAt: 0,
+  };
+  expect(isTodoVisible(openLine, "never", 1_000_000)).toBe(true);
+});
+
+test("isTodoVisible: 'always'/'never' ignore the closed-at timestamp entirely", () => {
+  const closedLine: LineTodo = {
+    kind: "line",
+    id: "l1",
+    threadId: "t1",
+    threadTitle: "List",
+    messageId: "m1",
+    messageContent: "~~@/todo milk~~",
+    lineIndex: 0,
+    text: "~~@/todo milk~~",
+    done: true,
+    createdAt: 0,
+    closedAt: 0,
+  };
+  expect(isTodoVisible(closedLine, "always", 1_000_000)).toBe(true);
+  expect(isTodoVisible(closedLine, "never", 1_000_000)).toBe(false);
+});
+
+test("isTodoVisible: 'recent' — visible just inside the 24h window, hidden just outside it", () => {
+  const closedAt = 10_000;
+  const closedLine: LineTodo = {
+    kind: "line",
+    id: "l1",
+    threadId: "t1",
+    threadTitle: "List",
+    messageId: "m1",
+    messageContent: "~~@/todo milk~~",
+    lineIndex: 0,
+    text: "~~@/todo milk~~",
+    done: true,
+    createdAt: closedAt,
+    closedAt,
+  };
+  expect(isTodoVisible(closedLine, "recent", closedAt + RECENT_CLOSED_MS - 1)).toBe(true);
+  expect(isTodoVisible(closedLine, "recent", closedAt + RECENT_CLOSED_MS + 1)).toBe(false);
 });

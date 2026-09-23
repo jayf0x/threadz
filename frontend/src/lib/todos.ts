@@ -121,6 +121,10 @@ export type LineTodo = {
   text: string; // the raw markdown line, marker included
   done: boolean;
   createdAt: number;
+  // No per-line "closed at" exists (or is worth building for this). Approximated as the whole
+  // message's own edit time — loose on purpose, same "a false positive here costs nothing"
+  // philosophy as the legacy checkbox regex above; only used to decide "recent" visibility.
+  closedAt: number;
 };
 
 export type GroupTodo = {
@@ -144,9 +148,32 @@ export type MessageTodo = {
   messageContent: string;
   done: boolean;
   createdAt: number;
+  // Exact: meta has its own edit clock (`metaEditedAt`, backend column `meta_edited_at`) precisely
+  // because a meta-only change — this flag — needed to be distinguishable from a content edit.
+  closedAt: number;
 };
 
 export type Todo = LineTodo | GroupTodo | MessageTodo;
+
+// The sidebar's closed-todo filter (features/todos/TodosPanel.tsx): show every closed entry,
+// none, or only ones closed recently.
+export type ClosedFilter = "always" | "never" | "recent";
+
+// "Recently closed" window for the filter above — 24h, the backlog's suggested default; not
+// configurable (YAGNI, nobody asked for a setting).
+export const RECENT_CLOSED_MS = 24 * 60 * 60 * 1000;
+
+// Whether `t` should be visible under `filter` at time `now`. A group's own items are never
+// filtered (backlog.md's "Closed-todo filter" point 1) — hiding some of a list you're looking at
+// (groceries) reads as broken, not tidy — and a group card itself is never hidden either, even
+// when every one of its items is closed: same "don't hide list contents" reasoning.
+export const isTodoVisible = (t: Todo, filter: ClosedFilter, now: number): boolean => {
+  if (t.kind === "group") return true;
+  if (!t.done) return true;
+  if (filter === "always") return true;
+  if (filter === "never") return false;
+  return now - t.closedAt < RECENT_CLOSED_MS;
+};
 
 const hasTodoFlag = (m: Message): m is Message & { meta: { todo: { done: boolean } } } =>
   !!m.meta && typeof m.meta.todo === "object" && m.meta.todo !== null && typeof m.meta.todo.done === "boolean";
@@ -184,6 +211,7 @@ export const collectTodos = (threads: Thread[], messages: Message[]): Todo[] => 
         text: todo.text,
         done: todo.done,
         createdAt: m.createdAt,
+        closedAt: m.editedAt ?? m.createdAt,
       });
     });
     if (hasTodoFlag(m)) {
@@ -196,6 +224,7 @@ export const collectTodos = (threads: Thread[], messages: Message[]): Todo[] => 
         messageContent: m.content,
         done: m.meta.todo.done,
         createdAt: m.createdAt,
+        closedAt: m.metaEditedAt ?? m.createdAt,
       });
     }
   }

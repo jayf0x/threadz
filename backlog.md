@@ -253,17 +253,21 @@ change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
    it) — "whatever else wants a per-message affordance," per the original idea. Same pass: extend the highlight
    from last round (`.threadz-todo-line`/`.threadz-todo-token`) to the `@/todos <title>` trigger line too — it
    currently only matches bare `@/todo`, so a group header renders as plain text.
-3. **Closed-todo filter: 3 states, and groups stop hiding their own items.** A `@/todos` card's items are no
-   longer filtered at all — always shown in full inside the card; the closed filter only ever applied to
-   flat/message entries and hiding some of a list you're looking at (groceries) reads as broken, not tidy.
-   Replace the boolean `showClosed` toggle with three states — always show closed / never show closed / show
-   only recently closed (default: recently — today's default, "hide immediately," was the complaint) — as an
-   icon-segmented control, same fieldset-of-radio-icons pattern as `ThemeToggle`/the new `SidebarSwitcher`
-   (`ThreadList.tsx`), not raw text. "Recently" needs a closed-at timestamp per entry: exact for a `MessageTodo`
-   (`meta_edited_at`, already tracked, needs threading into `Todo`'s shape), approximate for a `LineTodo` (the
-   message's `editedAt ?? createdAt` — loose on purpose, consistent with this file's other "a false positive
-   here costs nothing" calls) — pick a window (24h is a reasonable default, not configurable, YAGNI) and say so
-   in a comment.
+3. **Done.** Closed-todo filter: 3 states, and groups stop hiding their own items. `TodosPanel.tsx`'s
+   `GroupCard` now always renders every one of its `items`, regardless of the filter setting — and the card
+   itself is never hidden either, even when every item is closed (the simple, consistent rule: a `@/todos` list
+   is never touched by this filter at all, card or contents). The filter only ever applies to flat `LineTodo`/
+   `MessageTodo` entries. The boolean `showClosed` is gone; `ClosedFilter = "always" | "never" | "recent"` (in
+   `lib/todos.ts`, default `"recent"`) drives an icon-segmented 3-way control (`Eye`/`History`/`EyeOff`,
+   `title`-only labels, no visible text) — same fieldset-of-radio-icons visual as `ThemeToggle`. `Todo`'s
+   `LineTodo`/`MessageTodo` shapes gained a `closedAt: number` (not on `GroupTodo` — it needs no filter):
+   exact for `MessageTodo` (the message's `metaEditedAt`, already tracked on the frontend `Message` type and
+   populated from the backend's `meta_edited_at` — no plumbing needed, it just wasn't being read yet),
+   approximate for `LineTodo` (`editedAt ?? createdAt`, loose on purpose, same "a false positive here costs
+   nothing" philosophy as the file's other regexes). "Recently" window: `RECENT_CLOSED_MS` = 24h, not
+   configurable (YAGNI). The filter predicate (`isTodoVisible`) lives in `lib/todos.ts` as a pure, exported
+   function rather than inline in the component, so the 24h boundary is unit-tested directly
+   (`todos.test.ts`) instead of needing a component-render test.
 
 ## v2 features (deferred by design)
 

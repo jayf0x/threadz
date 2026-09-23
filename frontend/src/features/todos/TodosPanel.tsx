@@ -1,16 +1,16 @@
 import { format } from "date-fns";
-import { Square, SquareCheck } from "lucide-react";
+import { Eye, EyeOff, History, type LucideIcon, Square, SquareCheck } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/cn";
-import { type ParsedTodoItem, stripTodoMarker, type Todo } from "@/lib/todos";
+import { type ClosedFilter, isTodoVisible, type ParsedTodoItem, stripTodoMarker, type Todo } from "@/lib/todos";
 import { useTodos } from "./useTodos";
 
-// A "group" todo has no single done state — count/filter its items individually, same as a flat
-// line or message todo counts as one.
-const isItemVisible = (t: Todo, showClosed: boolean) =>
-  t.kind === "group" ? showClosed || t.items.some((i) => !i.done) : showClosed || !t.done;
+const CLOSED_FILTER_OPTIONS: { value: ClosedFilter; label: string; icon: LucideIcon }[] = [
+  { value: "always", label: "Always show closed", icon: Eye },
+  { value: "recent", label: "Show recently closed", icon: History },
+  { value: "never", label: "Never show closed", icon: EyeOff },
+];
 
 const countBy = (todos: Todo[], done: boolean) =>
   todos.reduce(
@@ -22,15 +22,17 @@ const countBy = (todos: Todo[], done: boolean) =>
 // the ⋯ menu's "Add to Todos", across every thread (see `lib/todos.ts`), newest first. Ticking a box
 // rewrites that line in place (open<->closed) through the same `editMessage` every other edit uses —
 // except a flagged message, which has no line to rewrite and flips `meta.todo.done` directly (see
-// `useTodos.ts`'s `toggle`). Closed todos are hidden by default; the header toggle reveals them. Tap
-// the rest of a row to jump to its thread, scrolled and highlighted at the exact message.
+// `useTodos.ts`'s `toggle`). The closed-todo filter (default: recently closed) only ever hides flat
+// line/message entries — a `@/todos` group always shows every one of its items. Tap the rest of a
+// row to jump to its thread, scrolled and highlighted at the exact message.
 export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, messageId: string) => void }) => {
   const { todos, toggle } = useTodos();
-  const [showClosed, setShowClosed] = useState(false);
+  const [closedFilter, setClosedFilter] = useState<ClosedFilter>("recent");
 
   const openCount = todos ? countBy(todos, false) : 0;
   const closedCount = todos ? countBy(todos, true) : 0;
-  const visible = todos?.filter((t) => isItemVisible(t, showClosed)) ?? null;
+  const now = Date.now();
+  const visible = todos?.filter((t) => isTodoVisible(t, closedFilter, now)) ?? null;
 
   return (
     <>
@@ -38,23 +40,16 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
         <h1 className="font-serif text-4xl leading-none tracking-tight">Todos</h1>
         <div className="mt-2 flex items-center justify-between gap-3">
           <Eyebrow>{todos === null ? "Reading…" : `${openCount} open · ${closedCount} closed`}</Eyebrow>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowClosed((v) => !v)}
-            className="h-auto px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-widest"
-          >
-            {showClosed ? "Hide closed" : "Show closed"}
-          </Button>
+          <ClosedFilterSwitcher filter={closedFilter} setFilter={setClosedFilter} />
         </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
         {visible?.length === 0 && (
           <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
-            {showClosed
-              ? "Nothing here. Every checklist item you've written is still open — or you haven't written one yet."
-              : "Nothing open. Every checklist item you've written is checked off — or you haven't written one yet."}
+            {closedFilter === "never"
+              ? "Nothing open. Every checklist item you've written is checked off — or you haven't written one yet."
+              : "Nothing here. Every checklist item you've written is still open — or you haven't written one yet."}
           </p>
         )}
         <ul>
@@ -66,7 +61,7 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
                   key={t.id}
                   title={t.title}
                   meta={meta}
-                  items={showClosed ? t.items : t.items.filter((i) => !i.done)}
+                  items={t.items}
                   onToggleItem={(item) => toggle(t, item)}
                   onOpenThread={() => onOpenThread(t.threadId, t.messageId)}
                 />
@@ -88,6 +83,46 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
     </>
   );
 };
+
+// Three-way closed-todo filter — same segmented-fieldset pattern as `ThemeToggle`: icon-only pills,
+// a `title` (and sr-only label) per option since the icons alone don't spell out "recently" vs
+// "always"/"never".
+const ClosedFilterSwitcher = ({
+  filter,
+  setFilter,
+}: {
+  filter: ClosedFilter;
+  setFilter: (f: ClosedFilter) => void;
+}) => (
+  <fieldset className="flex gap-px border border-border p-px">
+    <legend className="sr-only">Closed todos</legend>
+    {CLOSED_FILTER_OPTIONS.map(({ value, label, icon: Icon }) => {
+      const active = filter === value;
+      return (
+        <label
+          key={value}
+          title={label}
+          className={cn(
+            "flex cursor-pointer items-center p-1.5 transition-colors has-focus-visible:outline",
+            "has-focus-visible:outline-ring",
+            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <input
+            type="radio"
+            name="closed-filter"
+            value={value}
+            checked={active}
+            onChange={() => setFilter(value)}
+            className="sr-only"
+          />
+          <Icon aria-hidden className="size-3.5" />
+          <span className="sr-only">{label}</span>
+        </label>
+      );
+    })}
+  </fieldset>
+);
 
 const TodoRow = ({
   text,
@@ -121,7 +156,8 @@ const TodoRow = ({
 );
 
 // A `@/todos <title>` group: one card, its own header (tap to jump, like a plain row) and each item
-// as its own toggle-able line underneath — not N flat rows mixed in with everything else.
+// as its own toggle-able line underneath — not N flat rows mixed in with everything else. Always
+// renders every item, regardless of the closed-todo filter (see `isVisible`).
 const GroupCard = ({
   title,
   meta,
