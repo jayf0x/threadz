@@ -28,6 +28,7 @@ import { getThreadLocal } from "@/lib/db";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
+import { toggleTodoLine } from "@/lib/todos";
 import type { Annotation, Message, Thread } from "@/lib/types";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 import { useThread } from "./useThread";
@@ -437,7 +438,7 @@ export const EntryRow = ({
   return (
     <Motion.article
       className={cn(
-        "group border-b border-rule py-4",
+        "group relative border-b border-rule py-4",
         !editing && "cursor-pointer",
         selected && "message-selected",
         pulsing && "message-pulse",
@@ -496,8 +497,144 @@ export const EntryRow = ({
         </>
       ) : (
         <div ref={contentRef}>
-          <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" />
+          <MarkdownEditor
+            readOnly
+            value={m.content}
+            className="[--md-padding:0]"
+            onTodoToggle={(lineIndex) => onEdit(toggleTodoLine(m.content, lineIndex))}
+          />
         </div>
+      )}
+
+      {/* The gutter: a per-message left rail, one consistent x for every icon in it —
+          `left-[-20px]` here is the exact same literal `todoDecoration.ts`'s checkbox widget uses
+          (via `.threadz-todo-checkbox` in markdown-editor.css). Both read off the same x=0: this
+          `<article>` has no left padding of its own, and neither does `contentRef`'s
+          `.threadz-md`/`.ProseMirror` (`--md-padding:0` above) or a `@/todo` paragraph/`@/todos`
+          item's `<li>` — so "−20px relative to the article" and "−20px relative to the paragraph/
+          list item" land at the identical screen x, despite one being a React-positioned element
+          and the other a ProseMirror decoration in an entirely separately laid out tree. Fixed at
+          `top-5` (20px): roughly the first line's vertical centre (`py-4` = 16px top padding, plus
+          about half of a 15px/1.5 line box) — a static number, not measured, same "no DOM
+          measurement" mechanism as the checkbox itself. Only for `mine` (a note is only ever added
+          to your own entries) and only outside edit mode (was already the case in the metadata bar
+          before this moved). */}
+      {!editing && mine && (
+        <Popover.Root open={noteOpen} onOpenChange={onNoteOpenChange}>
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              aria-label={note ? "Note" : "Add a note"}
+              title={note ? "Note" : "Add a note"}
+              {...{ [ROW_SELECT_IGNORE]: "" }}
+              className={cn(
+                "absolute left-[-20px] top-5 p-0.5 transition-colors",
+                note
+                  ? "text-primary/70 hover:text-primary"
+                  : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              <StickyNote className="size-3.5" />
+            </button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              side="bottom"
+              align="start"
+              sideOffset={8}
+              collisionPadding={8}
+              className="z-50 w-80 max-w-[min(20rem,var(--radix-popover-content-available-width))] rounded-md border border-border bg-card p-3 shadow-lg outline-none"
+            >
+              {composingNote ? (
+                <>
+                  <div className="relative">
+                    <MarkdownEditor
+                      raw
+                      handleRef={noteEditor}
+                      value={noteText}
+                      onChange={setNoteText}
+                      readOnly={busy}
+                      autofocus
+                      placeholder="A quick note…"
+                      onImageFile={(f) => noteAttach([f])}
+                      className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
+                      onKeyDownCapture={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          saveNote();
+                        } else if (e.key === "Escape") {
+                          e.stopPropagation();
+                          cancelNoteEdit();
+                        }
+                      }}
+                    />
+                    <ImageButton onFiles={noteAttach} disabled={busy} className="absolute right-1 top-1" />
+                  </div>
+                  {noteImageError && (
+                    <p className="mt-1 truncate font-mono text-[11px] text-destructive">{noteImageError}</p>
+                  )}
+                  <div className="mt-1.5 flex justify-end gap-1">
+                    <button
+                      type="button"
+                      aria-label="Cancel"
+                      title="Cancel"
+                      onClick={cancelNoteEdit}
+                      className="p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Save note"
+                      title="Save note"
+                      disabled={noteSaveDisabled}
+                      onClick={saveNote}
+                      className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <Check className="size-3.5" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                note && (
+                  <>
+                    <div className="flex items-start gap-2">
+                      <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          aria-label="Edit note"
+                          title="Edit note"
+                          onClick={startNoteEdit}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete note"
+                          title="Delete note"
+                          onClick={deleteNote}
+                          className="p-1 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
+                      <time>{format(note.createdAt, "d MMM HH:mm")}</time>
+                      {unsyncedAnnotations.has(note.id) && (
+                        <CloudOff className="size-2.5" aria-label="only on this device so far" />
+                      )}
+                      {!!note.edits?.length && <span>edited</span>}
+                    </p>
+                  </>
+                )
+              )}
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       )}
 
       {!editing && (
@@ -514,122 +651,6 @@ export const EntryRow = ({
             </button>
           )}
           {mine && (
-            <Popover.Root open={noteOpen} onOpenChange={onNoteOpenChange}>
-              <Popover.Trigger asChild>
-                <button
-                  type="button"
-                  aria-label={note ? "Note" : "Add a note"}
-                  title={note ? "Note" : "Add a note"}
-                  className={cn(
-                    "ml-auto p-1 transition-colors",
-                    note
-                      ? "text-primary/70 hover:text-primary"
-                      : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-                  )}
-                >
-                  <StickyNote className="size-3" />
-                </button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  side="bottom"
-                  align="end"
-                  sideOffset={8}
-                  collisionPadding={8}
-                  className="z-50 w-80 max-w-[min(20rem,var(--radix-popover-content-available-width))] rounded-md border border-border bg-card p-3 shadow-lg outline-none"
-                >
-                  {composingNote ? (
-                    <>
-                      <div className="relative">
-                        <MarkdownEditor
-                          raw
-                          handleRef={noteEditor}
-                          value={noteText}
-                          onChange={setNoteText}
-                          readOnly={busy}
-                          autofocus
-                          placeholder="A quick note…"
-                          onImageFile={(f) => noteAttach([f])}
-                          className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
-                          onKeyDownCapture={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              saveNote();
-                            } else if (e.key === "Escape") {
-                              e.stopPropagation();
-                              cancelNoteEdit();
-                            }
-                          }}
-                        />
-                        <ImageButton onFiles={noteAttach} disabled={busy} className="absolute right-1 top-1" />
-                      </div>
-                      {noteImageError && (
-                        <p className="mt-1 truncate font-mono text-[11px] text-destructive">{noteImageError}</p>
-                      )}
-                      <div className="mt-1.5 flex justify-end gap-1">
-                        <button
-                          type="button"
-                          aria-label="Cancel"
-                          title="Cancel"
-                          onClick={cancelNoteEdit}
-                          className="p-1 text-muted-foreground hover:text-foreground"
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Save note"
-                          title="Save note"
-                          disabled={noteSaveDisabled}
-                          onClick={saveNote}
-                          className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
-                        >
-                          <Check className="size-3.5" />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    note && (
-                      <>
-                        <div className="flex items-start gap-2">
-                          <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <button
-                              type="button"
-                              aria-label="Edit note"
-                              title="Edit note"
-                              onClick={startNoteEdit}
-                              className="p-1 text-muted-foreground hover:text-foreground"
-                            >
-                              <Pencil className="size-3" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label="Delete note"
-                              title="Delete note"
-                              onClick={deleteNote}
-                              className="p-1 text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="size-3" />
-                            </button>
-                          </div>
-                        </div>
-                        <p className={cn(tiny, "mt-1 flex items-center gap-2")}>
-                          <time>{format(note.createdAt, "d MMM HH:mm")}</time>
-                          {unsyncedAnnotations.has(note.id) && (
-                            <CloudOff className="size-2.5" aria-label="only on this device so far" />
-                          )}
-                          {!!note.edits?.length && <span>edited</span>}
-                        </p>
-                      </>
-                    )
-                  )}
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
-          )}
-          {mine && (
             <Menu
               align="end"
               trigger={
@@ -637,7 +658,7 @@ export const EntryRow = ({
                   type="button"
                   aria-label="Message actions"
                   title="Message actions"
-                  className="p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                  className="ml-auto p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
                 >
                   <MoreHorizontal className="size-3" />
                 </button>

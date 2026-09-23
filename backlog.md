@@ -240,19 +240,39 @@ change brushes against), then 2 and 3 in parallel (disjoint files once 1 is in):
    registration (skip Bun's own JS/timer globals, add everything happy-dom has that Bun doesn't, force-override
    `window`/`document`/`navigator`/`location`/`history`) lives at the top of `EntryRow.test.tsx`; worth lifting
    into a shared helper if a third test wants a headless render.
-2. **The full gutter** (parked in `inspiration.md`, promoted now). A per-message left rail, not inline text
-   decoration — this is the fix for last round's "checkbox floats next to the text" complaint that goes further
-   than CSS-only: keep the checkbox, just stop rendering it *inside the text flow*. Mechanism: `Decoration.widget`
-   (same primitive `todoDecoration.ts` already used before this session's CSS-only pass) positioned with
-   `position: absolute` relative to its own paragraph (already `position: relative` via the existing
-   `Decoration.node` wrap) and a negative `left`, with the paragraph given matching `padding-left` — a true rail,
-   no DOM measurement needed, no gutter-as-separate-column layout. Hosts, per line: a todo checkbox for `@/todo`
-   and every `@/todos` item line (click toggles via the same `toggleTodoLine` path as the sidebar). Also hosts
-   the message-level note trigger (`ThreadView.tsx`'s `StickyNote` popover, currently sitting in the metadata
-   row under the content — move it into the same rail, one consistent left-edge x-coordinate for every icon in
-   it) — "whatever else wants a per-message affordance," per the original idea. Same pass: extend the highlight
-   from last round (`.threadz-todo-line`/`.threadz-todo-token`) to the `@/todos <title>` trigger line too — it
-   currently only matches bare `@/todo`, so a group header renders as plain text.
+2. **Done: the full gutter.** A per-message left rail, not inline text decoration — the fix for last round's
+   "checkbox floats next to the text" complaint that goes further than CSS-only: the checkbox is back, it just
+   no longer renders *inside the text flow*. Mechanism, per line: a `Decoration.widget` (`todoDecoration.ts`,
+   same primitive the CSS-only pass left in place) positioned `absolute; left: -20px; top: 50%; translateY(-50%)`
+   relative to its own paragraph (`@/todo`) or list item (`@/todos` item — its `<li class="list-item">`, per
+   `@milkdown/crepe/theme/common/list-item.css`, confirmed by reading that stylesheet rather than assuming: the
+   `<ul>`/`<li>` carry no left padding of their own, the marker column is internal flex width) — both given
+   `position: relative` in `markdown-editor.css` so the widget has something to anchor to; no DOM measurement,
+   no separate gutter-column layout. `−20px` lands the checkbox in the app's own existing side padding
+   (`px-6`/`md:px-10` on `ThreadView`'s scroll container, 24px/40px — comfortably more room than 20px, so it
+   can't trigger a horizontal scrollbar there), not inside the message's own box. A click reports that line's
+   index (`onTodoToggle` on `MarkdownEditor`, re-added — `ThreadView.tsx`'s `EntryRow` calls
+   `onEdit(toggleTodoLine(m.content, lineIndex))`, the same `editMessage` path as any other edit).
+   The same rail also hosts the message-level note trigger: `ThreadView.tsx`'s `StickyNote` `Popover.Trigger`
+   moved out of the metadata row into an `absolute left-[-20px] top-5` button directly on `EntryRow`'s own
+   `<article>` (now `position: relative`) — the identical `-20px` literal, by design: neither `<article>` nor
+   `contentRef`'s `.threadz-md`/`.ProseMirror` (`--md-padding:0` there) has any left padding of its own, so both
+   the React-positioned note button and the ProseMirror-decorated checkboxes read off the same x=0 and land at
+   the same screen x despite being laid out through entirely separate mechanisms. `top-5` (20px) approximates
+   the first line's vertical centre (`py-4`'s 16px top padding + roughly half a 15px/1.5 line box) — a fixed
+   number, not measured, same reasoning as the checkbox's own non-measured positioning. Changing the rail's x
+   means changing both literals (`markdown-editor.css`'s `.threadz-todo-checkbox` and `ThreadView.tsx`'s
+   `left-[-20px]`) together, or the two rails stop lining up — flagged in both places' comments.
+   A `@/todos <title>` header line gets the same `.threadz-todo-line`/`.threadz-todo-token` highlight as a bare
+   `@/todo` now too (a second local regex in `todoDecoration.ts`, same lightweight-matcher convention as the
+   existing one — `lib/todos.ts`'s own unexported `GROUP_TRIGGER` was deliberately left alone), but no checkbox
+   of its own — it's a title, not a todo. Every item inside the group gets its own checkbox, individually
+   toggleable. State is never cached: the plugin's `decorations()` calls `parseTodos`/`parseTodoGroups(value)`
+   fresh on every ProseMirror state change (`value` itself always current — it's the same prop `MarkdownEditor`
+   already keeps in sync via `replaceAll`), so a checkbox's open/closed rendering can't go stale across an edit;
+   verified with a real (non-mocked) Crepe mount in `todoDecoration.test.tsx`, including that every gutter
+   checkbox carries the row-select-ignore marker so clicking one can't also select the message row under it,
+   and that omitting `onTodoToggle` (notes, scratch answers, history) renders the highlight with no checkbox.
 3. **Done.** Closed-todo filter: 3 states, and groups stop hiding their own items. `TodosPanel.tsx`'s
    `GroupCard` now always renders every one of its `items`, regardless of the filter setting — and the card
    itself is never hidden either, even when every item is closed (the simple, consistent rule: a `@/todos` list

@@ -72,6 +72,7 @@ export const MarkdownEditor = ({
   raw = false,
   placeholder = "start writing…",
   readOnly = false,
+  onTodoToggle,
   ...rest
 }: {
   value: string;
@@ -85,6 +86,12 @@ export const MarkdownEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   /** Called with an image pasted or dropped into the editor (which then inserts nothing itself). */
   onImageFile?: (file: File) => void;
+  /** A gutter checkbox (`@/todo` line, or an item inside a `@/todos` group) was clicked, naming the
+   * line's index into `value.split("\n")`. WYSIWYG mode only (`raw` renders a plain textarea, no
+   * decorations at all) — the caller re-derives the toggled content via `toggleTodoLine`
+   * (`lib/todos.ts`) and persists it the same way it persists any other edit. See
+   * `./todoDecoration.ts` and `ThreadView.tsx`'s `EntryRow`. */
+  onTodoToggle?: (lineIndex: number) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
    * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
@@ -107,7 +114,7 @@ export const MarkdownEditor = ({
   raw ? (
     <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
   ) : (
-    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
+    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} onTodoToggle={onTodoToggle} />
   );
 
 // Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
@@ -212,6 +219,7 @@ const CrepeEditor = ({
   handleRef,
   onKeyDownCapture,
   onImageFile,
+  onTodoToggle,
   className,
   style,
   autofocus,
@@ -223,6 +231,7 @@ const CrepeEditor = ({
   handleRef?: Ref<MarkdownEditorHandle>;
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
+  onTodoToggle?: (lineIndex: number) => void;
   className?: string;
   style?: CSSProperties;
   autofocus?: boolean;
@@ -231,6 +240,11 @@ const CrepeEditor = ({
   const loadedRef = useRef<Loaded | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Same latest-ref shape as onChangeRef: the todo-decoration plugin is only built once (the mount
+  // effect below never re-runs), but the callback it should call can change across renders — a
+  // stale closure here would silently call an old EntryRow's onEdit instead of the current one.
+  const onTodoToggleRef = useRef(onTodoToggle);
+  onTodoToggleRef.current = onTodoToggle;
   // Latest markdown Crepe emitted — lets the value-sync effect skip the echo
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
@@ -281,8 +295,21 @@ const CrepeEditor = ({
         .addFeature(placeholderFeature, { text, mode: "doc" });
       // Photos: `img:` refs render as lazy grey boxes (./imageView.ts).
       crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
-      // `@/todo` lines: CSS-only highlight decoration, no new node type (./todoDecoration.ts).
-      crepe.editor.use(utils.$prose(() => todoDecorationPlugin(state, proseView)));
+      // `@/todo`/`@/todos` lines: gutter checkbox + highlight decoration, no new node type
+      // (./todoDecoration.ts). `getValue`/`hasToggle`/`onToggle` all read through the latest-refs
+      // above so this one-time plugin instance never acts on stale props — `hasToggle` is what
+      // actually decides "render a checkbox at all" (not `onTodoToggleRef.current` being handed to
+      // `onToggle` directly, which would always be a defined wrapper function even when the caller
+      // never passed `onTodoToggle`).
+      crepe.editor.use(
+        utils.$prose(() =>
+          todoDecorationPlugin(state, proseView, {
+            getValue: () => latest.current.value,
+            hasToggle: () => !!onTodoToggleRef.current,
+            onToggle: (lineIndex) => onTodoToggleRef.current?.(lineIndex),
+          }),
+        ),
+      );
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;

@@ -155,14 +155,20 @@
 .threadz-md .threadz-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .threadz-md .ProseMirror-selectednode.threadz-img { outline: 2px solid var(--ring); }
 
-/* `@/todo` command lines (lib/todos.ts, ./todoDecoration.ts): CSS-only highlight, no click target —
- * a first cut had a clickable checkbox widget here and it read as "UI bolted onto markdown, not
- * markdown" (backlog.md). The line gets a subtle accent wash + left rule, and the `@/todo` token
- * itself gets a stronger accent treatment, purely so the command reads as distinct text; state
- * edits go back to sidebar-only or raw-edit-mode only, same as legacy `- [ ] ` already is. Closed
- * (`~~@/todo …~~`) already gets real GFM strikethrough for free — the highlight just fades so it
- * doesn't fight the strikethrough. */
+/* `@/todo`/`@/todos <title>` command lines (lib/todos.ts, ./todoDecoration.ts): a highlight plus a
+ * gutter checkbox — brought back in "Todo feedback round 2" (backlog.md) after a first cut's
+ * clickable widget was removed for reading as "UI bolted onto markdown, not markdown." The fix
+ * was never "no checkbox," it was "don't render it inline in the text flow" — this positions it
+ * absolute, to the left of the paragraph/list-item (`position: relative` below), so it reads as a
+ * rail beside the text instead of floating in front of the first word. The line itself still gets
+ * a subtle accent wash + left rule, and the trigger token gets a stronger accent treatment, purely
+ * so the command reads as distinct text. Closed (`~~@/todo …~~`) already gets real GFM
+ * strikethrough for free — the highlight just fades so it doesn't fight the strikethrough. A
+ * `@/todos` group's own title line reuses the exact same two classes (no checkbox of its own —
+ * it's a title, not a todo) instead of rendering as plain text.
+ */
 .threadz-md .milkdown .ProseMirror p.threadz-todo-line {
+  position: relative; /* anchors this paragraph's own checkbox, see .threadz-todo-checkbox below */
   background: var(--accent);
   border-left: 3px solid var(--primary);
   border-radius: 4px;
@@ -178,3 +184,44 @@
 }
 .threadz-todo-line--done .threadz-todo-token { color: inherit; font-weight: 500; }
 .threadz-todo-line del { color: var(--muted-foreground); }
+
+/* Every `@/todos` item line lives in Crepe's own `<li class="list-item">` (a flex row: a 24px-wide
+ * `.label-wrapper` marker, then `.children` holding the paragraph — see
+ * `@milkdown/crepe/theme/common/list-item.css`). Neither of those inner divs sets its own
+ * `position`, and the `<ul>`/`<li>` themselves carry no left padding of their own (confirmed by
+ * reading that stylesheet, not assumed) — so making the `<li>` the checkbox's positioned ancestor
+ * puts its `left: -20px` at the exact same x as a bare `@/todo` line's own paragraph-anchored one
+ * (both ancestors sit flush at the message's own left edge). Global (every list, not just a
+ * `@/todos` one) since `position: relative` on its own has no visual effect on lists that never
+ * get a checkbox decoration. */
+.threadz-md .milkdown .milkdown-list-item-block li {
+  position: relative;
+}
+
+/* The gutter checkbox itself (a `Decoration.widget`, ./todoDecoration.ts) — `left: -20px` is the
+ * one literal shared with `ThreadView.tsx`'s relocated note trigger (`left-[-20px]` there); change
+ * one, change the other, or the two rails stop lining up. Sits in the app's own outer side padding
+ * (`px-6`/`md:px-10` on `ThreadView`'s scroll container — 24px/40px, comfortably more than 20px),
+ * never inside the message's own box, so it can't trigger a horizontal scrollbar on that region. */
+.threadz-todo-checkbox {
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.threadz-todo-checkbox:hover,
+.threadz-todo-checkbox:focus-visible {
+  color: var(--foreground);
+}
+.threadz-todo-checkbox svg {
+  width: 100%;
+  height: 100%;
+}
