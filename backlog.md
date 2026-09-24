@@ -718,6 +718,15 @@ From a real-phone QA session (2026-09-24). Goal: more intuitive, coherent, mobil
    (Threads/Todos/Bin/Settings) becomes a full-width row on mobile and stays full-width inside the
    sidebar on desktop, instead of a small centered pill.
 
+### V1.6 round 2 (desktop QA)
+
+Done: icon-only nav with titles; "+" new thread moved to bottom-center of the Threadz tab; resolved
+filter removed from Threadz (closed-todo filter is now a dropdown in Todos); "Copy here" renamed
+"Clone from here" (branch icon) and a plain "Copy" added to the message menu; composer actions back in
+a side rail (send at the bottom); top line removed (it was the Local-mode indicator bar in `App.tsx`).
+Open: the per-row "Mark resolved" toggle still lives on thread rows, and resolved threads never show in
+Todos — decide whether threads-as-todos should appear in the Todos tab.
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it

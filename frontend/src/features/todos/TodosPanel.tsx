@@ -1,15 +1,16 @@
 import { format } from "date-fns";
-import { Eye, EyeOff, History, type LucideIcon, Square, SquareCheck } from "lucide-react";
+import { Square, SquareCheck } from "lucide-react";
 import { useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { type ClosedFilter, isTodoVisible, type ParsedTodoItem, stripTodoMarker, type Todo } from "@/lib/todos";
 import { useTodos } from "./useTodos";
 
-const CLOSED_FILTER_OPTIONS: { value: ClosedFilter; label: string; icon: LucideIcon }[] = [
-  { value: "always", label: "Always show closed", icon: Eye },
-  { value: "recent", label: "Show recently closed", icon: History },
-  { value: "never", label: "Never show closed", icon: EyeOff },
+const CLOSED_FILTER_OPTIONS: { value: ClosedFilter; label: string }[] = [
+  { value: "recent", label: "Recently closed" },
+  { value: "always", label: "All closed" },
+  { value: "never", label: "Hide closed" },
 ];
 
 const countBy = (todos: Todo[], done: boolean) =>
@@ -84,9 +85,6 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
   );
 };
 
-// Three-way closed-todo filter — same segmented-fieldset pattern as `ThemeToggle`: icon-only pills,
-// a `title` (and sr-only label) per option since the icons alone don't spell out "recently" vs
-// "always"/"never".
 const ClosedFilterSwitcher = ({
   filter,
   setFilter,
@@ -94,34 +92,20 @@ const ClosedFilterSwitcher = ({
   filter: ClosedFilter;
   setFilter: (f: ClosedFilter) => void;
 }) => (
-  <fieldset className="flex gap-px border border-border p-px">
-    <legend className="sr-only">Closed todos</legend>
-    {CLOSED_FILTER_OPTIONS.map(({ value, label, icon: Icon }) => {
-      const active = filter === value;
-      return (
-        <label
-          key={value}
-          title={label}
-          className={cn(
-            "flex cursor-pointer items-center p-1.5 transition-colors has-focus-visible:outline",
-            "has-focus-visible:outline-ring",
-            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <input
-            type="radio"
-            name="closed-filter"
-            value={value}
-            checked={active}
-            onChange={() => setFilter(value)}
-            className="sr-only"
-          />
-          <Icon aria-hidden className="size-3.5" />
-          <span className="sr-only">{label}</span>
-        </label>
-      );
-    })}
-  </fieldset>
+  <Select
+    aria-label="Closed todos"
+    value={filter}
+    onChange={(e) => {
+      const v = CLOSED_FILTER_OPTIONS.find((o) => o.value === e.target.value);
+      if (v) setFilter(v.value);
+    }}
+  >
+    {CLOSED_FILTER_OPTIONS.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </Select>
 );
 
 const TodoRow = ({

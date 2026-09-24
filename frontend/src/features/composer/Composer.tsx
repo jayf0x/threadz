@@ -1,4 +1,4 @@
-import { Copy, Loader2, Mic, MoreHorizontal, Plus, Send, Square } from "lucide-react";
+import { GitBranchPlus, Loader2, Mic, MoreHorizontal, Plus, Send, Square } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -235,7 +235,7 @@ export const Composer = ({
             lastMessage && (
               <Menu
                 align="end"
-                items={[{ label: "Copy here", icon: Copy, onClick: copyThreadFromHere }]}
+                items={[{ label: "Clone from here", icon: GitBranchPlus, onClick: copyThreadFromHere }]}
                 trigger={
                   <button
                     type="button"

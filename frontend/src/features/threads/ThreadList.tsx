@@ -1,4 +1,4 @@
-import { Eye, EyeOff, History, List, ListTodo, type LucideIcon, Plus, Settings, Trash2 } from "lucide-react";
+import { History, List, ListTodo, type LucideIcon, Plus, Settings, Trash2 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -15,7 +15,7 @@ import type { Thread } from "@/lib/types";
 import { createOrReuseThread } from "./createOrReuseThread";
 import { ThreadRow } from "./ThreadRow";
 import { useThreads } from "./useThreads";
-import { isSort, type ResolvedFilter, SORTS } from "./visibleThreads";
+import { isSort, SORTS } from "./visibleThreads";
 
 // Rolls once per session, the moment the full thread list first arrives — not on every render, and
 // not re-rolled as `threads` keeps changing underneath it (search, sync, edits). The pick then holds
@@ -45,8 +45,7 @@ export const ThreadList = ({
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
-  const { threads, allThreads, query, setQuery, sort, setSort, resolvedFilter, setResolvedFilter, syncing, error } =
-    useThreads();
+  const { threads, allThreads, query, setQuery, sort, setSort, syncing, error } = useThreads();
   const resurfaced = useResurfacingThread(allThreads);
   const [panel, setPanel] = useState<Panel>("index");
   const [creating, setCreating] = useState(false);
@@ -95,27 +94,10 @@ export const ThreadList = ({
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <View shown={panel === "index"} from="left">
           <header className="px-5 pb-4 pt-6">
-            <div className="flex items-end justify-between">
-              <div>
-                <h1 className="font-serif text-4xl leading-none tracking-tight">Threadz</h1>
-                <Eyebrow className="mt-2">
-                  Index · {threads.length} thread{threads.length === 1 ? "" : "s"}
-                </Eyebrow>
-              </div>
-              <Button
-                size="icon"
-                aria-label="New thread"
-                title="New thread (n)"
-                disabled={creating}
-                className="group size-10 shadow-sm transition-all duration-200 ease-out hover:scale-110 hover:shadow-md active:scale-90 disabled:opacity-60"
-                onClick={create}
-              >
-                <Plus
-                  strokeWidth={2.25}
-                  className="size-5 transition-transform duration-300 ease-out group-hover:rotate-90 group-active:rotate-180"
-                />
-              </Button>
-            </div>
+            <h1 className="font-serif text-4xl leading-none tracking-tight">Threadz</h1>
+            <Eyebrow className="mt-2">
+              Index · {threads.length} thread{threads.length === 1 ? "" : "s"}
+            </Eyebrow>
 
             <div className="mt-4 flex gap-2">
               <Input
@@ -145,7 +127,6 @@ export const ThreadList = ({
                   </option>
                 ))}
               </Select>
-              <ResolvedFilterSwitcher filter={resolvedFilter} setFilter={setResolvedFilter} />
             </div>
           </header>
 
@@ -180,6 +161,21 @@ export const ThreadList = ({
               </li>
             )}
           </ul>
+          <div className="flex justify-center border-t border-border py-3">
+            <Button
+              size="icon"
+              aria-label="New thread"
+              title="New thread (n)"
+              disabled={creating}
+              className="group size-10 shadow-sm transition-all duration-200 ease-out hover:scale-110 hover:shadow-md active:scale-90 disabled:opacity-60"
+              onClick={create}
+            >
+              <Plus
+                strokeWidth={2.25}
+                className="size-5 transition-transform duration-300 ease-out group-hover:rotate-90 group-active:rotate-180"
+              />
+            </Button>
+          </div>
         </View>
 
         <View shown={panel === "todos"} from="right">
@@ -217,7 +213,7 @@ const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
 
 // The sidebar's own nav — a full-width banner (mobile and desktop alike, now that the sidebar
 // footer that used to hold sync/theme is gone) rather than a small centered icon pill. Each item
-// gets equal width and a visible label, so it reads as navigation on sight.
+// gets equal width; icon only, the label is the `title` (and sr-only text).
 const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Panel) => void }) => (
   <fieldset className="flex">
     <legend className="sr-only">Sidebar view</legend>
@@ -228,7 +224,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
           key={value}
           title={label}
           className={cn(
-            "flex flex-1 cursor-pointer flex-col items-center gap-1 py-2.5 text-[11px] transition-colors",
+            "flex flex-1 cursor-pointer items-center justify-center py-2.5 transition-colors",
             "has-focus-visible:outline has-focus-visible:outline-ring",
             active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
@@ -242,51 +238,6 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             className="sr-only"
           />
           <Icon className="size-4" aria-hidden />
-          {label}
-        </label>
-      );
-    })}
-  </fieldset>
-);
-
-const RESOLVED_FILTER_OPTIONS: { value: ResolvedFilter; label: string; icon: LucideIcon }[] = [
-  { value: "active", label: "Hide resolved", icon: EyeOff },
-  { value: "all", label: "Show resolved", icon: Eye },
-];
-
-// The resolved-thread filter — same icon-only segmented-fieldset pattern as `SidebarSwitcher` and
-// TodosPanel's closed-todo filter (a `title`/sr-only label per option since the icons alone don't
-// spell out "active only" vs "everything").
-const ResolvedFilterSwitcher = ({
-  filter,
-  setFilter,
-}: {
-  filter: ResolvedFilter;
-  setFilter: (f: ResolvedFilter) => void;
-}) => (
-  <fieldset className="flex h-9 shrink-0 items-stretch gap-px border border-border p-px">
-    <legend className="sr-only">Resolved threads</legend>
-    {RESOLVED_FILTER_OPTIONS.map(({ value, label, icon: Icon }) => {
-      const active = filter === value;
-      return (
-        <label
-          key={value}
-          title={label}
-          className={cn(
-            "flex cursor-pointer items-center justify-center px-2.5 transition-colors has-focus-visible:outline",
-            "has-focus-visible:outline-ring",
-            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <input
-            type="radio"
-            name="resolved-filter"
-            value={value}
-            checked={active}
-            onChange={() => setFilter(value)}
-            className="sr-only"
-          />
-          <Icon aria-hidden className="size-3.5" />
           <span className="sr-only">{label}</span>
         </label>
       );

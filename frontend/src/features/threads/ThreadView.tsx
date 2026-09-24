@@ -7,6 +7,7 @@ import {
   Check,
   CloudOff,
   Copy,
+  GitBranchPlus,
   Link,
   Mic,
   MoreHorizontal,
@@ -424,6 +425,15 @@ export const EntryRow = ({
     }
   };
 
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(m.content);
+      toast({ title: "Copied" });
+    } catch (e) {
+      toast({ title: "Copy failed", description: errorMessage(e) });
+    }
+  };
+
   const save = async () => {
     const next = (editor.current?.getMarkdown() ?? text).trim(); // `text` lags typing by the debounce
     if (next && next !== m.content && (await onEdit(next))) setEditing(false);
@@ -704,7 +714,8 @@ export const EntryRow = ({
               }
               items={[
                 { label: "Edit", icon: Pencil, onClick: startEdit },
-                { label: "Copy here", icon: Copy, onClick: onCopyThread },
+                { label: "Copy", icon: Copy, onClick: copyText },
+                { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 m.meta?.todo
                   ? { label: "Todo", icon: SquareCheck, onClick: () => onSetTodo(null) }

@@ -31,16 +31,13 @@ export type MessageInputProps = {
   submitAriaLabel?: string;
   /** Defaults to the regular text-button size; pass `"icon"` when `submitLabel` is icon-only. */
   submitButtonSize?: ButtonProps["size"];
-  /** Extra actions in the bottom-left cluster, beside the image attach button (the composer's mic
-   * button). Bottom-aligned with the rest of the row, not floated over the editor — see AGENTS.md
-   * "Composer" note: keeps the editor free of reserved corner padding and caps the row at three
-   * primary actions (attach, mic, send) plus the `trailingActions` overflow menu for the rest. */
+  /** Extra actions in the side rail under the image attach button (the composer's mic button). */
   leadingActions?: ReactNode;
-  /** Extra controls in the bottom row, before the submit button (the composer's mode toggle / checkbox). */
+  /** Extra controls in a row under the editor (the composer's mode toggle / checkbox). */
   controls?: ReactNode;
   /** A status line to show instead of the image-attach error (the composer's voice status). */
   statusOverride?: Status;
-  /** Extra actions right beside the submit button (the composer's ⋯ menu). */
+  /** Overflow actions in the side rail (the composer's ⋯ menu). */
   trailingActions?: ReactNode;
   /** A completed reference (`lib/references.ts`) was clicked in the editor. */
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
@@ -90,28 +87,49 @@ export const MessageInput = ({
 
   return (
     <div className={className}>
-      <MarkdownEditor
-        handleRef={editor}
-        value={draft}
-        onChange={setDraft}
-        readOnly={busy}
-        onImageFile={(f) => attach([f])}
-        placeholder={placeholder}
-        autofocus={autofocus}
-        onReferenceClick={onReferenceClick}
-        className={cn(
-          "rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
-          "[--md-max-height:45dvh] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
-          editorClassName,
-        )}
-        onKeyDownCapture={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            e.stopPropagation();
-            send();
-          }
-        }}
-      />
+      <div className="flex items-stretch gap-2">
+        <MarkdownEditor
+          handleRef={editor}
+          value={draft}
+          onChange={setDraft}
+          readOnly={busy}
+          onImageFile={(f) => attach([f])}
+          placeholder={placeholder}
+          autofocus={autofocus}
+          onReferenceClick={onReferenceClick}
+          className={cn(
+            "min-w-0 flex-1 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
+            "[--md-max-height:45dvh] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
+            editorClassName,
+          )}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              e.stopPropagation();
+              send();
+            }
+          }}
+        />
+        {/* Side rail, top to bottom: secondary actions first, send always last (bottom). At most
+            three primary actions (attach, mic, send) — anything else goes in the `trailingActions`
+            ⋯ menu instead of its own button. */}
+        <div className="flex shrink-0 flex-col items-center justify-between gap-1">
+          <div className="flex flex-col items-center gap-1">
+            <ImageButton onFiles={attach} disabled={busy} />
+            {leadingActions}
+            {trailingActions}
+          </div>
+          <Button
+            size={submitButtonSize}
+            aria-label={submitAriaLabel}
+            title={submitAriaLabel}
+            disabled={busy || !draft.trim()}
+            onClick={send}
+          >
+            {submitLabel}
+          </Button>
+        </div>
+      </div>
 
       <div className="mt-1 h-4" aria-live="polite">
         {status && (
@@ -128,28 +146,7 @@ export const MessageInput = ({
         )}
       </div>
 
-      {/* Bottom-aligned, flex-between: attach + mic (+ mode controls) on the left, send + the
-          overflow menu on the right — three primary actions (attach, mic, send), everything else
-          (currently just "Copy here") lives in `trailingActions`'s ⋯ menu instead of its own button. */}
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex items-center gap-1">
-          <ImageButton onFiles={attach} disabled={busy} />
-          {leadingActions}
-          {controls}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            size={submitButtonSize}
-            aria-label={submitAriaLabel}
-            title={submitAriaLabel}
-            disabled={busy || !draft.trim()}
-            onClick={send}
-          >
-            {submitLabel}
-          </Button>
-          {trailingActions}
-        </div>
-      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-2 empty:hidden">{controls}</div>
     </div>
   );
 };

@@ -127,9 +127,6 @@ export const App = () => {
     <ToastProvider>
       <LazyMotion features={domAnimation}>
         <BackgroundLayer />
-        {mode === "local" && (
-          <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
-        )}
         <Shell
           key={mode}
           selected={selected}

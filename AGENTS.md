@@ -53,6 +53,14 @@ label — reserve text labels for actions without an obvious icon, or where the 
   Keep "main" itself for internal code/comments/docs (this file, README, `lib/mode.ts`) — it's accurate
   shorthand for engineers, just not for the person using the app.
 
+- **One tab, one job.** Threadz, Todos, Bin and Settings each own their functionality; a control
+  belongs to exactly one tab (e.g. the closed-todo filter is Todos-only, the Threadz index has no
+  resolved/todo filtering). A thread *can* be a todo, but the index never behaves as a todo list.
+- **Rarely-used UI is never shown up front.** Filters, sort and secondary actions live in a dropdown
+  (`components/ui/select.tsx`) or an action menu (`components/ui/menu.tsx`), not as always-visible
+  segmented controls. Nav is icon-only with a `title`.
+- **Composer**: editor on the left, a vertical action rail on the right (attach, mic, ⋯ overflow on
+  top; send always at the bottom). Max three primary actions; extras go in the ⋯ menu.
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".
