@@ -59,3 +59,22 @@ test("among content-only hits, the API's own rank order (lower = better) decides
   ]);
   expect(ids(visibleThreads(rows, "needle", "created", hits))).toEqual(["c", "a", "b"]);
 });
+
+test("pinned threads float to the top regardless of sort, keeping relative order within each group", () => {
+  const rows = [t("a", { updatedAt: 1 }), t("b", { updatedAt: 2 }), t("c", { updatedAt: 3 }), t("d", { updatedAt: 4 })];
+  const pinned = new Set(["a", "c"]);
+  expect(ids(visibleThreads(rows, "", "updated", new Map(), pinned))).toEqual(["c", "a", "d", "b"]);
+});
+
+test("pinning also floats a match to the top while searching", () => {
+  const rows = [t("apple"), t("apricot")];
+  const pinned = new Set(["apricot"]);
+  expect(ids(visibleThreads(rows, "ap", "updated", new Map(), pinned))).toEqual(["apricot", "apple"]);
+});
+
+test("hidden ids are dropped entirely, from both the no-query and search paths", () => {
+  const rows = [t("a"), t("b"), t("c")];
+  const hidden = new Set(["b"]);
+  expect(ids(visibleThreads(rows, "", "updated", new Map(), new Set(), hidden))).toEqual(["a", "c"]);
+  expect(ids(visibleThreads(rows, "a", "updated", new Map(), new Set(), hidden))).toEqual(["a"]);
+});

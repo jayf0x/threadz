@@ -3,15 +3,22 @@ import { api } from "@/lib/api";
 import { getThreads } from "@/lib/db";
 import { errorMessage } from "@/lib/errors";
 import { onChange, pullThreads } from "@/lib/sync";
+import { useFlaggedThreadIds } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
-import { type Sort, visibleThreads } from "./visibleThreads";
+import { type ResolvedFilter, type Sort, visibleThreads } from "./visibleThreads";
+
+const NO_IDS: ReadonlySet<string> = new Set();
 
 export const useThreads = () => {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("updated");
+  const [resolvedFilter, setResolvedFilter] = useState<ResolvedFilter>("active");
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pinned = useFlaggedThreadIds("pinned");
+  const resolved = useFlaggedThreadIds("resolved");
+  const hidden = resolvedFilter === "active" ? resolved : NO_IDS;
 
   const load = useCallback(() => getThreads().then(setThreads, (e) => setError(errorMessage(e))), []);
 
@@ -42,7 +49,10 @@ export const useThreads = () => {
   });
   const contentHits = content.q === query.trim() ? content.ranks : NO_HITS;
 
-  const visible = useMemo(() => visibleThreads(threads, query, sort, contentHits), [threads, query, sort, contentHits]);
+  const visible = useMemo(
+    () => visibleThreads(threads, query, sort, contentHits, pinned, hidden),
+    [threads, query, sort, contentHits, pinned, hidden],
+  );
 
   useEffect(() => {
     const q = query.trim();
@@ -60,7 +70,18 @@ export const useThreads = () => {
     };
   }, [query]);
 
-  return { threads: visible, query, setQuery, sort, setSort, syncing, error, refresh };
+  return {
+    threads: visible,
+    query,
+    setQuery,
+    sort,
+    setSort,
+    resolvedFilter,
+    setResolvedFilter,
+    syncing,
+    error,
+    refresh,
+  };
 };
 
 const NO_HITS: ReadonlyMap<string, number> = new Map();

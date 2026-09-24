@@ -1,5 +1,5 @@
 import { format, isThisYear } from "date-fns";
-import { Pencil, Trash2 } from "lucide-react";
+import { Check, Pencil, Pin, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PencilSparkles } from "@/components/ui/pencil-sparkles";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { restoreThread } from "@/lib/handoff";
 import { pullThreads } from "@/lib/sync";
+import { setThreadFlag, useThreadFlag } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
 import { noteText, titleFrom } from "./titles";
 
@@ -30,6 +31,8 @@ export const ThreadRow = ({
   const [naming, setNaming] = useState(false);
   // The input's blur fires as it unmounts (after Enter or Esc): one rename per edit, and none after Esc.
   const settled = useRef(false);
+  const pinned = useThreadFlag("pinned", thread.id);
+  const resolved = useThreadFlag("resolved", thread.id);
 
   const rename = async () => {
     if (settled.current) return;
@@ -145,13 +148,36 @@ export const ThreadRow = ({
               {format(thread.updatedAt, "MMM")}
               {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
             </span>
-            <span className="min-w-0 pr-20">
-              <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
+            <span className="min-w-0 pr-36">
+              <span className="block truncate font-serif text-lg leading-snug">
+                {resolved && (
+                  <Check aria-hidden className="mr-1 inline size-3.5 shrink-0 align-[-2px] text-muted-foreground" />
+                )}
+                {thread.title}
+              </span>
               {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
               {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
             </span>
           </button>
           <div className="absolute right-2 top-2.5 flex">
+            <button
+              type="button"
+              aria-label={pinned ? "Unpin thread" : "Pin thread"}
+              title={pinned ? "Unpin" : "Pin"}
+              className={cn(act, pinned && "opacity-100 text-primary")}
+              onClick={() => setThreadFlag("pinned", thread.id, !pinned)}
+            >
+              <Pin className={cn("size-3.5", pinned && "fill-current")} />
+            </button>
+            <button
+              type="button"
+              aria-label={resolved ? "Mark unresolved" : "Mark resolved"}
+              title={resolved ? "Mark unresolved" : "Mark resolved"}
+              className={cn(act, resolved && "opacity-100 text-primary")}
+              onClick={() => setThreadFlag("resolved", thread.id, !resolved)}
+            >
+              <Check className="size-3.5" />
+            </button>
             <button
               type="button"
               aria-label="Rename thread"

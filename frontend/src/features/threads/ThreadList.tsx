@@ -1,4 +1,4 @@
-import { List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
+import { Eye, EyeOff, List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -16,7 +16,7 @@ import { getMode } from "@/lib/mode";
 import { createOrReuseThread } from "./createOrReuseThread";
 import { ThreadRow } from "./ThreadRow";
 import { useThreads } from "./useThreads";
-import { isSort, SORTS } from "./visibleThreads";
+import { isSort, type ResolvedFilter, SORTS } from "./visibleThreads";
 
 // The sidebar: every thread as a row in a ledger, and the settings it flips to. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({
@@ -29,7 +29,8 @@ export const ThreadList = ({
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
-  const { threads, query, setQuery, sort, setSort, syncing, error, refresh } = useThreads();
+  const { threads, query, setQuery, sort, setSort, resolvedFilter, setResolvedFilter, syncing, error, refresh } =
+    useThreads();
   const [panel, setPanel] = useState<Panel>("index");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -127,6 +128,7 @@ export const ThreadList = ({
                   </option>
                 ))}
               </Select>
+              <ResolvedFilterSwitcher filter={resolvedFilter} setFilter={setResolvedFilter} />
             </div>
           </header>
 
@@ -228,6 +230,51 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             className="sr-only"
           />
           <Icon className="size-3.5" aria-hidden />
+          <span className="sr-only">{label}</span>
+        </label>
+      );
+    })}
+  </fieldset>
+);
+
+const RESOLVED_FILTER_OPTIONS: { value: ResolvedFilter; label: string; icon: LucideIcon }[] = [
+  { value: "active", label: "Hide resolved", icon: EyeOff },
+  { value: "all", label: "Show resolved", icon: Eye },
+];
+
+// The resolved-thread filter — same icon-only segmented-fieldset pattern as `SidebarSwitcher` and
+// TodosPanel's closed-todo filter (a `title`/sr-only label per option since the icons alone don't
+// spell out "active only" vs "everything").
+const ResolvedFilterSwitcher = ({
+  filter,
+  setFilter,
+}: {
+  filter: ResolvedFilter;
+  setFilter: (f: ResolvedFilter) => void;
+}) => (
+  <fieldset className="flex h-9 shrink-0 items-stretch gap-px border border-border p-px">
+    <legend className="sr-only">Resolved threads</legend>
+    {RESOLVED_FILTER_OPTIONS.map(({ value, label, icon: Icon }) => {
+      const active = filter === value;
+      return (
+        <label
+          key={value}
+          title={label}
+          className={cn(
+            "flex cursor-pointer items-center justify-center px-2.5 transition-colors has-focus-visible:outline",
+            "has-focus-visible:outline-ring",
+            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <input
+            type="radio"
+            name="resolved-filter"
+            value={value}
+            checked={active}
+            onChange={() => setFilter(value)}
+            className="sr-only"
+          />
+          <Icon aria-hidden className="size-3.5" />
           <span className="sr-only">{label}</span>
         </label>
       );
