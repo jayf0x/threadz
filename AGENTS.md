@@ -104,6 +104,13 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   lazy-loaded Milkdown editor, not cheap to all mount at once. Rows are measured (`measureElement`), not a fixed
   guess, since edit mode, an image, or a note popover all change a row's real height. Follow the same "measure,
   don't guess" pattern for any other list that can get long instead of a fixed row-height virtualizer.
+- **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into both editors): both adapters
+  drive the one `nextAutocompleteState` machine. In the Crepe (WYSIWYG) editor its offsets are into the *rendered*
+  block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`
+  rather than trusting `linkEnd`, and clear stored marks so typing after a link doesn't extend it. A ranged link's
+  `from..to` travels as one opaque string through `?msg=`/`openThreadAt`; `resolveMessageRange` resolves it against
+  the *displayed* order. The arrival jump (`ThreadView`) re-aims a few times because rows grow as their lazy editors
+  mount.
 - **Custom rendering inside the Milkdown view** (`features/editor/MarkdownEditor.tsx`): every `@milkdown/*`
   and `prosemirror-*` module is loaded with a dynamic `import()` inside the mount effect, never a static
   top-level import — that keeps ProseMirror out of the static import graph (and so out of `bun test`/typecheck

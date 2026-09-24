@@ -275,6 +275,21 @@ URL-sync effect mirrors the selection into a shareable `?thread=<id>&msg=<id>` p
 a replace when only the message does, so Back steps between threads); the pair is parsed on mount and on
 `popstate` for a direct link or Back, through the same `openThreadAt`.
 
+### References and quick jump
+
+Type `[[` in any note (composer, an edit, a note popover) to link another thread or message. A two-stage
+autocomplete offers thread titles first, then that thread's messages (only what this device's copy already holds —
+no fetch on demand). Tab/Enter completes a stage and continues into the next; Esc or tapping away stops wherever it
+is and leaves what's already completed behind (a thread-only link stays thread-only). What's stored is a plain
+markdown link, so it degrades to an ordinary link anywhere else: `[text](thread=<id>)`,
+`[text](thread=<id>?message=<id>)` or a range `[text](thread=<id>?message=<from>..<to>)`. To make a range, keep the
+popup open after the first message and pick a second one (the first stays pinned on top, so a bare Enter means "just
+this one"). A link navigates in-app (never a page reload) through the same `openThreadAt` path as a todo jump or
+`?thread=&msg=`; a range scrolls to its topmost row (in whichever sort order the thread is shown) and highlights
+every row in it. The message and thread ⋯ menus have **Copy link**. `⌘K` / `Ctrl+K` opens a typo-tolerant thread
+switcher, and the index surfaces one older thread per session ("You wrote this a while back", weighted by staleness
+of `updatedAt`).
+
 ### Photos in notes
 
 The composer's image button (also paste / drop) takes a photo, shrinks it in the browser to ≤1600px on the
@@ -315,5 +330,11 @@ don't know images exist.
   Claude) runs on main; a phone captures, reads and merges back, and runs no LLM. There is no hosted backend and
   none is planned.
 - **Nothing auto-syncs.** Coming back online changes nothing by itself; the user opens the dialog and goes live.
+- **Scope choices.** No `copiedFrom`/provenance on Clone (its origin can't be recovered later; revisit if
+  near-duplicate collapsing ever matters). Pin is per device, not synced (same store shape as the per-thread sort
+  order). Resurfacing reuses `createdAt`/`updatedAt`, no "last viewed" field. Bin only restores what this device
+  still holds: main hard-deletes, so once a delete has reached main it's gone there. There is no "moved from"
+  breadcrumb for cloned content: it needs Branching (parent pointers), which doesn't exist. A todo is text
+  (`/todo …` lines) or a `meta.todo` flag — never a table; ticking one is an ordinary message edit.
 - **Claude sees only the thread.** `askModel()` runs with no tools, no MCP servers and an empty working
   directory, so a prompt can never read the machine it runs on.
