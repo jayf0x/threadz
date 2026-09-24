@@ -20,6 +20,7 @@ Threadz — personal-brain POC. Read `README.md` (API, local mode, photos, load-
 | `bun test` | invariant + e2e tests |
 | `bun run smoke <url>` | curl e2e against a live backend |
 | `bun run pages:build` / `pages:deploy` | build the local-only PWA for `/threadz/` / trigger the manual Pages workflow |
+| `bun run clean:worktrees` | remove leftover `.claude/worktrees/agent-*` and their branches (only if clean and already in main) |
 | `bun run typecheck` | both packages |
 | `bun run check` | typecheck + Biome (warnings fail) + token lint + tests = "green" |
 

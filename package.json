@@ -12,6 +12,7 @@
     "lint": "biome check --error-on-warnings && bun run --cwd frontend lint:tokens",
     "check": "bun run typecheck && bun run lint && bun test --isolate",
     "smoke": "bash scripts/smoke.sh",
+    "clean:worktrees": "bash scripts/clean-worktrees.sh",
     "pages:build": "VITE_LOCAL=1 VITE_BASE=/threadz/ bun run --cwd frontend build",
     "pages:deploy": "bash scripts/deploy-pages.sh",
     "pages": "bun run pages:build && bun run pages:deploy"
