@@ -31,8 +31,11 @@ export type MessageInputProps = {
   submitAriaLabel?: string;
   /** Defaults to the regular text-button size; pass `"icon"` when `submitLabel` is icon-only. */
   submitButtonSize?: ButtonProps["size"];
-  /** Extra buttons overlaid on the editor (the composer's mic button), absolutely positioned by the caller. */
-  overlay?: ReactNode;
+  /** Extra actions in the bottom-left cluster, beside the image attach button (the composer's mic
+   * button). Bottom-aligned with the rest of the row, not floated over the editor — see AGENTS.md
+   * "Composer" note: keeps the editor free of reserved corner padding and caps the row at three
+   * primary actions (attach, mic, send) plus the `trailingActions` overflow menu for the rest. */
+  leadingActions?: ReactNode;
   /** Extra controls in the bottom row, before the submit button (the composer's mode toggle / checkbox). */
   controls?: ReactNode;
   /** A status line to show instead of the image-attach error (the composer's voice status). */
@@ -60,7 +63,7 @@ export const MessageInput = ({
   submitLabel,
   submitAriaLabel,
   submitButtonSize,
-  overlay,
+  leadingActions,
   controls,
   statusOverride,
   trailingActions,
@@ -87,32 +90,28 @@ export const MessageInput = ({
 
   return (
     <div className={className}>
-      <div className="relative">
-        <MarkdownEditor
-          handleRef={editor}
-          value={draft}
-          onChange={setDraft}
-          readOnly={busy}
-          onImageFile={(f) => attach([f])}
-          placeholder={placeholder}
-          autofocus={autofocus}
-          onReferenceClick={onReferenceClick}
-          className={cn(
-            "rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
-            "[--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px] [--md-img-max:12rem]",
-            editorClassName,
-          )}
-          onKeyDownCapture={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              e.stopPropagation();
-              send();
-            }
-          }}
-        />
-        <ImageButton onFiles={attach} disabled={busy} className="absolute right-2 top-11" />
-        {overlay}
-      </div>
+      <MarkdownEditor
+        handleRef={editor}
+        value={draft}
+        onChange={setDraft}
+        readOnly={busy}
+        onImageFile={(f) => attach([f])}
+        placeholder={placeholder}
+        autofocus={autofocus}
+        onReferenceClick={onReferenceClick}
+        className={cn(
+          "rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
+          "[--md-max-height:45dvh] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
+          editorClassName,
+        )}
+        onKeyDownCapture={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            send();
+          }
+        }}
+      />
 
       <div className="mt-1 h-4" aria-live="polite">
         {status && (
@@ -129,9 +128,16 @@ export const MessageInput = ({
         )}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {controls}
-        <div className="ml-auto flex items-center gap-1">
+      {/* Bottom-aligned, flex-between: attach + mic (+ mode controls) on the left, send + the
+          overflow menu on the right — three primary actions (attach, mic, send), everything else
+          (currently just "Copy here") lives in `trailingActions`'s ⋯ menu instead of its own button. */}
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center gap-1">
+          <ImageButton onFiles={attach} disabled={busy} />
+          {leadingActions}
+          {controls}
+        </div>
+        <div className="flex items-center gap-1">
           <Button
             size={submitButtonSize}
             aria-label={submitAriaLabel}

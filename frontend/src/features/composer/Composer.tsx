@@ -144,7 +144,7 @@ export const Composer = ({
         )}
       </AnimatePresence>
 
-      <div className="mx-auto max-w-3xl px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-10">
+      <div className="mx-auto max-w-3xl px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:px-10 md:py-3">
         <MessageInput
           handleRef={input}
           draftKey={threadId}
@@ -157,13 +157,13 @@ export const Composer = ({
             fromVoice.current = rest !== "";
           }}
           statusOverride={status}
-          overlay={
+          leadingActions={
             <Button
               size="icon"
               variant={active ? "danger" : "ghost"}
               aria-label={active ? "Stop dictation" : "Dictate"}
               aria-pressed={active}
-              className={cn("absolute right-2 top-2 gap-2 transition-[width]", listening && "w-[3.25rem]")}
+              className={cn("gap-2 transition-[width]", listening && "w-[3.25rem]")}
               onClick={voice.toggle}
               // keep the caret where the user left it: don't let the tap blur/refocus the editor
               onPointerDown={(e) => e.preventDefault()}
