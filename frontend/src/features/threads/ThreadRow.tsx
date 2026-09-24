@@ -1,5 +1,5 @@
 import { format, isThisYear } from "date-fns";
-import { Check, Pencil, Pin, Trash2 } from "lucide-react";
+import { Check, Download, Pencil, Pin, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PencilSparkles } from "@/components/ui/pencil-sparkles";
@@ -7,11 +7,23 @@ import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
-import { restoreThread } from "@/lib/handoff";
+import { exportThreadMarkdown } from "@/lib/exportMarkdown";
+import { download, restoreThread } from "@/lib/handoff";
 import { pullThreads } from "@/lib/sync";
 import { setThreadFlag, useThreadFlag } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
 import { noteText, titleFrom } from "./titles";
+
+// Filesystem-safe stand-in for whatever the title can't carry (path separators, quotes, wildcards).
+// Collapsed to one dash rather than dropped, so "a/b" and "a b" don't collide on "ab".
+const filenameFrom = (title: string) => {
+  const slug = title
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${slug || "thread"}.md`;
+};
 
 export const ThreadRow = ({
   thread,
@@ -29,6 +41,7 @@ export const ThreadRow = ({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null); // a quiet answer that is not a failure
   const [naming, setNaming] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // The input's blur fires as it unmounts (after Enter or Esc): one rename per edit, and none after Esc.
   const settled = useRef(false);
   const pinned = useThreadFlag("pinned", thread.id);
@@ -68,6 +81,25 @@ export const ThreadRow = ({
       setError(errorMessage(e));
     } finally {
       setNaming(false);
+    }
+  };
+
+  // Portable markdown, not the whole-vault JSON backup (BackupSection.tsx) — this thread's own
+  // content, fetched the same mode-aware way as everywhere else (`api.getThread`, live or local via
+  // `api.ts`'s `via()`), handed to the already-tested pure formatter, then saved with the same
+  // `download` helper the vault export uses.
+  const exportMarkdown = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const { messages, annotations } = await api.getThread(thread.id);
+      const md = exportThreadMarkdown(thread, messages, annotations);
+      await download(md, filenameFrom(thread.title), "text/markdown");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -148,7 +180,7 @@ export const ThreadRow = ({
               {format(thread.updatedAt, "MMM")}
               {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
             </span>
-            <span className="min-w-0 pr-36">
+            <span className="min-w-0 pr-40">
               <span className="block truncate font-serif text-lg leading-snug">
                 {resolved && (
                   <Check aria-hidden className="mr-1 inline size-3.5 shrink-0 align-[-2px] text-muted-foreground" />
@@ -201,6 +233,16 @@ export const ThreadRow = ({
               onClick={regenerate}
             >
               <PencilSparkles className={cn("size-3.5", naming && "animate-pulse")} />
+            </button>
+            <button
+              type="button"
+              aria-label="Export as Markdown"
+              title="Export as Markdown"
+              disabled={exporting}
+              className={cn(act, exporting && "opacity-100")}
+              onClick={exportMarkdown}
+            >
+              <Download className={cn("size-3.5", exporting && "animate-pulse")} />
             </button>
             <button
               type="button"

@@ -174,8 +174,8 @@ export const restoreThread = async (id: string): Promise<void> => {
 const EXPORTED_KEY = "threadz.lastExport";
 export const lastExport = () => Number(localStorage.getItem(EXPORTED_KEY)) || null;
 
-export const download = async (json: string, name: string) => {
-  const file = new File([json], name, { type: "application/json" });
+export const download = async (content: string, name: string, type = "application/json") => {
+  const file = new File([content], name, { type });
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] }); // iOS: straight to Files / AirDrop
