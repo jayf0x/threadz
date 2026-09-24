@@ -474,6 +474,13 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
    itself needs no separate step here: it's fully resolved by its own Phase 1 groundwork (D) already being wired
    into `visibleThreads.ts`, which it already consumes today — this step is really just Command palette, with
    search's groundwork as a prerequisite, not a second piece of work.
+   **Done:** `features/palette/CommandPalette.tsx`, a Radix `@radix-ui/react-dialog` (new dependency) mounted at
+   `App.tsx`'s top level next to `ConnectionDialog`, so ⌘K/Ctrl+K works from anywhere and survives the mode-keyed
+   `Shell` remount. Its own `keydown` listener follows `ThreadList.tsx`'s `/`/`n` precedent exactly (guarded by
+   `lib/dom.ts`'s `shortcutBlocked`). Keeps its own `getThreads()` + `onChange` subscription warm all session
+   (same pairing `useThreads.ts` uses) and ranks title matches with `lib/search.ts`'s `matchScore` — no new
+   matching logic. Arrow keys move the highlight, Enter opens the highlighted thread via `App.tsx`'s
+   `openThreadAt` and closes the palette, Esc closes it (Radix's default `onEscapeKeyDown`).
 4. **Export one thread as markdown** — wire groundwork slice (E) into a per-thread action (⋯ menu on `ThreadRow`,
    following the same pattern `ThreadView.tsx`'s message-level `Menu` already uses) and `handoff.ts`'s `download`.
 5. **Resurfacing** — wire groundwork slice (F) into somewhere low-friction (opening the app, an idle sidebar
@@ -525,6 +532,13 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   `@radix-ui/react-popover` are, `-dialog` isn't) rather than hand-rolling one. Shares its matching logic with the
   "typo-tolerant local search" item below rather than reinventing it. Groundwork: none of its own — depends on
   Phase 1 slice (D). Integration: Phase 2 step 3.
+  **Done:** `features/palette/CommandPalette.tsx`, mounted at `App.tsx`'s top level (alongside `ConnectionDialog`)
+  so it's reachable from anywhere, not scoped to `ThreadList.tsx`'s tree. ⌘K/Ctrl+K toggles it via a top-level
+  `keydown` listener guarded by `lib/dom.ts`'s `shortcutBlocked`, same precedent as the `/`/`n` shortcuts. A Radix
+  `Dialog` (`@radix-ui/react-dialog`, newly added), not hand-rolled, per AGENTS.md. Matches thread titles with
+  `lib/search.ts`'s `matchScore` — the same typo-tolerant scorer `visibleThreads.ts` uses, not reinvented. Arrow
+  keys move the highlight, Enter opens the highlighted thread through `App.tsx`'s `openThreadAt` (the same
+  navigation path References/Todos/deep links use) and closes the palette, Esc closes it.
 
 - **Typo-tolerant local search.** `frontend/src/lib/search.ts`'s `matchScore` is exact-substring-only
   (`hay.indexOf(needle)`) — no fuzzy/typo tolerance. `inspiration.md`'s research on Mem (a similar app) already
