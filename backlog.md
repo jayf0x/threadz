@@ -501,6 +501,12 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   for a thread still sitting in this device's own `trash` from before its delete synced, never a general "undelete
   on main." Groundwork: Phase 1 slice (B), a `local.ts` export to *list* trashed threads (the store exists, a
   query surface over it likely doesn't). Integration: Phase 2 step 1, paired with Undo toast.
+  **Done:** a fourth sidebar panel (`features/trash/TrashPanel.tsx`, `Trash2` icon, icon-only per the
+  `SidebarSwitcher` convention) lists `listTrash()`, newest deletion first, with a restore button per row.
+  `local.ts`'s `restoreFromTrash(id)` is the exact inverse of `deleteThread` (puts the thread/messages/annotations
+  back, marked dirty, drops the trash row); `handoff.ts`'s `restoreThread(id)` wraps it mode-aware — local mode's
+  read is the device copy so that's the whole story, live mode additionally runs `syncNow()` since main keeps no
+  trash of its own to undelete from. Restoring reopens the thread via the row's existing `onClick`.
 
 - **Command palette / quick switcher.** The sidebar search box (`ThreadList.tsx`) works but needs navigating to
   first; a keyboard-triggered overlay reachable from anywhere (⌘K-style: type, fuzzy-match thread titles, Enter
@@ -572,6 +578,9 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   primitives rule should probably be built on a Radix pattern (`@radix-ui/react-toast` isn't a dependency yet)
   rather than hand-rolled, same reasoning as the command-palette item above. Groundwork: Phase 1 slice (C), the
   primitive component on its own. Integration: Phase 2 step 1, paired with Recently Deleted/Restore.
+  **Done:** `ThreadRow.tsx`'s `confirm()` dialog is gone — delete now happens immediately (it was already
+  non-destructive underneath) and fires a `toast()` with an "Undo" action that calls `restoreThread` and reopens
+  the thread. `ToastProvider` is now mounted at the app root (`App.tsx`, wrapping `LazyMotion`).
 
 - **References: linking a thread or a specific message, inline.** Scoped down deliberately from a bigger, later
   idea — read `inspiration.md`'s new "References" entry (added alongside this backlog item) for the full,
