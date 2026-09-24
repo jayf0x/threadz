@@ -483,6 +483,10 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
    `openThreadAt` and closes the palette, Esc closes it (Radix's default `onEscapeKeyDown`).
 4. **Export one thread as markdown** — wire groundwork slice (E) into a per-thread action (⋯ menu on `ThreadRow`,
    following the same pattern `ThreadView.tsx`'s message-level `Menu` already uses) and `handoff.ts`'s `download`.
+   **Done:** a plain icon button on `ThreadRow.tsx`'s existing action row, not a new ⋯ menu (one action didn't
+   earn a dropdown). Fetches through the same mode-aware `api.getThread(id)` Regenerate-title already uses,
+   formats with `exportMarkdown.ts`'s `exportThreadMarkdown`, and saves via `handoff.ts`'s `download` (now takes
+   an optional mime `type`, default unchanged, so the vault-backup caller needed no changes).
 5. **Resurfacing** — wire groundwork slice (F) into somewhere low-friction (opening the app, an idle sidebar
    moment — left as a judgment call, not decided here).
 6. **References: Copy link + final integration polish** — the "Copy link" ⋯-menu action (message and thread),
@@ -596,6 +600,14 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   inline annotations/notes or drop them, whether images (referenced only as `img:<hash>` per AGENTS.md's Images
   section) get resolved to something in the output or left as broken references. Groundwork: Phase 1 slice (E), a
   pure assembly function. Integration: Phase 2 step 4.
+  **Done:** a plain `Download` icon button in `ThreadRow.tsx`'s existing action row (next to Regenerate title,
+  before Delete) — a sixth icon button read better than a new ⋯ menu for one action, so `pr-36`/`pr-40` on the
+  title's reserved space is the only layout change. Fetches via the same mode-aware `api.getThread(id)` the
+  Regenerate-title action already uses (live or local through `api.ts`'s `via()`, no new path), hands
+  `{ messages, annotations }` straight to `exportMarkdown.ts`'s already-tested `exportThreadMarkdown`, and saves
+  the result with `handoff.ts`'s `download` — which gained an optional `type` param (default `application/json`,
+  unchanged for the existing backup) so a `.md` file can carry `text/markdown` instead of being mislabeled JSON.
+  Filename is the thread title with filesystem-unsafe characters collapsed to `-` and a `.md` extension.
 
 - **Undo toast on delete.** `local.ts`'s `trash` mechanism (see "Recently Deleted" above) already means a delete
   isn't actually destructive underneath, but `ThreadRow.tsx`'s delete flow (a `confirm()` dialog today) gives no
