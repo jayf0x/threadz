@@ -3,6 +3,7 @@ import { BackendSection } from "./sections/BackendSection";
 import { BackgroundSection } from "./sections/BackgroundSection";
 import { DataSection } from "./sections/DataSection";
 import { DictationSection } from "./sections/DictationSection";
+import { LockZoomSection } from "./sections/LockZoomSection";
 import { NamingSection } from "./sections/NamingSection";
 import { SyncSection } from "./sections/SyncSection";
 
@@ -18,6 +19,7 @@ export const SettingsPanel = () => (
     <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
       <SyncSection />
       <NamingSection />
+      <LockZoomSection />
       <BackendSection />
       <AppearanceSection />
       <BackgroundSection />

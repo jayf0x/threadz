@@ -77,6 +77,11 @@ body,
   overflow: hidden;
 }
 
+/* Settings' "Lock zoom": blocks pinch and double-tap zoom, keeps scrolling on both axes. */
+html[data-lock-zoom] {
+  touch-action: pan-x pan-y;
+}
+
 body {
   margin: 0;
   background: var(--background);

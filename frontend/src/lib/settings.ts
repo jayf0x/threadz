@@ -12,11 +12,24 @@ import { useSyncExternalStore } from "react";
 // offers None/Image. There's exactly one gradient now, so there's no `gradientId` to pick among.
 export type BackgroundType = "none" | "image" | "gradient";
 export type BackgroundSettings = { type: BackgroundType; opacity: number };
-export type Settings = { autoName: boolean; backendUrl: string | null; background: BackgroundSettings };
+export type Settings = {
+  autoName: boolean;
+  backendUrl: string | null;
+  background: BackgroundSettings;
+  lockZoom: boolean;
+};
 
 const KEY = "threadz.settings";
 const DEFAULT_BACKGROUND: BackgroundSettings = { type: "gradient", opacity: 10 };
-const DEFAULTS: Settings = { autoName: true, backendUrl: null, background: DEFAULT_BACKGROUND };
+// lockZoom: no pinch/double-tap zoom (the viewport meta + `touch-action`, see applyLockZoom). Costs
+// accessibility, so it defaults on only where zoom glitches actually happen: touch-first devices.
+const touchFirst = () => window.matchMedia?.("(pointer: coarse)").matches ?? false;
+const DEFAULTS: Settings = {
+  autoName: true,
+  backendUrl: null,
+  background: DEFAULT_BACKGROUND,
+  lockZoom: touchFirst(),
+};
 
 const readBackground = (stored: object): BackgroundSettings => ({
   type:
@@ -43,15 +56,31 @@ const read = (): Settings => {
         "background" in stored && stored.background && typeof stored.background === "object"
           ? readBackground(stored.background)
           : DEFAULT_BACKGROUND,
+      lockZoom: "lockZoom" in stored && typeof stored.lockZoom === "boolean" ? stored.lockZoom : DEFAULTS.lockZoom,
     };
   } catch {
     return DEFAULTS;
   }
 };
 
+const BASE_VIEWPORT = "width=device-width, initial-scale=1, viewport-fit=cover";
+
+// iOS Safari ignores `user-scalable=no` in a browser tab but honours it in the installed PWA;
+// `touch-action: pan-x pan-y` (data-lock-zoom, styles.css) covers the rest. Not `pan-y` alone: that
+// would also kill horizontal scrolling of wide content.
+const applyLockZoom = (lock: boolean) => {
+  if (typeof document === "undefined") return; // bun test has no DOM
+  document.documentElement.toggleAttribute("data-lock-zoom", lock);
+  document
+    .querySelector('meta[name="viewport"]')
+    ?.setAttribute("content", lock ? `${BASE_VIEWPORT}, maximum-scale=1, user-scalable=no` : BASE_VIEWPORT);
+};
+
 let current = read();
+applyLockZoom(current.lockZoom);
 const listeners = new Set<() => void>();
 const emit = () => {
+  applyLockZoom(current.lockZoom);
   for (const l of listeners) l();
 };
 
