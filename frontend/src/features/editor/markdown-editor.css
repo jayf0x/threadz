@@ -61,10 +61,16 @@
 .threadz-md .milkdown .ProseMirror {
   padding: var(--md-padding, 14px 18px 40px);
   max-height: var(--md-max-height, none);
-  overflow-y: auto;
   flex: 1;
   outline: none;
   caret-color: var(--foreground);
+}
+
+/* Only an editor with a height cap scrolls. Anywhere else `overflow` stays visible: `overflow-y: auto`
+ * also turns overflow-x into `auto`, which clipped the gutter checkbox (`left: -20px`) and made every
+ * `/todo` line's checkbox invisible in the message view. */
+.composer-editor .milkdown .ProseMirror {
+  overflow-y: auto;
 }
 
 .threadz-md .milkdown .ProseMirror > :first-child { margin-top: 0; }
@@ -231,6 +237,13 @@
   background: none;
   color: var(--muted-foreground);
   cursor: pointer;
+}
+/* A 14px glyph is a hard tap on a phone: the hit area grows sideways and to the row's own height,
+ * not further up/down, so neighbouring `/todos` items (one line apart) never share a tap. */
+.threadz-todo-checkbox::before {
+  content: "";
+  position: absolute;
+  inset: -6px -8px;
 }
 .threadz-todo-checkbox:hover,
 .threadz-todo-checkbox:focus-visible {

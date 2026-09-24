@@ -17,21 +17,21 @@ import { ThreadRow } from "./ThreadRow";
 import { useThreads } from "./useThreads";
 import { isSort, SORTS } from "./visibleThreads";
 
-// Rolls once per session, the moment the full thread list first arrives — not on every render, and
-// not re-rolled as `threads` keeps changing underneath it (search, sync, edits). The pick then holds
-// for the rest of the app's lifetime, same as opening the app once shows you one "you wrote this a
-// while back" thread rather than a different one every time the list re-renders.
+// Rolls once per session, the moment the list first holds something worth resurfacing (two or more
+// threads — with one, the pick would just repeat the only row) — not on every render, and not
+// re-rolled as `threads` keeps changing underneath it (search, sync, edits). Only the id is kept: the
+// row is looked up fresh, so a rename shows up and a deleted thread disappears instead of lingering.
 const useResurfacingThread = (threads: Thread[]): Thread | undefined => {
-  const [picked, setPicked] = useState<Thread | undefined>(undefined);
+  const [pickedId, setPickedId] = useState<string | undefined>(undefined);
   const rolled = useRef(false);
 
   useEffect(() => {
-    if (rolled.current || threads.length === 0) return;
+    if (rolled.current || threads.length < 2) return;
     rolled.current = true;
-    setPicked(pickResurfacingThread(threads));
+    setPickedId(pickResurfacingThread(threads)?.id);
   }, [threads]);
 
-  return picked;
+  return threads.find((t) => t.id === pickedId);
 };
 
 // The sidebar: every thread as a row in a ledger, and the settings it flips to. Also owns the "/" and "n" shortcuts.
@@ -148,7 +148,7 @@ export const ThreadList = ({
                     : "Empty index. Press n to start a thread."}
               </li>
             )}
-            {!query && resurfaced && (
+            {!query && resurfaced && resurfaced.id !== selectedId && (
               <li className="border-t border-rule">
                 <button
                   type="button"

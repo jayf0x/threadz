@@ -48,9 +48,7 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
         {visible?.length === 0 && (
           <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
-            {closedFilter === "never"
-              ? "Nothing open. Every checklist item you've written is checked off — or you haven't written one yet."
-              : "Nothing here. Every checklist item you've written is still open — or you haven't written one yet."}
+            {closedFilter === "never" ? "Nothing open." : "No todos yet."}
           </p>
         )}
         <ul>
@@ -131,7 +129,12 @@ const TodoRow = ({
       {done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
     </button>
     <button type="button" onClick={onOpen} className="min-w-0 text-left transition-colors hover:text-foreground">
-      <span className={cn("block truncate text-sm", done ? "text-muted-foreground line-through" : "text-foreground")}>
+      <span
+        className={cn(
+          "line-clamp-2 break-words text-sm",
+          done ? "text-muted-foreground line-through" : "text-foreground",
+        )}
+      >
         {text}
       </span>
       <span className="mt-1 block font-mono text-[11px] uppercase text-muted-foreground">{meta}</span>
@@ -161,7 +164,7 @@ const GroupCard = ({
       onClick={onOpenThread}
       className="mb-2 block min-w-0 text-left transition-colors hover:text-foreground"
     >
-      <span className="block truncate text-sm font-medium text-foreground">{title}</span>
+      <span className="line-clamp-2 break-words text-sm font-medium text-foreground">{title}</span>
       <span className="mt-1 block font-mono text-[11px] uppercase text-muted-foreground">{meta}</span>
     </button>
     <ul className="space-y-2">
@@ -176,7 +179,7 @@ const GroupCard = ({
             {item.done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
           </button>
           <span
-            className={cn("truncate text-sm", item.done ? "text-muted-foreground line-through" : "text-foreground")}
+            className={cn("break-words text-sm", item.done ? "text-muted-foreground line-through" : "text-foreground")}
           >
             {item.text}
           </span>

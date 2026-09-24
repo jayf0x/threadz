@@ -23,7 +23,7 @@
   --ring: oklch(0.55 0.1 145);
   --primary: oklch(0.55 0.1 145);
   --primary-foreground: oklch(0.995 0.006 140);
-  --destructive: oklch(0.6 0.17 27);
+  --destructive: oklch(0.56 0.17 27);
   --destructive-foreground: oklch(0.995 0.006 140);
 
   --rule: color-mix(in oklab, var(--foreground) 14%, transparent);

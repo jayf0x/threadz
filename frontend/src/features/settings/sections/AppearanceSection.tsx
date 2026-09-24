@@ -43,7 +43,7 @@ export const AppearanceSection = () => {
   return (
     <Section title="Appearance">
       <ThemeToggle className="mb-4" />
-      <fieldset className="flex flex-wrap gap-4">
+      <fieldset className="flex flex-wrap gap-3">
         <legend className="sr-only">Palette</legend>
         {PALETTES.map((p) => {
           const active = palette === p.id;

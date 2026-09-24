@@ -166,6 +166,17 @@ test("parseTodoGroups stops at the first blank line", () => {
   expect(groups[0]?.items.map((i) => i.text)).toEqual(["one", "two"]);
 });
 
+test("parseTodoGroups tolerates the blank line the editor puts between the title and its list", () => {
+  const content = "/todos Groceries\n\n* eggs\n* [x] bread\n\nprose";
+  const { groups, consumed } = parseTodoGroups(content);
+  expect(groups[0]?.items).toEqual([
+    { text: "eggs", done: false, lineIndex: 2 },
+    { text: "bread", done: true, lineIndex: 3 },
+  ]);
+  expect([...consumed]).toEqual([0, 2, 3]);
+  expect(parseTodoGroups("/todos Empty\n\nprose").groups).toEqual([]);
+});
+
 test("parseTodoGroups stops at the first line that isn't a list item", () => {
   const content = "@/todos List\n- one\nsome prose resumes here\n- two (not counted)";
   const { groups } = parseTodoGroups(content);
