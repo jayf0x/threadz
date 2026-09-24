@@ -40,7 +40,7 @@ export const remoteApi = {
       body: JSON.stringify({ content }),
     }),
 
-  // Non-textual message state (the ⋯ menu's "Add/Remove Todos", the sidebar's message-todo
+  // Non-textual message state (the ⋯ menu's "Todo" toggle, the sidebar's message-todo
   // checkbox) — merged into `meta`, never a content edit, so this hits its own small route instead
   // of editMessage above (see backend/server.ts). `removeMessageTodo` clears the flag entirely
   // (`meta.todo: null`, which editMessageMeta on the backend deletes rather than sets).

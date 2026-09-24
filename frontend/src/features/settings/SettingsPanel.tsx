@@ -7,7 +7,7 @@ import { LockZoomSection } from "./sections/LockZoomSection";
 import { NamingSection } from "./sections/NamingSection";
 import { SyncSection } from "./sections/SyncSection";
 
-// The sidebar's second view. Everything here is per device: nothing syncs to main. One file per
+// The sidebar's Settings view. Everything here is per device: nothing syncs to main. One file per
 // section under sections/ — adding another never touches this shell. Order: sync status first
 // (was the sidebar footer), then day-to-day settings, then import/export last (low usage).
 export const SettingsPanel = () => (

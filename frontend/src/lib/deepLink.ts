@@ -1,7 +1,6 @@
 // The `?thread=<id>&msg=<id>` deep link: parsing an incoming URL, and building the URL that
 // should be showing for whatever's currently open. Pure so App.tsx's URL-sync effect (the one
-// place that ever calls `history.pushState`/`replaceState` now — see AGENTS.md, "URL always
-// reflects what's open") can be tested without a browser location object.
+// place that ever calls `history.pushState`/`replaceState` now) can be tested without a browser location object.
 
 /** What a `?thread=&msg=` (or bare) query string says to open. Either can be absent. */
 export const parseDeepLink = (search: string): { threadId: string | null; messageId: string | null } => {

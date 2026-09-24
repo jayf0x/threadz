@@ -11,7 +11,7 @@ import type { Mode, Unsynced } from "./types";
 // mode — a mode switch is always the user's own click (`lib/handoff.ts`) or `detach()`'s own
 // auto-fallback; connectivity is only ever read, never acted on, from the status pill / dialog
 // the user opens on their own terms. No proactive "main is back" popup: the pill already shows
-// mode passively (and a hatched bar while local, see `App.tsx`), and the dialog explains the
+// mode passively, and the dialog explains the
 // rest once opened — a banner nagging on top of that just repeated it.
 export type Status = {
   mode: Mode;

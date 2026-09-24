@@ -130,7 +130,7 @@ export const ThreadView = ({
   // One note per message (DB-enforced), so this is a plain lookup, not a grouped list.
   const noteByMessage = useMemo(() => new Map(annotations.map((a) => [a.messageId, a])), [annotations]);
 
-  // "Copy thread from here": B is A up to and including this message. A is never touched.
+  // "Clone from here": B is A up to and including this message. A is never touched.
   const copyThreadFrom = async (uptoMessageId: string) => {
     if (copying) return;
     setCopying(true);
@@ -385,12 +385,12 @@ const tap = "flex items-center justify-center p-2.5 transition-colors md:p-1";
 const EDIT_MIN_PX = 96;
 const EDIT_MAX_RATIO = 0.6;
 
-// One entry: the content, then a hairline of tiny metadata under it. Your notes can be
-// edited in place (the previous text is kept and can be shown under "edited").
-// A note (annotation) is a quiet aside attached to the entry, not another entry: a small icon,
-// dim until there's one to show, opens it in a popover instead of pushing the thread's own
-// layout around — reading down a long thread never loses its place to an expanding neighbour.
-// ponytail: every entry is its own read-only editor instance; virtualize if a thread reaches hundreds.
+// One entry: the content, and — only while it is the selected message — a hairline of tiny metadata and the
+// ⋯ menu under it. Your notes can be edited in place (the previous text is kept and can be shown under
+// "edited"). A note (annotation) is a quiet aside attached to the entry, not another entry: a small icon
+// (present only once there is a note; "Add note" lives in the ⋯ menu) that opens it in a popover instead of
+// pushing the thread's own layout around — reading down a long thread never loses its place to an expanding
+// neighbour.
 export const EntryRow = ({
   message: m,
   pending,
@@ -418,7 +418,7 @@ export const EntryRow = ({
   onSelect: () => void; // row clicked: select it, or clear if it's already selected (toggle lives in the caller)
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
-  onSetTodo: (done: boolean | null) => void; // ⋯ menu's Add/Remove Todos; null clears the flag
+  onSetTodo: (done: boolean | null) => void; // ⋯ menu's Todo toggle; null clears the flag
   note: Annotation | undefined; // one per message, DB-enforced
   unsyncedAnnotations: Set<string>;
   onAddAnnotation: (text: string) => Promise<boolean>;

@@ -9,8 +9,9 @@ on its own copy and syncs when you say so. See `backlog.md` for open questions a
 ```
 backend/    Bun + bun:sqlite service. HTTP API, model seam, metadata + embeddings (off by default — see below).
 frontend/   React 19 + Vite + Tailwind v4 PWA. IndexedDB mirror + local copy, on-device whisper.
-tests/      bun test — invariant + HTTP e2e tests.
-scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-pages.sh (triggers the Pages workflow).
+tests/      bun test — backend invariant + HTTP e2e tests (frontend tests sit beside their code).
+scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-pages.sh (triggers the Pages workflow),
+            clean-worktrees.sh (removes leftover agent worktrees).
 ```
 
 ## Prerequisites
@@ -27,7 +28,7 @@ scripts/    smoke.sh (curl end-to-end check against a running backend), deploy-p
   ```
 - A logged-in `claude` CLI (for "Ask Claude"). The backend calls Claude through the
   Claude Code SDK, which reuses the CLI's auth — no API key to manage. Default model
-  is `claude-haiku-4-5`. If asks fail with an auth error, run `claude login`. (Or set
+  is `claude-haiku-4-5-20251001` (`ANTHROPIC_MODEL` to change). If asks fail with an auth error, run `claude login`. (Or set
   `ANTHROPIC_API_KEY` — the SDK will use it instead.)
 
 ## Run it
@@ -108,14 +109,14 @@ storage is not evicted after 7 days). On Chrome/Edge use the install icon in the
 ```bash
 bun run check               # typecheck + Biome + token lint + tests: the definition of "green"
 bun test                    # invariants + HTTP e2e (stubbed model)
-bun run smoke http://localhost:8787   # real end-to-end against Ollama (+ Claude if logged in)
+bun run smoke http://localhost:8787   # curl end-to-end against a live backend (Ollama steps need THREADZ_METADATA=1; Claude if logged in)
 bun run typecheck
 ```
 
 ## Structure & conventions
 
 ```
-backend/                 one Bun server, one SQLite file (server, db, model, metadata, images)
+backend/                 one Bun server, one SQLite file (server, db, schemas, model, metadata, images)
 tests/                   invariant + HTTP round-trip tests
 frontend/src/
   components/ui/         generic primitives (Button, Field, Input, Select, Eyebrow…): no app imports
@@ -143,15 +144,20 @@ Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ ok, model }` |
+| GET | `/api/presence` | an idle server-sent-events stream each open tab holds; with `THREADZ_QUIT_ON_CLOSE=1` (desktop launcher) the server exits when the last one closes |
 | GET | `/api/snapshot` | every thread + message in one read |
 | GET | `/api/head` | `{ head, threads: { id: hash } }` — cheap "did main move?" (hash = title + message ids) |
-| POST | `/api/sync` | a device's offline work `{ threads, messages, deletes:[{id,baseHash}] }`, applied atomically after a backup; a delete is refused if the thread changed since `baseHash` |
+| POST | `/api/sync` | a device's offline work `{ threads, messages, annotations, deletes:[{id,baseHash}], annotationDeletes:[{id,baseVersion}] }`, applied atomically after a backup; a delete is refused if the thread (or note) changed since `baseHash` (`baseVersion`) |
 | GET | `/api/threads?q=&sort=updated\|created\|title` | list / search |
 | POST | `/api/threads` | create `{ title, seed?, id?, createdAt? }` — idempotent on `id` |
-| GET | `/api/threads/:id` | `{ thread, messages }` |
+| GET | `/api/threads/:id` | `{ thread, messages, annotations, hash }` |
 | PATCH | `/api/threads/:id` | rename `{ title }` |
 | DELETE | `/api/threads/:id` | delete thread + messages |
+| POST | `/api/threads/:id/copy` | "Clone from here": `{ newThreadId, uptoMessageId, appendNote? }` copies the thread up to that message (new ids), optionally appending the composer's text as the copy's next note; idempotent on `newThreadId` |
 | PATCH | `/api/threads/:id/messages/:mid` | edit `{ content }`; the old text is appended to `edits` |
+| PATCH | `/api/threads/:id/messages/:mid/meta` | merge `{ meta }` into the message's `meta` (the ⋯ menu's Todo flag); its own `metaEditedAt` clock, never a content edit |
+| POST | `/api/threads/:id/messages/:mid/annotations` | add a note to a message `{ id, content, createdAt? }` — idempotent on `id` |
+| PATCH | `/api/threads/:id/annotations/:aid` | edit a note `{ content }`; the old text is kept in its `edits` |
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
 | DELETE | `/api/threads/:id/annotations/:aid` | delete a note for good — no tombstone, unlike a message |
 | POST | `/api/threads/:id/ask` | `{ prompt, commit, userMessageId?, assistantMessageId? }` → `{ answer, committed }` |
@@ -172,17 +178,17 @@ answering `503`.
 
 ### Local mode (work with no backend)
 
-The status pill (Settings → Sync) shows where you are: **Live** (● reading/writing main) or **Local** (■ this device
-is the source of truth; a hatched bar runs across the top; a ping means main is reachable). Open
-the pill for the connection dialog.
+The status pill (Settings → Sync) shows where you are: **Live** (● reading/writing main), **Offline** (○ live, but
+main is unreachable) or **Local** (■ this device is the source of truth), plus a count of changes not yet on main.
+Open the pill for the connection dialog.
 
 - **Auto-detach.** While live, the app keeps a full copy of main on the device (`threadz-local`,
   plus per-thread hashes of what it last agreed on with main). If main becomes unreachable, the
   app switches to that copy by itself — a failed write is retried on the device, never dropped —
   and says so once. **Work locally** does the same on purpose. Claude ("Ask") needs main, so the
   Ask toggle is not offered while local.
-- **Coming back is never automatic.** A "Main is reachable" banner offers Review; going live is a
-  button. It runs: pull main's changes into the device copy → send everything pending in one
+- **Coming back is never automatic.** Nothing announces that main is back beyond the pill's tooltip and the
+  dialog ("Back online."); going live is a button in that dialog. It runs: pull main's changes into the device copy → send everything pending in one
   request → re-read what was sent and prove every local note is on main → compare hashes. Only
   when both sides agree does the mode flip. Every step is idempotent, so a crash or retry resumes.
 - **Conflicts** are resolved without asking; whichever side has content wins, so a delete never
@@ -193,7 +199,8 @@ the pill for the connection dialog.
   kept) if the note changed since this device last saw it. The dialog reports what happened.
 - **Data safety.** The device store is never cleared wholesale; pending rows are flagged `dirty`
   until main acknowledged them; a delete keeps a copy in `trash`; a rolling safety copy is taken
-  before every sync; drafts persist per thread. **Export/Import** writes/reads a JSON backup
+  before every sync; drafts persist per thread. A deleted thread also shows in the **Bin** tab with a restore
+  action (and an Undo toast right after the delete). **Export/Import** writes/reads a JSON backup
   (union merge). The app asks the browser for persistent storage; on iOS use the installed
   home-screen app so Safari's 7-day eviction doesn't apply.
 - **Main backs itself up** before applying a sync: `backups/threadz-<time>.sqlite` next to the
@@ -204,28 +211,35 @@ the pill for the connection dialog.
 
 ### Starting and naming threads
 
-`+` (or `n`) makes a thread at once, called `Thread: 004` (threads + 1, at least three digits; a number a delete left
-taken is skipped) and opens it. There is no form. **Name a thread from its first note** (Settings, on by default)
+The **+ New** pill (bottom right of the Threads tab; or `n`) makes a thread at once, called `Thread: 004` (threads + 1,
+at least three digits; a number a delete left taken is skipped) and opens it — or reopens the newest thread if it is
+still an untouched placeholder with no notes, rather than piling up empty ones. There is no form. **Name a thread from its first note** (Settings, on by default)
 renames it when that note is sent or edited, using [yatefca](https://www.npmjs.com/package/yatefca): keyword
 extraction, no model, so it also works offline and in local mode. It only replaces a title nobody chose (the
 placeholder, or exactly what it derived from the previous first note) and does nothing when the note is too thin to
-name. The pencil-sparkles button on a row does the same on demand from all of the thread's notes, and does replace a
-name you typed.
+name. **Regenerate title** in the row's ⋯ menu does the same on demand from all of the thread's notes, and does replace a
+name you typed. That menu also has Rename, Export as Markdown (one thread's own content as a `.md` file, unlike
+the whole-vault JSON Export), Copy link (a `[title](thread=<id>)` reference, ready to paste into another note) and
+Delete; Pin (device-only) stays on the row.
 
-**Capture deep link.** `?capture=1` opens the same way as `+`/`n` and focuses the composer — the installed PWA's
+**Capture deep link.** `?capture=1` opens the same way as **+ New**/`n` and focuses the composer — the installed PWA's
 long-press icon menu offers it as "New note" (`vite.config.ts`'s manifest `shortcuts`). Unverified on iOS: WebKit
 won't raise the keyboard from this without a direct tap, so it may land focused but silent until one tap.
 
 ### Settings
 
-The gear in the bottom tab bar (Threads · Todos · Bin · Settings) flips the sidebar to Settings: the auto-name switch, a Backend URL override (see
-"Reach the backend + Ollama from the phone"; hidden on a `VITE_LOCAL` build with no backend to point at), and the
-speech model. They are per device (`localStorage`), never synced.
+The gear in the bottom tab bar (Threads · Todos · Bin · Settings) flips the sidebar to Settings, top to bottom:
+Sync (the status pill and a manual sync), Naming (the auto-name switch), Display (Lock zoom, on by default on touch
+devices), Backend URL (see "Reach the backend + Ollama from the phone"; hidden on a `VITE_LOCAL` build with no
+backend to point at), Appearance (the Light/System/Dark toggle and a palette dot per colour family — gruvbox, one,
+everforest, solarized, catppuccin, nord — each ships both modes), Background (the default faint gradient, or your own
+image with Remove and an opacity slider for how much of it shows through the panes), Dictation (the speech model) and
+Import / export. They are per device (`localStorage`, the wallpaper's bytes in their own IndexedDB), never synced.
 
 ### Open todos
 
-The list icon beside the gear flips the sidebar to every todo across every thread, newest first, tap to jump to
-its thread, scrolled straight to that message and briefly highlighted (a plain CSS flash — `.message-highlight`
+The Todos tab flips the sidebar to every todo across every thread, newest first, tap to jump to
+its thread, scrolled straight to that message and briefly highlighted (a plain CSS flash — `.message-pulse`
 in `styles.css` — not Motion, nothing enters or leaves the tree). A sidebar entry is one of three shapes
 (`lib/todos.ts`'s `Todo`, a discriminated union on `kind`):
 
@@ -238,26 +252,28 @@ in `styles.css` — not Motion, nothing enters or leaves the tree). A sidebar en
   with its own items underneath, each independently tickable. A plain `- item` with no checkbox parses as open;
   ticking it adds the checkbox rather than requiring one up front. Still text-is-truth: every toggle is the same
   `editMessage` rewrite, just targeting that item's own line.
-- **A flagged message.** The message's own ⋯ menu ("Add to Todos" / "Remove from Todos") flags the *whole
-  message* as a todo without inserting any `/todo` text — a second, non-textual mechanism for the same sidebar
+- **A flagged message.** The message's own ⋯ menu ("Todo", a toggle; the menu shows on the selected message)
+  flags the *whole message* as a todo without inserting any `/todo` text — a second, non-textual mechanism for the same sidebar
   outcome (see `inspiration.md`'s "Commands: a content primitive"). State lives in `meta.todo: { done: boolean }`
   on the message (`backend/schemas.ts`'s `MessageMeta`), its own small sync-safe route
   (`PATCH /api/threads/:id/messages/:mid/meta`, merges into `meta` rather than replacing it) rather than a
   content edit — the sidebar shows truncated message content with its own checkbox, and toggling it calls
   `lib/api.ts`'s `toggleMessageTodo`/`removeMessageTodo` directly, never `editMessage`.
 
-Closed todos (lines, group items, and flagged messages alike) are hidden by default; a header toggle shows them
-alongside a count of each. Lines and groups are pure derived data — `frontend/src/lib/todos.ts` scans messages
+Closed todos (lines and flagged messages) show only if closed in the last 24h by default; a header dropdown
+switches to all or none, and the header counts open and closed. A `/todos` group always shows every item. Lines and groups are pure derived data — `frontend/src/lib/todos.ts` scans messages
 already pulled into the device copy (`lib/local.ts`'s `exportSnapshot`) — so neither needed a new store or a sync
 change. The flagged-message shape is the one real addition: `meta` already rode along in `SyncPayload`, but main
 never actually applied an incoming `meta` to a message it already had, and `threadHash` never reflected a
 meta-only change either, so a flag set on one device could silently never reach (or be pulled by) another — both
 fixed (`meta`'s own `metaEditedAt` clock, mirroring `editedAt`'s shape without treating a flag as a content edit;
 see `backlog.md`). The jump itself reuses the `?capture=1` deep-link pattern: a row's click calls `App.tsx`'s
-`openThreadAt(threadId, messageId)` (also `history.pushState`s a shareable `?thread=<id>&msg=<id>` pair) which
-opens the thread and hands `ThreadView` a `scrollToMessageId`; once that message's index is known in the
-already-virtualized message list (`@tanstack/react-virtual`), it calls the virtualizer's `scrollToIndex`. The
-same query-param pair is parsed once on mount for a direct link, through the same `openThreadAt`.
+`openThreadAt(threadId, messageId)`, which opens the thread, selects that message and hands `ThreadView` a
+`pulseMessageId`; once that message's index is known in the already-virtualized message list
+(`@tanstack/react-virtual`), it calls the virtualizer's `scrollToIndex` and pulses the row. `App.tsx`'s one
+URL-sync effect mirrors the selection into a shareable `?thread=<id>&msg=<id>` pair (a push when the thread changes,
+a replace when only the message does, so Back steps between threads); the pair is parsed on mount and on
+`popstate` for a direct link or Back, through the same `openThreadAt`.
 
 ### Photos in notes
 
@@ -298,6 +314,6 @@ don't know images exist.
 - **Main is the brain, phones are shadow clones.** Anything heavy (embeddings, comparing notes, batch jobs,
   Claude) runs on main; a phone captures, reads and merges back, and runs no LLM. There is no hosted backend and
   none is planned.
-- **Nothing auto-syncs.** Reconnecting shows a "Main is reachable" banner; the user reviews and goes live.
+- **Nothing auto-syncs.** Coming back online changes nothing by itself; the user opens the dialog and goes live.
 - **Claude sees only the thread.** `askModel()` runs with no tools, no MCP servers and an empty working
   directory, so a prompt can never read the machine it runs on.

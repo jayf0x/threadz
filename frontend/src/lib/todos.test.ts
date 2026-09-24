@@ -209,7 +209,7 @@ test("collectTodos surfaces a @/todos group as one entry carrying its items", ()
   ]);
 });
 
-// --- message-level "Add to Todos" flag (meta.todo, not text) ---
+// --- message-level "Todo" flag (meta.todo, not text) ---
 
 test("collectTodos surfaces a message flagged via meta.todo as its own entry, independent of its text", () => {
   const threads = [thread("t1", "Notes")];

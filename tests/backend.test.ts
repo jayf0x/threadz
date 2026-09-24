@@ -693,7 +693,7 @@ describe("POST /api/threads/:id/copy (invariant: A untouched, B is new ids on a 
   });
 });
 
-describe("message meta (invariant: the 'Add to Todos' flag merges into `meta`, never replaces it, and syncs)", () => {
+describe("message meta (invariant: the ⋯ menu's Todo flag merges into `meta`, never replaces it, and syncs)", () => {
   const patchMeta = (threadId: string, mid: string, body: unknown) =>
     fetch(`${BASE}/api/threads/${threadId}/messages/${mid}/meta`, {
       method: "PATCH",
@@ -1494,7 +1494,7 @@ describe("local mode (invariant: no data lost across sync)", () => {
     expect(main[0].editedAt).toBeNull(); // never read as a content edit
     expect(await local.countUnsynced()).toEqual({ threads: 0, messages: 0, annotations: 0, deletions: 0 });
 
-    // "Remove from Todos" clears the flag the same way, and that reaches main too.
+    // un-flagging "Todo" clears the flag the same way, and that reaches main too.
     await local.localApi.removeMessageTodo(t.id, m.id);
     await handoff.syncNow();
     expect((await mainMessages(t.id))[0].meta).toBeNull();

@@ -331,7 +331,7 @@ export const localApi: Api = {
     return { message: strip(message) };
   },
 
-  // Flags/unflags a whole message as a todo (the ⋯ menu's "Add/Remove Todos", the sidebar's
+  // Flags/unflags a whole message as a todo (the ⋯ menu's "Todo" toggle, the sidebar's
   // message-todo checkbox) — non-textual, merged into `meta` like the backend's editMessageMeta,
   // never a content edit. `done: null` clears the flag entirely (see removeMessageTodo below).
   // Own clock (`metaEditedAt`, not `editedAt`): mergeRemoteThread's `same()` check treats the two

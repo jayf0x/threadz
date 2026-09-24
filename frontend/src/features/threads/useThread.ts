@@ -158,7 +158,7 @@ export const useThread = (threadId: string | null) => {
     [threadId],
   );
 
-  // Flags/unflags a whole message as a todo (the ⋯ menu's "Add/Remove Todos") — non-textual
+  // Flags/unflags a whole message as a todo (the ⋯ menu's "Todo" toggle) — non-textual
   // (`meta.todo`), never a content edit, so this never touches `editMessage`. `done: null` clears
   // the flag entirely; `false`/`true` sets it (see lib/api.ts's toggleMessageTodo/removeMessageTodo).
   const setMessageTodo = useCallback(

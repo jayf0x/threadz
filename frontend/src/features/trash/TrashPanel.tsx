@@ -7,7 +7,7 @@ import { errorMessage } from "@/lib/errors";
 import type { TrashedThread } from "@/lib/local";
 import { useTrash } from "./useTrash";
 
-// The sidebar's fourth view: every thread still sitting in this device's own trash (lib/local.ts's
+// The sidebar's Bin view: every thread still sitting in this device's own trash (lib/local.ts's
 // `trash` store), newest deletion first, one restore action per row — same list/row shape as
 // TodosPanel, a button instead of a checkbox. See lib/handoff.ts's `restoreThread` for what
 // "restore" means live vs local (AGENTS.md's Local mode note: main keeps no trash of its own, so a

@@ -78,8 +78,11 @@ the trigger character, not the model, that threadz borrows from Notion.
 
 **Settled for v1** (see `backlog.md`): `@/<word> <rest of line>` — a command at the start of a line, content is
 everything after the space to end of line. `@` was free to take (grepped, nothing else in the app treats it as a
-trigger). Only `todo` exists today; the parser is written so a second command is a small diff, not a framework —
+trigger). Only `todo` existed at the time; the parser is written so a second command is a small diff, not a framework —
 no plugin registry until there is a second command that needs one.
+*Update 2026-09-24:* the trigger is now a bare `/` (`/todo`, and a second command, `/todos <title>`, for a titled
+group) because `@/` was two awkward chords on a phone keyboard; `@/` still parses so old notes stay todos. The examples
+below keep the original `@/` spelling.
 
 **Todo is the first command, and it's still text-is-truth.** `@/todo write more docs` is open;
 `~~@/todo write more docs~~` is closed — real markdown strikethrough, so it degrades to something sane in any
@@ -97,7 +100,7 @@ ever exists (none planned — see "main is the brain, phones are shadow clones" 
 
 - **Two planes.** Content (notes, edits, images, thread membership; written anywhere; union merge) and derived
   (embeddings, neighbours, themes, digest, open loops, proposals; written only by main, rebuildable, shipped read-only
-  to the phone the way description/tags already are). AI features cannot cause merge conflicts, swapping a model is
+  to the phone the way description/tags were before v1 dropped them). AI features cannot cause merge conflicts, swapping a model is
   rebuild-compare-discard, and the phone shows precomputed answers with no LLM.
 - **Nightly "dream" pass on main** (Letta calls this sleep-time compute: background agents share memory with the
   primary agent and consolidate, dedupe, find patterns between conversations). Output as one card: filing/merge
@@ -107,6 +110,8 @@ ever exists (none planned — see "main is the brain, phones are shadow clones" 
 - **Theme detection recipe** (standard, from search snippets): embed, cluster (HDBSCAN needs no preset k), label
   clusters with an LLM afterwards; a cluster is not a label. Re-run per time window to see trends.
 - **Resurfacing beats browsing.** Readwise's daily review resurfaces by a decaying recall probability, not by date.
+  (A minimal version is built: one quiet "You wrote this a while back" row at the bottom of the thread index, not
+  decay-weighted.)
 - **Per-thread `local-only` flag**: those threads only go to Ollama on main, never to Claude; makes "100% local"
   granular.
 - **Ask as a participant** in any thread, and "ask the archive" with citations back to notes.
@@ -115,7 +120,8 @@ ever exists (none planned — see "main is the brain, phones are shadow clones" 
   for whole-thread vs per-note vs chunk embeddings, with and without the generated description in the embedding
   input, 2-3 embedding models. Similarity is decided by embedding model and granularity; the generative model only
   names things.
-- **Hybrid search**: SQLite FTS5 first, semantic fallback with the same embeddings.
+- **Hybrid search**: SQLite FTS5 first, semantic fallback with the same embeddings. (The FTS5 half is built: titles
+  plus note text, bm25-ranked; the semantic fallback is not.)
 
 ## Design leanings so far (from the conversation, not decided)
 
@@ -124,7 +130,7 @@ ever exists (none planned — see "main is the brain, phones are shadow clones" 
   back is a possible future.
 - **Three different actions** (terminology settled 2026-09-21; an earlier "fork" here meant Copy):
   - **Copy.** On A:N, create thread B as an identical copy of A up to and including N, new UUIDs, A untouched, no
-    pointers or shared state. In the backlog.
+    pointers or shared state. Built, and renamed **Clone from here** in the UI (a plain "Copy" is now copy-the-text).
   - **Branch (with pointers).** On A:N, create thread B that starts from A:N. Messages up to N belong to A: B cannot
     edit them, and changes in A show in B.
   - **Branch as sub-thread.** No new thread: a sub-thread inside A starting from A:N, shown as a toggle on A:N that
@@ -152,10 +158,10 @@ Not in the backlog. Draw from here when picking the next features.
   should all be linkable to each other. The blocker is that a real cross-thread/notes/message *browser* (a UI for
   exploring the whole reference graph, not just following one link at a time) is a genuinely complex, separate
   piece of work — not viable to build alongside the actual linking mechanism. So the near-term, buildable slice
-  (referencing a **thread** or a **specific message**, inline, with autocomplete and a copy-link action — format
-  still undecided between an `@/ref`-style command and a couple of markdown-link shapes, one of which supports a
-  message range) is in `backlog.md`'s "Items - v1.5" as its own item; this entry is the wider ambition it's
-  deliberately *not* building yet. Speculative extension, explicitly untested, not even a firm idea yet: when an
+  (referencing a **thread** or a **specific message**, inline, with autocomplete and a copy-link action) was built
+  from `backlog.md`'s "Items - v1.5": a `[[` trigger drives the autocomplete and what is stored is a plain markdown
+  link, `[text](thread=<id>?message=<id>)` (`lib/references.ts`; message ranges deferred). This entry is the wider
+  ambition it's deliberately *not* building yet. Speculative extension, explicitly untested, not even a firm idea yet: when an
   agent reads a thread (`askModel()`), a message containing a reference could have the referenced content pulled
   in and attached as context automatically — gated behind a setting, or offered as something the person composing
   the ask opts into per-message. Revisit once the thread/message-only slice actually exists and gets used.
@@ -186,19 +192,20 @@ Not in the backlog. Draw from here when picking the next features.
 - **One-off import scripts** for an Obsidian vault (folder names could seed theme hints) and for ChatGPT/Claude
   exports; personal scripts, not features.
 - **Undo toast for Copy**, if Copy ever gets an always-visible button.
-- **A gutter, VS Code-style.** Floated 2026-09-23, promoted the same day — see `backlog.md`'s "Todo feedback
-  round 2," item 2, for the build (a `Decoration.widget` positioned absolute-left-of-paragraph, not a separate
-  measured DOM column). One rail, several features: a todo checkbox and the note (`StickyNote`) trigger so far,
-  open to whatever else wants a per-message affordance later.
-- **Commands beyond `@/todo`.** Multi-line snapshot todos (capture everything until the next blank line or command,
-  not just to end-of-line). Args after the command for alternate interpretation (`@/todo(summarize)` runs the note
+- **A gutter, VS Code-style.** Floated 2026-09-23, promoted and built the same day — see `backlog.md`'s "Todo
+  feedback round 2," item 2, for the build (a `Decoration.widget` positioned absolute-left-of-paragraph, not a
+  separate measured DOM column). One rail, several features: a todo checkbox and the note (`StickyNote`) trigger so
+  far (the note icon now exists only once a message has a note), open to whatever else wants a per-message
+  affordance later.
+- **Commands beyond `/todo`.** Multi-line snapshot todos (capture everything until the next blank line or command,
+  not just to end-of-line; the built `/todos <title>` group is the list-shaped cousin: a title plus the list items
+  right under it, each tickable). Args after the command for alternate interpretation (`@/todo(summarize)` runs the note
   below through `askModel()` so the sidebar shows a clean line instead of raw text; `@/todo(image)` pulls in the
   nearest image). Both need a real second data point (people actually wanting longer todos, or wanting the noise
   cut) before building — the flat one-line command covers the common case cheaply today. Any second command type
   (not just todo) is also the trigger to build the small parser into an actual registry — not before.
-  Inline checkbox rendering for `@/todo` in the Milkdown view (a remark + node-view plugin, same pattern as
-  `imageView.ts`) is cosmetic polish, not required for the feature to work — the sidebar and raw edit mode already
-  read/write it fine without it.
+  Inline checkbox rendering for `/todo` in the Milkdown view (was: a remark + node-view plugin, same pattern as
+  `imageView.ts`) shipped instead as the gutter checkbox above (`todoDecoration.ts`).
 
 ## Sources
 

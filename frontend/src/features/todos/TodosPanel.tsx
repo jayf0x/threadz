@@ -19,8 +19,8 @@ const countBy = (todos: Todo[], done: boolean) =>
     0,
   );
 
-// The sidebar's third view: every `/todo`/`/todos`/`- [ ] ` line, plus every message flagged via
-// the ⋯ menu's "Add to Todos", across every thread (see `lib/todos.ts`), newest first. Ticking a box
+// The sidebar's Todos view: every `/todo`/`/todos`/`- [ ] ` line, plus every message flagged via
+// the ⋯ menu's "Todo" toggle, across every thread (see `lib/todos.ts`), newest first. Ticking a box
 // rewrites that line in place (open<->closed) through the same `editMessage` every other edit uses —
 // except a flagged message, which has no line to rewrite and flips `meta.todo.done` directly (see
 // `useTodos.ts`'s `toggle`). The closed-todo filter (default: recently closed) only ever hides flat

@@ -12,8 +12,8 @@ export type Thread = {
 // A previous text of a message; `at` (when that text was written) identifies it.
 export type Version = { content: string; at: number };
 
-// `meta`'s one typed field so far: the ⋯ menu's "Add to Todos" (see features/todos), a whole
-// message flagged as a todo without inserting `@/todo` text. Still a bag, not a closed shape — an
+// `meta`'s one typed field so far: the ⋯ menu's "Todo" toggle (see features/todos), a whole
+// message flagged as a todo without inserting `/todo` text. Still a bag, not a closed shape — an
 // index signature, so a future key can ride along without every reader needing to know about it.
 // `editMessageMeta` (backend) / `toggleMessageTodo`/`removeMessageTodo` (lib/api.ts) always merge a
 // patch into this, never replace it wholesale.

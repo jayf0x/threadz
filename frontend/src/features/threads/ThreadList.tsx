@@ -34,7 +34,8 @@ const useResurfacingThread = (threads: Thread[]): Thread | undefined => {
   return picked;
 };
 
-// The sidebar: every thread as a row in a ledger, and the settings it flips to. Also owns the "/" and "n" shortcuts.
+// The sidebar: every thread as a row in a ledger, plus the Todos/Bin/Settings views the bottom tab bar
+// flips to. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({
   onOpen,
   onDeleted,
@@ -249,7 +250,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
   </fieldset>
 );
 
-// One of the sidebar's three views. All stay mounted (the index keeps its scroll and search) and cross-fade;
+// One of the sidebar's four views. All stay mounted (the index keeps its scroll and search) and cross-fade;
 // a hidden one drifts a little to its own side and is `inert`: no focus, no clicks, not read aloud.
 const View = ({ shown, from, children }: { shown: boolean; from: "left" | "right"; children: ReactNode }) => (
   <div

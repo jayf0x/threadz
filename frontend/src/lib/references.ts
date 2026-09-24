@@ -80,8 +80,8 @@ export const findReferences = (content: string): CompletedReference[] => {
 // --- the trigger + two-stage autocomplete state machine ------------------------------------
 
 // CLI-`cd`-tab-completion-style, per decision 1: `[[` starts a live thread search (chosen over a
-// bare `@` since `@/todo`/`@/todos` already own that character as a line-start command trigger —
-// `[[` also visually foreshadows the `[text](…)` it becomes, Obsidian/Roam-style). Bounded length
+// bare `@`, which the legacy `@/todo` prefix already used; `[[`
+// also visually foreshadows the `[text](…)` it becomes, Obsidian/Roam-style). Bounded length
 // so a runaway match never scans an entire large message on every keystroke.
 export const TRIGGER = "[[";
 const MAX_QUERY = 120;

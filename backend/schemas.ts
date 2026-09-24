@@ -8,7 +8,7 @@ export type Role = z.infer<typeof Role>;
 
 const Version = z.object({ content: z.string(), at: z.number() });
 
-// Non-textual per-message state (the ⋯ menu's "Add to Todos", not a `@/todo` line — see
+// Non-textual per-message state (the ⋯ menu's "Todo" toggle, not a `/todo` line — see
 // backlog.md's "Grouped todo lists + convert-a-message action"). `catchall` so a key this shape
 // doesn't know about yet still round-trips instead of being stripped — editMessageMeta merges by
 // key, never replaces the whole object, so an unrelated future field surviving validation matters.

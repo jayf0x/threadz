@@ -108,7 +108,7 @@ export const parseTodos = (content: string): ParsedTodo[] => {
 };
 
 // A sidebar entry is one of three shapes — a single command/checkbox line, a titled `/todos` group
-// of list items, or a whole message flagged via the ⋯ menu's "Add to Todos" (non-textual, `meta.todo`
+// of list items, or a whole message flagged via the ⋯ menu's "Todo" toggle (non-textual, `meta.todo`
 // — see backend/schemas.ts's MessageMeta). `kind` is how the sidebar tells them apart; the fields
 // every kind shares (thread/message identity, when it was written) are repeated on each rather than
 // factored into a base type, so a consumer narrowing on `kind` doesn't have to fight a partial type.

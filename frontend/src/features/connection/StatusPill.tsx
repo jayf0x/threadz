@@ -1,11 +1,11 @@
 import { cn } from "@/lib/cn";
 import { openPanel, total, useStatus } from "@/lib/status";
 
-// Four honest states, told apart by SHAPE as well as colour:
+// Three honest states, told apart by SHAPE as well as colour (the tooltip adds whether main is reachable):
 //   ● Live      — filled ochre disc: reading/writing main
 //   ○ Offline   — hollow disc: live mode, main unreachable (drafts queue)
 //   ■ Local     — filled ink square: this device is the source of truth
-//   ■ Local ↑   — same, with a ping: main is reachable, a sync is available
+// A count of changes not yet on main (`n↑`) follows the label when there are any.
 export const StatusPill = () => {
   const s = useStatus();
   const local = s.mode === "local";

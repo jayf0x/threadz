@@ -16,12 +16,13 @@ Threadz — personal-brain POC. Read `README.md` (API, local mode, photos, load-
 
 | | |
 |---|---|
-| `bun run dev:backend` / `dev:frontend` | run each side |
+| `bun run dev` / `dev:backend` / `dev:frontend` | run both / each side |
 | `bun test` | invariant + e2e tests |
 | `bun run smoke <url>` | curl e2e against a live backend |
-| `bun run pages:build` / `pages:deploy` | build the local-only PWA for `/threadz/` / trigger the manual Pages workflow |
+| `bun run pages:build` / `pages:deploy` / `pages` | build the local-only PWA for `/threadz/` / trigger the manual Pages workflow / both |
 | `bun run clean:worktrees` | remove leftover `.claude/worktrees/agent-*` and their branches (only if clean and already in main) |
 | `bun run typecheck` | both packages |
+| `bun run lint` | Biome (warnings fail) + token lint |
 | `bun run check` | typecheck + Biome (warnings fail) + token lint + tests = "green" |
 
 Verify before claiming done: `bun run check`, then `bun run --cwd frontend build`.
@@ -39,11 +40,12 @@ call order, constants; in a component state, handlers, effects last); effects on
 external, never for derived state; fetching and transforming data live in a hook or pure function, not in JSX;
 extract a helper when the same code shows up a third time; delete dead code and comments that restate the code;
 primary actions (send, add, create) use an icon once an established one exists for the action, not a text
-label — reserve text labels for actions without an obvious icon, or where the icon alone would be ambiguous.
+label — reserve text labels for actions without an obvious icon, or where the icon alone would be ambiguous (the
+Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a bare `+` reads as "more").
 
 - **UI copy: terse, icon-first, no restating what's already obvious.** A tab labelled by its own icon and
-  position doesn't also need a text title (decided 2026-09-24, reversing this session's earlier
-  `SidebarSwitcher` labels — the icon-over-text rule above applies to navigation, not just actions). A
+  position doesn't also need a text title (decided 2026-09-24, reversing an earlier
+  set of `SidebarSwitcher` labels — the icon-over-text rule above applies to navigation, not just actions). A
   device-only settings panel doesn't need a subtitle saying so; nothing else in this app implies otherwise. A
   hint/description earns its place only if it says something the label genuinely doesn't (Settings' naming
   toggle's hint, "a title you typed is never replaced," is the bar — a real behavior the label can't carry;
@@ -56,17 +58,18 @@ label — reserve text labels for actions without an obvious icon, or where the 
 
 - **One tab, one job.** Threadz, Todos, Bin and Settings each own their functionality; a control
   belongs to exactly one tab (e.g. the closed-todo filter is Todos-only, the Threadz index has no
-  resolved/todo filtering). A thread *can* be a todo, but the index never behaves as a todo list.
+  resolved/todo filtering). A *message* can be a todo (a `/todo` line or the ⋯ menu's Todo toggle), but the index never
+  behaves as a todo list.
 - **Rarely-used UI is never shown up front.** Filters, sort and secondary actions live in a dropdown
   (`components/ui/select.tsx`) or an action menu (`components/ui/menu.tsx`), not as always-visible
-  segmented controls. Nav is icon-only with a `title`.
+  segmented controls.
 - **Composer**: editor on the left, an action rail on the right (attach, mic, ⋯ overflow on top; send always
   last, at the bottom — a 2×2 on phones so the composer isn't taller than its text, a column from `md`). Max
   three primary actions; extras go in the ⋯ menu. It lives at the *end of the message scroller*: focused it
   pins to the bottom (`:focus-within` — never React state, a focused Send that turns `disabled` fires no blur),
   unfocused it scrolls away with the messages; from `md` it's always pinned.
-- **Mobile is the primary target.** Nav is a bottom tab bar. Touch targets are 40px below `md` (compact from
-  `md` up — `Button`'s sizes, `tap` in `ThreadView.tsx`, `md:` variants). Keyboard hints ("press n", `( / )`)
+- **Mobile is the primary target.** Nav is a bottom tab bar, icon-only with a `title`. Touch targets are 40px
+  below `md` (compact from `md` up — `Button`'s sizes, `tap` in `ThreadView.tsx`, `md:` variants). Keyboard hints ("press n", `( / )`)
   are gated on `isTouch()` (`lib/dom.ts`). Slash commands are a bare `/` (`/todo`, `/todos`); `@/` still
   parses. Per-message metadata (date, sync/voice/edited, ⋯) shows only on the selected message. A message
   shows a note icon only when it has a note; "Add note" is in its ⋯ menu.
@@ -129,7 +132,9 @@ label — reserve text labels for actions without an obvious icon, or where the 
   compare vs `base`, fetch changed threads, union); `api.ts` `via()` auto-detaches to it when main is
   truly unreachable. Never clear it wholesale, never auto-switch back to live, and move data only
   through `handoff.syncNow()` (pull → one `/api/sync` push → verify → compare hashes). Merges are
-  unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable.
+  unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable. A delete keeps
+  a copy in the device's `trash` (the Bin tab; `handoff.restoreThread`) — main keeps none, so a live restore
+  re-sends the thread through `syncNow`.
   Keep `remoteApi` and `localApi` signature-identical. Local mode offers no Ask (Claude lives on main). A
   legacy `outbox` IndexedDB store is drained once into the device copy by `replica.ts`; nothing writes it.
 - **Images** (`lib/images.ts`, `imageSync.ts`; `backend/images.ts`): a note holds only `![](img:<sha256>#WxH)`.
@@ -158,4 +163,5 @@ label — reserve text labels for actions without an obvious icon, or where the 
 - Metadata generation is fire-and-forget after each append (no queue) — off by default; set `THREADZ_METADATA=1`
   to turn it on (v1 dropped generated description/tags/embeddings/related from the UI; the code stays for v2).
 - Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
-  itself. No per-component suites; a change that touches none of that needs no new test.
+  itself. No per-component suites — the few component tests (`EntryRow`, `todoDecoration`, references e2e) each pin
+  one wiring regression; a change that touches none of that needs no new test.

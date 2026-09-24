@@ -7,7 +7,7 @@ import { isPlaceholderTitle, nextTitle } from "./titles";
 // No form: a thread exists the moment you ask for one, named by its number. But not a second
 // empty one in a row: if the newest thread is still an untouched placeholder (auto-generated
 // title, no notes yet), reuse it instead of leaving another behind. Shared by the sidebar's
-// `+`/`n` and the `/capture` deep link (`App.tsx`) — same "don't pile up placeholders" rule either way.
+// New button/`n` and the `/capture` deep link (`App.tsx`) — same "don't pile up placeholders" rule either way.
 export const createOrReuseThread = async (): Promise<string> => {
   const existing = await getThreads();
   const newest = existing.reduce<Thread | undefined>(

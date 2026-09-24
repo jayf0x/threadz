@@ -442,7 +442,7 @@ export const editMessage = (id: string, incoming: Version[]) => {
   return db.query<MessageRow, [string]>("SELECT * FROM messages WHERE id = ?").get(id)!;
 };
 
-// Patch a message's `meta` (the "Add to Todos" flag and anything else that lands there later) —
+// Patch a message's `meta` (the ⋯ menu's "Todo" flag and anything else that lands there later) —
 // merged into the existing object, never replacing it wholesale: a key set to `null` in `patch` is
 // removed, any other key is set/overwritten, and keys `patch` doesn't mention are left alone. Own
 // clock (`meta_edited_at`), not `edited_at` — a meta-only change must not read as a content edit (no
