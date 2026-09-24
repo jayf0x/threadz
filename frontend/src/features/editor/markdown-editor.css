@@ -33,6 +33,16 @@
   --crepe-base-font-size: 15px;
 }
 
+/* iOS Safari auto-zooms the whole page on focus when a focused field's font-size is under 16px,
+   and doesn't reliably zoom back out on blur — the likely cause of the "everything's overflowing,
+   only fixed by pinching back out" reports after typing on a phone. 16px on narrow viewports
+   (where iOS actually applies this) avoids triggering it at all; desktop keeps the 15px scale. */
+@media (max-width: 767px) {
+  .threadz-md {
+    --crepe-base-font-size: 16px;
+  }
+}
+
 .threadz-md {
   display: flex;
   flex-direction: column;

@@ -9,7 +9,9 @@ const shared =
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
-    <input ref={ref} className={cn(shared, "h-9 px-3 text-sm", className)} {...props} />
+    // text-base below md: iOS Safari auto-zooms the page on focus when a field's font-size is
+    // under 16px, and doesn't always zoom back out on blur (markdown-editor.css has the same fix).
+    <input ref={ref} className={cn(shared, "h-9 px-3 text-base md:text-sm", className)} {...props} />
   ),
 );
 Input.displayName = "Input";
@@ -18,7 +20,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   ({ className, ...props }, ref) => (
     <textarea
       ref={ref}
-      className={cn(shared, "resize-none px-3 py-2 text-[15px] leading-relaxed", className)}
+      className={cn(shared, "resize-none px-3 py-2 text-base leading-relaxed md:text-[15px]", className)}
       {...props}
     />
   ),

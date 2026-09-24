@@ -706,9 +706,14 @@ From a real-phone QA session (2026-09-24). Goal: more intuitive, coherent, mobil
 2. **Composer spacing/alignment.** Too much surrounding whitespace, especially on mobile. Fold the "+"
    attach button and the "…" overflow menu in with the image/mic actions, bottom-aligned,
    `justify-between`; cap primary actions at 3, everything else moves into the overflow menu.
-3. **Mobile scroll/overflow.** The input bar should stay pinned; only the message list scrolls.
-   Sending a message while the iOS keyboard shows/hides can leave the page in an overflow-x/-y state
-   until a manual pinch-zoom resets it — root cause unconfirmed, needs a real device to chase further.
+3. **Mobile scroll/overflow — likely fixed, needs a real phone to confirm.** The input bar was
+   already outside the scrollable message list (`ThreadView.tsx`'s layout only ever meant the
+   thread to scroll); the described bug — everything looks like it's overflowing after the
+   keyboard shows/hides, fixed only by pinching back out — matches iOS Safari's documented
+   auto-zoom-on-focus behavior for any focused field under 16px, which it doesn't always cleanly
+   reverse on blur. The editor (`--crepe-base-font-size: 15px`) and the shared `Input`/`Textarea`/
+   `Select` primitives were all under 16px on mobile; bumped to 16px below the `md` breakpoint,
+   desktop sizing unchanged.
 4. **Sidebar nav as a full-width banner.** Now that the footer bar is gone, `SidebarSwitcher`
    (Threads/Todos/Bin/Settings) becomes a full-width row on mobile and stays full-width inside the
    sidebar on desktop, instead of a small centered pill.
