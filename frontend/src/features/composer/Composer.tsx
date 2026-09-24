@@ -45,6 +45,7 @@ export const Composer = ({
   onAsk,
   onCopied,
   autofocus,
+  onNavigateReference,
 }: {
   threadId: string;
   messages: Message[]; // to find the last message "Copy thread from here" copies up to
@@ -55,6 +56,9 @@ export const Composer = ({
   onCopied: (newThreadId: string) => void; // open the copy once it exists
   /** Land straight in a focused composer (a `/capture` deep link into a fresh thread). */
   autofocus?: boolean;
+  /** A completed reference (`lib/references.ts`) was clicked while composing — App.tsx's
+   * `openThreadAt`, threaded through from ThreadView. */
+  onNavigateReference: (threadId: string, messageId?: string) => void;
 }) => {
   const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
@@ -147,6 +151,7 @@ export const Composer = ({
           busy={busy}
           placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
           autofocus={autofocus}
+          onReferenceClick={(threadId, messageId) => onNavigateReference(threadId, messageId ?? undefined)}
           onSubmit={onSubmit}
           onSubmitted={(rest) => {
             fromVoice.current = rest !== "";

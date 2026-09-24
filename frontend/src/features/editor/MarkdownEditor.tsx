@@ -14,13 +14,37 @@
 // stay out of the static import graph.
 import type { Ctx } from "@milkdown/kit/ctx";
 import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
-import { type CSSProperties, type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { type CSSProperties, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { housekeeping } from "@/lib/images";
+import {
+  buildReferenceHref,
+  completeMessage,
+  completeThread,
+  nextAutocompleteState,
+  parseReferenceHref,
+  type ReferenceAutocompleteState,
+  TRIGGER,
+} from "@/lib/references";
 import { padForInsert } from "@/lib/voice/text";
+import { caretRect } from "./caretCoordinates";
 import { imageView } from "./imageView";
+import { ReferenceAutocompleteMenu } from "./ReferenceAutocompleteMenu";
+import { handleReferenceKeyDown } from "./referenceKeyboard";
+import { referencePlugin } from "./referencePlugin";
 import { todoDecorationPlugin } from "./todoDecoration";
+import { useReferenceAutocomplete } from "./useReferenceAutocomplete";
 import "./markdown-editor.css";
+
+/** Where the caret sits, in the SAME local-offset space `state` itself uses (an "anchor" into
+ * whatever text this adapter is tracking) — used only to know where to measure a rect from; the
+ * actual text edit always uses the offsets already carried on `state`/`completeThread`/
+ * `completeMessage`'s return value, never this. */
+const caretOffsetOf = (s: ReferenceAutocompleteState): number | null => {
+  if (s.stage === "thread") return s.anchor + TRIGGER.length + s.query.length;
+  if (s.stage === "message") return s.linkEnd + s.query.length;
+  return null;
+};
 
 export type MarkdownEditorHandle = {
   /** The markdown right now. `onChange` is debounced (~200ms), so a submit handler
@@ -43,6 +67,7 @@ type EditorTrLike = {
   setSelection: (s: unknown) => unknown;
   insertText: (t: string, from: number) => EditorTrLike;
   insert: (at: number, node: unknown) => EditorTrLike;
+  replaceWith: (from: number, to: number, node: unknown) => EditorTrLike;
 };
 
 // Minimal shape of the ProseMirror EditorView bits the insert helpers touch — keeps
@@ -53,9 +78,14 @@ type EditorViewLike = {
       setSelection: (s: unknown) => unknown;
       insertText: (t: string, from: number) => EditorTrLike;
       insert: (at: number, node: unknown) => EditorTrLike;
+      replaceWith: (from: number, to: number, node: unknown) => EditorTrLike;
     };
     doc: Node;
     selection: { to: number };
+    // Only what `completeReference` needs to build a linked text node itself, rather than going
+    // through a node-schema helper the way `insertImage` does with `commonmark.imageSchema` — a
+    // mark (unlike a node) has no equivalent "create one already-linked node" shortcut.
+    schema: { text: (text: string, marks?: unknown[]) => unknown };
   };
   dispatch: (tr: unknown) => void;
   focus: () => void;
@@ -66,6 +96,11 @@ type Loaded = {
   replaceAll: (markdown: string) => (ctx: Ctx) => void;
   insertAtCaret: (text: string, touched: boolean) => void;
   insertImage: (src: string, touched: boolean) => void;
+  /** Replace doc positions `[from, to)` with a single already-linked text node — how the reference
+   * autocomplete (`lib/references.ts`'s `completeThread`/`completeMessage`) lands its result in the
+   * live WYSIWYG view: `from`/`to` are absolute doc positions (the caller maps its own local,
+   * block-relative offsets through `blockStart` first — see `referencePlugin.ts`). */
+  completeReference: (from: number, to: number, text: string, href: string) => void;
 };
 
 export const MarkdownEditor = ({
@@ -73,6 +108,7 @@ export const MarkdownEditor = ({
   placeholder = "start writing…",
   readOnly = false,
   onTodoToggle,
+  onReferenceClick,
   ...rest
 }: {
   value: string;
@@ -92,6 +128,10 @@ export const MarkdownEditor = ({
    * (`lib/todos.ts`) and persists it the same way it persists any other edit. See
    * `./todoDecoration.ts` and `ThreadView.tsx`'s `EntryRow`. */
   onTodoToggle?: (lineIndex: number) => void;
+  /** A rendered reference link (`[text](thread=…)`, see `lib/references.ts`) was clicked. WYSIWYG
+   * mode only — `raw` shows the literal markdown source, nothing there is a clickable link. The
+   * caller navigates in-app (`App.tsx`'s `openThreadAt`), never a page reload. */
+  onReferenceClick?: (threadId: string, messageId: string | null) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
    * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
@@ -114,7 +154,13 @@ export const MarkdownEditor = ({
   raw ? (
     <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
   ) : (
-    <CrepeEditor {...rest} placeholder={placeholder} readOnly={readOnly} onTodoToggle={onTodoToggle} />
+    <CrepeEditor
+      {...rest}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      onTodoToggle={onTodoToggle}
+      onReferenceClick={onReferenceClick}
+    />
   );
 
 // Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
@@ -131,7 +177,11 @@ const takeImageFile = (
 };
 
 // Raw mode: literal markdown text in a plain textarea. No ProseMirror, no rich image embed —
-// `insertImage` just splices in the `![](src)` text, which is what "raw" means.
+// `insertImage` just splices in the `![](src)` text, which is what "raw" means. Used for message
+// inline edit mode and the note popover editor (ThreadView.tsx's EntryRow) — both editable, so both
+// get the reference autocomplete (see `lib/references.ts`) wired straight onto the textarea itself:
+// no ProseMirror here, so it drives the shared state machine off the DOM textarea's own
+// value/selection instead of doc positions (CrepeEditor, below, is the other half).
 const RawEditor = ({
   value,
   onChange,
@@ -159,11 +209,60 @@ const RawEditor = ({
   // Has the user ever put a caret in here? Until then a programmatic insert (e.g. the image
   // button, which deliberately doesn't steal focus) goes to the end, matching the WYSIWYG surface.
   const touchedRef = useRef(false);
+  const [refState, setRefState] = useState<ReferenceAutocompleteState>({ stage: "closed" });
+  const [rect, setRect] = useState<{ left: number; top: number; bottom: number } | null>(null);
+  const ac = useReferenceAutocomplete(refState);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-time only, `autofocus` is read once by design.
   useEffect(() => {
     if (autofocus) ref.current?.focus();
   }, []);
+
+  // Re-measure the caret's on-screen position whenever the autocomplete state changes (opens,
+  // narrows, closes) — cheap (one hidden mirror-div layout, see `caretCoordinates.ts`), and only
+  // ever runs while `refState.stage !== "closed"` mattered anyway.
+  useEffect(() => {
+    const el = ref.current;
+    const at = caretOffsetOf(refState);
+    setRect(el && at != null ? caretRect(el, at) : null);
+  }, [refState]);
+
+  const recomputeRefState = () => {
+    const el = ref.current;
+    if (!el || readOnly) return;
+    const caret = el.selectionStart ?? el.value.length;
+    setRefState((prev) => nextAutocompleteState(prev, el.value, caret));
+  };
+
+  const applyEdit = (edit: { from: number; to: number; text: string }, next: ReferenceAutocompleteState) => {
+    const el = ref.current;
+    if (!el) return;
+    const nextValue = el.value.slice(0, edit.from) + edit.text + el.value.slice(edit.to);
+    const caret = edit.from + edit.text.length;
+    onChange?.(nextValue);
+    el.value = nextValue; // same "keep the DOM in sync now" reasoning as spliceAtCaret below
+    el.focus();
+    el.setSelectionRange(caret, caret);
+    setRefState(next);
+  };
+
+  const accept = (index: number) => {
+    const opt = ac.options[index];
+    if (!opt) return;
+    if (refState.stage === "thread") {
+      const thread = ac.findThread(opt.id);
+      if (thread) {
+        const { edit, next } = completeThread(refState, thread);
+        applyEdit(edit, next);
+      }
+    } else if (refState.stage === "message") {
+      const message = ac.findMessage(opt.id);
+      if (message) {
+        const { edit, next } = completeMessage(refState, message);
+        applyEdit(edit, next);
+      }
+    }
+  };
 
   const spliceAtCaret = (text: string) => {
     const el = ref.current;
@@ -192,22 +291,50 @@ const RawEditor = ({
   }));
 
   return (
-    <textarea
-      ref={ref}
-      className={cn("threadz-md-raw", className)}
-      style={style}
-      value={value}
-      readOnly={readOnly}
-      placeholder={placeholder}
-      spellCheck={false}
-      onChange={(e) => onChange?.(e.target.value)}
-      onKeyDownCapture={onKeyDownCapture}
-      onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
-      onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
-      onFocus={() => {
-        touchedRef.current = true;
-      }}
-    />
+    <>
+      <textarea
+        ref={ref}
+        className={cn("threadz-md-raw", className)}
+        style={style}
+        value={value}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        spellCheck={false}
+        onChange={(e) => {
+          onChange?.(e.target.value);
+          recomputeRefState();
+        }}
+        onSelect={recomputeRefState}
+        onKeyDownCapture={(e) => {
+          const handled = handleReferenceKeyDown(
+            e,
+            refState.stage !== "closed",
+            ac.options.length,
+            ac.highlighted,
+            ac.setHighlighted,
+            accept,
+            () => setRefState({ stage: "closed" }),
+          );
+          if (!handled) onKeyDownCapture?.(e);
+        }}
+        onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
+        onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
+        onFocus={() => {
+          touchedRef.current = true;
+        }}
+        onBlur={() => setRefState({ stage: "closed" })}
+      />
+      <ReferenceAutocompleteMenu
+        rect={rect}
+        options={ac.options}
+        highlighted={ac.highlighted}
+        emptyText={refState.stage === "thread" ? "No matching threads" : "No matching messages"}
+        onPick={(id) => accept(ac.options.findIndex((o) => o.id === id))}
+        onOpenChange={(open) => {
+          if (!open) setRefState({ stage: "closed" });
+        }}
+      />
+    </>
   );
 };
 
@@ -220,6 +347,7 @@ const CrepeEditor = ({
   onKeyDownCapture,
   onImageFile,
   onTodoToggle,
+  onReferenceClick,
   className,
   style,
   autofocus,
@@ -232,6 +360,7 @@ const CrepeEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   onImageFile?: (file: File) => void;
   onTodoToggle?: (lineIndex: number) => void;
+  onReferenceClick?: (threadId: string, messageId: string | null) => void;
   className?: string;
   style?: CSSProperties;
   autofocus?: boolean;
@@ -245,6 +374,8 @@ const CrepeEditor = ({
   // stale closure here would silently call an old EntryRow's onEdit instead of the current one.
   const onTodoToggleRef = useRef(onTodoToggle);
   onTodoToggleRef.current = onTodoToggle;
+  const onReferenceClickRef = useRef(onReferenceClick);
+  onReferenceClickRef.current = onReferenceClick;
   // Latest markdown Crepe emitted — lets the value-sync effect skip the echo
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
@@ -257,6 +388,48 @@ const CrepeEditor = ({
   // (ProseMirror's untouched selection sits at the very start, i.e. *before* a restored draft).
   const touchedRef = useRef(false);
   const crepeRef = useRef<{ setReadonly: (v: boolean) => unknown; getMarkdown: () => string } | null>(null);
+  // The reference autocomplete's live state, reported by `referencePlugin.ts`'s `onLocalUpdate` on
+  // every selection/doc change and advanced through the SAME `nextAutocompleteState` RawEditor
+  // drives from a plain textarea's value/selection instead — see that file's own comment for why
+  // "message" stage can't just be re-derived from arbitrary rendered text the way "thread" stage is.
+  // `blockStart` is what turns `state`'s local (block-relative) offsets back into real doc positions
+  // for `completeReference`; bundled with `state`/`rect` so all three always describe the same update.
+  const [local, setLocal] = useState<{
+    state: ReferenceAutocompleteState;
+    rect: { left: number; top: number; bottom: number } | null;
+    blockStart: number;
+  }>({ state: { stage: "closed" }, rect: null, blockStart: 0 });
+  const ac = useReferenceAutocomplete(local.state);
+
+  const acceptReference = (index: number) => {
+    const opt = ac.options[index];
+    const loaded = loadedRef.current;
+    const st = local.state;
+    if (!opt || !loaded) return;
+    if (st.stage === "thread") {
+      const thread = ac.findThread(opt.id);
+      if (!thread) return;
+      const { edit, next } = completeThread(st, thread);
+      loaded.completeReference(
+        local.blockStart + edit.from,
+        local.blockStart + edit.to,
+        thread.title,
+        buildReferenceHref(thread.id),
+      );
+      setLocal((l) => ({ ...l, state: next }));
+    } else if (st.stage === "message") {
+      const message = ac.findMessage(opt.id);
+      if (!message) return;
+      const { edit, next } = completeMessage(st, message);
+      loaded.completeReference(
+        local.blockStart + edit.from,
+        local.blockStart + edit.to,
+        st.displayText,
+        buildReferenceHref(st.threadId, message.id),
+      );
+      setLocal((l) => ({ ...l, state: next }));
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -310,6 +483,28 @@ const CrepeEditor = ({
           }),
         ),
       );
+      // References (lib/references.ts): click-to-navigate always (Crepe already renders a
+      // completed `[text](thread=…)` as a plain clickable link, no new node type), plus — while
+      // editable — reporting this text block's plain text/caret so React can drive the same
+      // trigger/two-stage-autocomplete state machine RawEditor's textarea wiring drives.
+      crepe.editor.use(
+        utils.$prose(() =>
+          referencePlugin(state, {
+            onLocalUpdate: (upd) => {
+              setLocal((prev) => {
+                const nextState = upd
+                  ? nextAutocompleteState(prev.state, upd.text, upd.caret)
+                  : { stage: "closed" as const };
+                return {
+                  state: nextState,
+                  rect: nextState.stage === "closed" ? null : (upd?.rect ?? null),
+                  blockStart: upd?.blockStart ?? prev.blockStart,
+                };
+              });
+            },
+          }),
+        ),
+      );
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;
@@ -340,6 +535,15 @@ const CrepeEditor = ({
             const at = touched ? view.state.selection.to : state.Selection.atEnd(view.state.doc).to;
             const tr = view.state.tr.insert(at, commonmark.imageSchema.type(ctx).create({ src }));
             tr.setSelection(state.Selection.near(tr.doc.resolve(at + 1)));
+            view.dispatch(tr);
+          }),
+        completeReference: (from, to, text, href) =>
+          crepe.editor.action((ctx: Ctx) => {
+            const view = viewOf(ctx);
+            const mark = commonmark.linkSchema.type(ctx).create({ href, title: null });
+            const node = view.state.schema.text(text, [mark]);
+            const tr = view.state.tr.replaceWith(from, to, node);
+            tr.setSelection(state.Selection.near(tr.doc.resolve(from + text.length)));
             view.dispatch(tr);
           }),
       };
@@ -408,17 +612,52 @@ const CrepeEditor = ({
   }));
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: focus bubbling only records "the user has been here"; the div isn't a control
-    <div
-      ref={containerRef}
-      className={cn("threadz-md", className)}
-      style={style}
-      onKeyDownCapture={onKeyDownCapture}
-      onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
-      onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
-      onFocus={() => {
-        touchedRef.current = true;
-      }}
-    />
+    <>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: focus bubbling only records "the user has been here"; the div isn't a control */}
+      <div
+        ref={containerRef}
+        className={cn("threadz-md", className)}
+        style={style}
+        onKeyDownCapture={(e) => {
+          const handled = handleReferenceKeyDown(
+            e,
+            local.state.stage !== "closed",
+            ac.options.length,
+            ac.highlighted,
+            ac.setHighlighted,
+            acceptReference,
+            () => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null })),
+          );
+          if (!handled) onKeyDownCapture?.(e);
+        }}
+        onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
+        onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
+        onFocus={() => {
+          touchedRef.current = true;
+        }}
+        onBlur={() => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }))}
+        // Click-to-navigate for a completed reference: Crepe already renders `[text](thread=…)` as
+        // a plain `<a>` (decision 1 — no new node type), so this is a plain click delegation, not a
+        // ProseMirror `handleClickOn` (see referencePlugin.ts's comment for why that hook — which
+        // resolves a click through `posAtCoords` — isn't the reliable choice here).
+        onClickCapture={(e) => {
+          const a = (e.target as HTMLElement).closest?.("a");
+          const ref = a ? parseReferenceHref(a.getAttribute("href")) : null;
+          if (!ref) return;
+          e.preventDefault();
+          onReferenceClickRef.current?.(ref.threadId, ref.messageId);
+        }}
+      />
+      <ReferenceAutocompleteMenu
+        rect={local.rect}
+        options={ac.options}
+        highlighted={ac.highlighted}
+        emptyText={local.state.stage === "thread" ? "No matching threads" : "No matching messages"}
+        onPick={(id) => acceptReference(ac.options.findIndex((o) => o.id === id))}
+        onOpenChange={(open) => {
+          if (!open) setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }));
+        }}
+      />
+    </>
   );
 };

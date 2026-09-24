@@ -42,6 +42,7 @@ export const ThreadView = ({
   selectedMessageId,
   onSelectMessage,
   pulseMessageId,
+  onNavigateReference,
 }: {
   threadId: string;
   onBack: () => void;
@@ -61,6 +62,10 @@ export const ThreadView = ({
    * one-shot "you just got here" motion on top of the (already-persistent) selected look; a plain
    * click that changes `selectedMessageId` does not pulse, it's already on screen. */
   pulseMessageId?: string;
+  /** A completed reference (`lib/references.ts`) was clicked in a message, a note, an edit
+   * history entry, or a scratch answer: App.tsx's `openThreadAt` — the same deep-link machinery a
+   * todo row's click or a `?thread=&msg=` URL already goes through, never a page reload. */
+  onNavigateReference: (threadId: string, messageId?: string) => void;
 }) => {
   const {
     messages,
@@ -269,6 +274,7 @@ export const ThreadView = ({
                     onAddAnnotation={(text) => addAnnotation(m.id, text)}
                     onEditAnnotation={editAnnotation}
                     onDeleteAnnotation={deleteAnnotation}
+                    onNavigateReference={onNavigateReference}
                   />
                 </div>
               );
@@ -290,7 +296,12 @@ export const ThreadView = ({
                     <X className="size-3.5" />
                   </button>
                 </Eyebrow>
-                <MarkdownEditor readOnly value={scratch} className="[--md-padding:0.5rem_0_0]" />
+                <MarkdownEditor
+                  readOnly
+                  value={scratch}
+                  className="[--md-padding:0.5rem_0_0]"
+                  onReferenceClick={(threadId, messageId) => onNavigateReference(threadId, messageId ?? undefined)}
+                />
               </Motion.div>
             )}
           </AnimatePresence>
@@ -307,6 +318,7 @@ export const ThreadView = ({
         onAsk={onAsk}
         onCopied={onCopied}
         autofocus={autofocus}
+        onNavigateReference={onNavigateReference}
       />
     </div>
   );
@@ -357,6 +369,7 @@ export const EntryRow = ({
   onAddAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
+  onNavigateReference,
 }: {
   message: Message;
   pending: boolean;
@@ -373,6 +386,7 @@ export const EntryRow = ({
   onAddAnnotation: (text: string) => Promise<boolean>;
   onEditAnnotation: (id: string, text: string) => Promise<boolean>;
   onDeleteAnnotation: (id: string) => Promise<boolean>;
+  onNavigateReference: (threadId: string, messageId?: string) => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(m.content);
@@ -388,6 +402,8 @@ export const EntryRow = ({
   const { attach, error: imageError } = useImageAttach(editor);
   const { attach: noteAttach, error: noteImageError } = useImageAttach(noteEditor);
   const mine = m.role === "user";
+  const navigateReference = (threadId: string, messageId: string | null) =>
+    onNavigateReference(threadId, messageId ?? undefined);
   const changed = text.trim() && text.trim() !== m.content;
   const composingNote = noteEditing || !note; // nothing to view yet, or editing what's there
   const noteSaveDisabled = busy || !noteText.trim() || (!!note && noteText.trim() === note.content);
@@ -503,6 +519,7 @@ export const EntryRow = ({
             value={m.content}
             className="[--md-padding:0]"
             onTodoToggle={(lineIndex) => onEdit(toggleTodoLine(m.content, lineIndex))}
+            onReferenceClick={navigateReference}
           />
         </div>
       )}
@@ -601,7 +618,12 @@ export const EntryRow = ({
                 note && (
                   <>
                     <div className="flex items-start gap-2">
-                      <MarkdownEditor readOnly value={note.content} className="min-w-0 flex-1 [--md-padding:0]" />
+                      <MarkdownEditor
+                        readOnly
+                        value={note.content}
+                        className="min-w-0 flex-1 [--md-padding:0]"
+                        onReferenceClick={navigateReference}
+                      />
                       <div className="flex shrink-0 items-center gap-0.5">
                         <button
                           type="button"
@@ -681,7 +703,12 @@ export const EntryRow = ({
         [...(m.edits ?? [])].reverse().map((v) => (
           <div key={v.at} className="mt-2 border-l-2 border-border pl-3 opacity-70">
             <p className={tiny}>{format(v.at, "d MMM HH:mm")}</p>
-            <MarkdownEditor readOnly value={v.content} className="[--md-padding:0]" />
+            <MarkdownEditor
+              readOnly
+              value={v.content}
+              className="[--md-padding:0]"
+              onReferenceClick={navigateReference}
+            />
           </div>
         ))}
     </Motion.article>

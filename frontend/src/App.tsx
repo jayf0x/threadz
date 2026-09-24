@@ -188,6 +188,7 @@ const Shell = ({
             selectedMessageId={selectedMessageId}
             onSelectMessage={onSelectMessage}
             pulseMessageId={pulseMessageId}
+            onNavigateReference={openThreadAt}
           />
         ) : (
           <Blank />

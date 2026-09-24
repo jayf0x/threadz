@@ -7,10 +7,10 @@
     "dev": "bun run --filter '*' dev",
     "dev:backend": "bun run --cwd backend dev",
     "dev:frontend": "bun run --cwd frontend dev",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
     "lint": "biome check --error-on-warnings && bun run --cwd frontend lint:tokens",
-    "check": "bun run typecheck && bun run lint && bun test",
+    "check": "bun run typecheck && bun run lint && bun test --isolate",
     "smoke": "bash scripts/smoke.sh",
     "pages:build": "VITE_LOCAL=1 VITE_BASE=/threadz/ bun run --cwd frontend build",
     "pages:deploy": "bash scripts/deploy-pages.sh"

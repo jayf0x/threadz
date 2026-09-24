@@ -58,6 +58,7 @@ const baseProps = () => ({
   onAddAnnotation: async () => true,
   onEditAnnotation: async () => true,
   onDeleteAnnotation: async () => true,
+  onNavigateReference: () => {},
 });
 
 test("clicking the plain message content selects the row", () => {

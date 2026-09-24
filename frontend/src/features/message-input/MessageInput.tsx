@@ -39,6 +39,8 @@ export type MessageInputProps = {
   statusOverride?: Status;
   /** Extra actions right beside the submit button (the composer's ⋯ menu). */
   trailingActions?: ReactNode;
+  /** A completed reference (`lib/references.ts`) was clicked in the editor. */
+  onReferenceClick?: (threadId: string, messageId: string | null) => void;
   className?: string;
   editorClassName?: string;
   handleRef?: Ref<MessageInputHandle>;
@@ -62,6 +64,7 @@ export const MessageInput = ({
   controls,
   statusOverride,
   trailingActions,
+  onReferenceClick,
   className,
   editorClassName,
   handleRef,
@@ -93,6 +96,7 @@ export const MessageInput = ({
           onImageFile={(f) => attach([f])}
           placeholder={placeholder}
           autofocus={autofocus}
+          onReferenceClick={onReferenceClick}
           className={cn(
             "rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
             "[--md-max-height:45dvh] [--md-min-height:10rem] md:[--md-min-height:14rem] [--md-padding:12px_64px_12px_14px] [--md-img-max:12rem]",
