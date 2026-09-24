@@ -30,7 +30,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
 import { errorMessage } from "@/lib/errors";
-import { buildReferenceHref, messageSnippet } from "@/lib/references";
+import { buildReferenceHref, messageSnippet, resolveMessageRange } from "@/lib/references";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
@@ -102,8 +102,9 @@ export const ThreadView = ({
   // Send button that turns `disabled` after sending loses focus without any blur event, which left
   // state-driven pinning stuck on.
   const composerRef = useRef<HTMLDivElement>(null);
-  const [pulsingId, setPulsingId] = useState<string | null>(null); // arrival-only animation, self-clears
+  const [pulsingIds, setPulsingIds] = useState<string[]>([]); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
+  const arrival = useRef<ReturnType<typeof setTimeout>[]>([]); // the arrival jump's follow-up timers
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
@@ -113,6 +114,12 @@ export const ThreadView = ({
   // consumer that cares where a message sits on screen (the virtualizer, the render loop's index
   // lookup, jump-to-message) reads `orderedMessages` instead, so the flip can't desync one from another.
   const orderedMessages = useMemo(() => orderMessages(messages, reversed), [messages, reversed]);
+  // `selectedMessageId` (and `pulseMessageId`) may name a range (`from..to`, a reference link's
+  // `message=<from>..<to>`), not just one message — every row in it looks selected.
+  const selectedIds = useMemo(
+    () => new Set(resolveMessageRange(orderedMessages, selectedMessageId).map((m) => m.id)),
+    [orderedMessages, selectedMessageId],
+  );
 
   // Windowed rendering: a long-lived thread can reach hundreds of entries, each its own
   // MarkdownEditor (a lazy Milkdown/ProseMirror mount) — cheap to scroll past, not cheap to all
@@ -192,14 +199,24 @@ export const ThreadView = ({
   // selected; this effect only ever adds the one-shot arrival motion on top of it.
   useEffect(() => {
     if (!pulseMessageId || scrolledTo.current === pulseMessageId) return;
-    const index = orderedMessages.findIndex((m) => m.id === pulseMessageId);
-    if (index === -1) return;
+    const range = resolveMessageRange(orderedMessages, pulseMessageId); // display order: [0] is the topmost row
+    const first = range[0];
+    if (!first) return;
     scrolledTo.current = pulseMessageId;
-    rowVirtualizer.scrollToIndex(index, { align: "center" });
-    setPulsingId(pulseMessageId);
-    const t = setTimeout(() => setPulsingId(null), 1600);
-    return () => clearTimeout(t);
+    const index = orderedMessages.findIndex((m) => m.id === first.id);
+    const align = range.length > 1 ? "start" : "center";
+    rowVirtualizer.scrollToIndex(index, { align });
+    setPulsingIds(range.map((m) => m.id));
+    // One-shot timers, cleared on unmount only (not on this effect's re-runs: the guard above means
+    // a re-run does nothing, and its cleanup would cancel the pulse's end). Rows are still growing as
+    // their lazy editors mount (a first paint is shorter than the settled row), so the offset
+    // computed now lands short: re-aim a few times.
+    arrival.current = [
+      setTimeout(() => setPulsingIds([]), 1600),
+      ...[300, 900, 1800].map((ms) => setTimeout(() => rowVirtualizer.scrollToIndex(index, { align }), ms)),
+    ];
   }, [pulseMessageId, orderedMessages, rowVirtualizer]);
+  useEffect(() => () => arrival.current.forEach(clearTimeout), []);
 
   // Clicks that land outside the thing they'd act on: anywhere but the composer lets go of it (iOS
   // doesn't close the keyboard for a tap on plain content, and while the composer is focused it stays
@@ -291,8 +308,8 @@ export const ThreadView = ({
                       pending={unsynced.has(m.id)}
                       busy={busy}
                       isNew={justAdded.has(m.id)}
-                      selected={selectedMessageId === m.id}
-                      pulsing={pulsingId === m.id}
+                      selected={selectedIds.has(m.id)}
+                      pulsing={pulsingIds.includes(m.id)}
                       onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
                       onEdit={(text) => editMessage(m.id, text)}
                       onCopyThread={() => copyThreadFrom(m.id)}

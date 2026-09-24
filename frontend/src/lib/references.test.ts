@@ -7,6 +7,7 @@ import {
   messageSnippet,
   nextAutocompleteState,
   parseReferenceHref,
+  resolveMessageRange,
   searchMessages,
   searchThreads,
 } from "./references";
@@ -156,9 +157,63 @@ test("completeMessage folds the message id into the existing link and preserves 
     displayText: "Groceries", // unchanged even though the user typed "milk" to search for it
     query: " milk",
   };
-  const { edit, next } = completeMessage(state, { id: "m1" });
+  const { edit, next, href } = completeMessage(state, { id: "m1" });
   expect(edit).toEqual({ from: 0, to: 27, text: "[Groceries](thread=t1?message=m1)" });
-  expect(next).toEqual({ stage: "closed" });
+  expect(href).toBe("thread=t1?message=m1");
+  // Not closed: the same popup now offers the (optional) end of a range, starting from m1.
+  expect(next).toEqual({ ...state, linkEnd: 33, from: "m1", query: "" });
+});
+
+// --- ranges --------------------------------------------------------------------
+
+test("a range href round-trips, and a degenerate one collapses to a single message", () => {
+  expect(buildReferenceHref("t1", "m1", "m2")).toBe("thread=t1?message=m1..m2");
+  expect(parseReferenceHref("thread=t1?message=m1..m2")).toEqual({
+    threadId: "t1",
+    messageId: "m1",
+    toMessageId: "m2",
+  });
+  expect(buildReferenceHref("t1", "m1", "m1")).toBe("thread=t1?message=m1");
+  expect(buildReferenceHref("t1", null, "m2")).toBe("thread=t1");
+  // UUID-shaped ids (hyphens) split cleanly on `..`
+  const [a, b] = [crypto.randomUUID(), crypto.randomUUID()];
+  expect(parseReferenceHref(buildReferenceHref("t1", a, b))).toEqual({ threadId: "t1", messageId: a, toMessageId: b });
+  expect(parseReferenceHref("thread=t1?message=m1..")).toEqual({ threadId: "t1", messageId: "m1" }); // dangling `..`
+});
+
+test("findReferences reads a range link", () => {
+  const [ref] = findReferences("see [Groceries](thread=t1?message=m1..m2)");
+  expect(ref).toMatchObject({ threadId: "t1", messageId: "m1", toMessageId: "m2" });
+});
+
+test("resolveMessageRange covers everything between the endpoints, in whatever order they're shown", () => {
+  const ids = (xs: { id: string }[]) => xs.map((m) => m.id);
+  const chrono = ["a", "b", "c", "d", "e"].map((id) => ({ id }));
+  const newestFirst = [...chrono].reverse();
+  expect(ids(resolveMessageRange(chrono, "b..d"))).toEqual(["b", "c", "d"]);
+  expect(ids(resolveMessageRange(newestFirst, "b..d"))).toEqual(["d", "c", "b"]); // topmost row first
+  expect(ids(resolveMessageRange(chrono, "d..b"))).toEqual(["b", "c", "d"]); // picked backwards
+  expect(ids(resolveMessageRange(chrono, "c"))).toEqual(["c"]);
+  expect(ids(resolveMessageRange(chrono, "c..zzz"))).toEqual(["c"]); // an endpoint that's gone degrades
+  expect(ids(resolveMessageRange(chrono, "zzz..c"))).toEqual(["c"]);
+  expect(resolveMessageRange(chrono, "zzz")).toEqual([]);
+  expect(resolveMessageRange(chrono, null)).toEqual([]);
+});
+
+test("the second pick of completeMessage closes the autocomplete with a range link; the same message again stays single", () => {
+  const picked = completeMessage(
+    { stage: "message", anchor: 0, linkEnd: 22, threadId: "t1", displayText: "Groceries", query: "" },
+    { id: "m1" },
+  ).next;
+  if (picked.stage !== "message") throw new Error("expected the range pick stage");
+  // The user types a query for the end message first: the whole "[…](…?message=m1) query" is replaced.
+  const typed = nextAutocompleteState(picked, "[Groceries](thread=t1?message=m1) oat", 37);
+  if (typed.stage !== "message") throw new Error("expected to stay in the message stage");
+  const range = completeMessage(typed, { id: "m3" });
+  expect(range.edit).toEqual({ from: 0, to: 37, text: "[Groceries](thread=t1?message=m1..m3)" });
+  expect(range.href).toBe("thread=t1?message=m1..m3");
+  expect(range.next).toEqual({ stage: "closed" });
+  expect(completeMessage(picked, { id: "m1" }).href).toBe("thread=t1?message=m1");
 });
 
 // --- local search --------------------------------------------------------------
@@ -204,6 +259,7 @@ test("searchMessages is scoped to one thread and ranks content matches", () => {
   ];
   expect(searchMessages(messages, "t1", "milk").map((m) => m.id)).toEqual(["m1"]);
   expect(searchMessages(messages, "t1", "").map((m) => m.id)).toEqual(["m2", "m1"]); // newest first
+  expect(searchMessages(messages, "t1", "", 8, "m1").map((m) => m.id)).toEqual(["m1", "m2"]); // pinned first
 });
 
 test("messageSnippet flattens the first non-blank line and drops image refs / markdown noise", () => {

@@ -19,25 +19,45 @@ import type { Message, Thread } from "./types";
 // unchanged — this is the other spelling decision 1 floated (`thread={id}?message={id}`), used
 // here verbatim for that reason.
 //
-// Forward-compatible with a range fast-follow: `messageId` below is read from a single opaque
-// segment. A later range would spell it `?message=<from>..<to>` (double-dot, not the originally
-// floated `<from>-<to>` — message ids are UUIDs, which already contain hyphens, so a hyphen
-// separator would be ambiguous; `..` isn't a character `crypto.randomUUID()` ever produces) and
-// split on that inside `parseReferenceHref` — no change to the href shape itself, so an old
-// single-message link keeps parsing exactly as it does today.
+// A range is `?message=<from>..<to>` (double-dot, not `<from>-<to>`: message ids are UUIDs, which
+// already contain hyphens, so a hyphen separator would be ambiguous; `..` isn't a character
+// `crypto.randomUUID()` ever produces). The href shape is unchanged — `message=` still holds one
+// opaque segment that only `parseReferenceHref` splits — so an old single-message link parses
+// exactly as before. The same `from..to` segment is what travels through `?msg=` and App.tsx's
+// `openThreadAt` (both stay opaque strings); `resolveMessageRange` is where it finally means something.
 const HREF_RE = /^thread=([^?]+)(?:\?message=(.+))?$/;
+const RANGE_SEP = "..";
 
-export const buildReferenceHref = (threadId: string, messageId?: string | null): string =>
-  messageId ? `thread=${threadId}?message=${messageId}` : `thread=${threadId}`;
+/** The `message=` segment for a target: `from`, or `from..to` when `to` is a different message. */
+export const messageRangeParam = (from: string, to?: string | null): string =>
+  to && to !== from ? `${from}${RANGE_SEP}${to}` : from;
 
-export type ParsedReference = { threadId: string; messageId: string | null };
+export const buildReferenceHref = (threadId: string, messageId?: string | null, toMessageId?: string | null): string =>
+  messageId ? `thread=${threadId}?message=${messageRangeParam(messageId, toMessageId)}` : `thread=${threadId}`;
+
+/** `toMessageId` is present only for a range (absent, not null, otherwise). */
+export type ParsedReference = { threadId: string; messageId: string | null; toMessageId?: string };
 
 export const parseReferenceHref = (href: string | null | undefined): ParsedReference | null => {
   if (!href) return null;
   const m = HREF_RE.exec(href);
   const threadId = m?.[1];
   if (!threadId) return null;
-  return { threadId, messageId: m?.[2] ?? null };
+  const [from, to] = (m?.[2] ?? "").split(RANGE_SEP);
+  return { threadId, messageId: from || null, ...(from && to ? { toMessageId: to } : {}) };
+};
+
+/** The messages a `message=`/`?msg=` segment names, out of `ordered` (the thread as it's shown, in
+ * whichever sort order): everything between the two endpoints inclusive, whichever comes first on
+ * screen — so a range picked backwards, or viewed newest-first, resolves to the same rows. An
+ * endpoint no longer in the thread (deleted, not synced) degrades to the other one. */
+export const resolveMessageRange = <T extends { id: string }>(ordered: T[], param: string | null | undefined): T[] => {
+  if (!param) return [];
+  const [from = "", to = from] = param.split(RANGE_SEP);
+  const a = ordered.findIndex((m) => m.id === from);
+  const b = ordered.findIndex((m) => m.id === to);
+  const lo = a === -1 ? b : b === -1 ? a : Math.min(a, b);
+  return lo === -1 ? [] : ordered.slice(lo, Math.max(a, b) + 1);
 };
 
 // A completed reference sitting in markdown text: `[display text](thread=…)`. Loose on the display
@@ -51,6 +71,7 @@ export type CompletedReference = {
   href: string;
   threadId: string;
   messageId: string | null;
+  toMessageId?: string;
   start: number; // index into the source string where `[` sits
   end: number; // index right after the closing `)`
 };
@@ -70,6 +91,7 @@ export const findReferences = (content: string): CompletedReference[] => {
       href,
       threadId: ref.threadId,
       messageId: ref.messageId,
+      ...(ref.toMessageId ? { toMessageId: ref.toMessageId } : {}),
       start: m.index,
       end: m.index + m[0].length,
     });
@@ -96,6 +118,7 @@ export type ReferenceAutocompleteState =
       linkEnd: number; // where the already-completed thread-only link ends (right after its `)`)
       threadId: string;
       displayText: string; // the thread-only link's own text, carried over rather than guessed again
+      from?: string; // set once a first message is picked: the stage is then the optional "to…" pick of a range
       query: string;
     };
 
@@ -165,15 +188,29 @@ export const completeThread = (
 /** Tab/Enter at the message stage: fold the picked message into the SAME link's href (thread +
  * message) and drop the query text that was typed to find it — the display text is left exactly as
  * `completeThread` set it (or as the user has since edited it; this never re-derives it), matching
- * "editable afterward, not a one-shot locked-in widget." */
+ * "editable afterward, not a one-shot locked-in widget."
+ *
+ * Ranges: the FIRST pick doesn't end the autocomplete — the state stays at the message stage with
+ * `from` set (same "continue until Esc" shape as thread → message), so the very same popup now
+ * offers the range's end. The single-message link is already complete and valid at that point, so
+ * Esc/outside-click leaves it behind exactly like a thread-only one. The `from` message is pinned
+ * first in the list (`searchMessages`' `pinId`), so a bare Enter/Tab right after picking confirms
+ * "just this one" instead of silently extending to some other message; picking it again (or any
+ * message, in either order) closes — a range's endpoints are normalized by `resolveMessageRange`
+ * against the displayed order, not here. `href` is handed back for the WYSIWYG adapter, which
+ * applies the link mark itself rather than splicing `edit.text`. */
 export const completeMessage = (
   state: Extract<ReferenceAutocompleteState, { stage: "message" }>,
   message: Pick<Message, "id">,
-): { edit: TextEdit; next: ReferenceAutocompleteState } => {
-  const linkText = `[${state.displayText}](${buildReferenceHref(state.threadId, message.id)})`;
+): { edit: TextEdit; next: ReferenceAutocompleteState; href: string } => {
+  const href = buildReferenceHref(state.threadId, state.from ?? message.id, state.from ? message.id : null);
+  const linkText = `[${state.displayText}](${href})`;
+  const edit = { from: state.anchor, to: state.linkEnd + state.query.length, text: linkText };
+  if (state.from) return { edit, next: { stage: "closed" }, href };
   return {
-    edit: { from: state.anchor, to: state.linkEnd + state.query.length, text: linkText },
-    next: { stage: "closed" },
+    edit,
+    next: { ...state, linkEnd: state.anchor + linkText.length, from: message.id, query: "" },
+    href,
   };
 };
 
@@ -205,10 +242,15 @@ export const searchMessages = (
   threadId: string,
   query: string,
   limit = RESULT_LIMIT,
+  pinId?: string, // with an empty query, this message leads the list (a range's already-picked start)
 ): Message[] => {
   const scoped = messages.filter((m) => m.threadId === threadId);
   const q = query.trim().toLowerCase();
-  if (!q) return scoped.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+  if (!q) {
+    const newestFirst = scoped.sort((a, b) => b.createdAt - a.createdAt);
+    const pinned = newestFirst.find((m) => m.id === pinId);
+    return (pinned ? [pinned, ...newestFirst.filter((m) => m !== pinned)] : newestFirst).slice(0, limit);
+  }
   return scoped
     .map((m) => ({ m, score: matchScore(m.content, q) }))
     .filter((r): r is { m: Message; score: number } => r.score != null)

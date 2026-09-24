@@ -129,3 +129,38 @@ test("Esc right after completing the thread stage cancels the autocomplete but l
   expect(textarea.value).toBe(`${completedThreadOnly} oat`);
   expect(screen.queryByText(/No matching messages|buy oat/)).toBeNull();
 });
+
+test("after a first message pick the same popup offers a range end; picking it writes a from..to link that navigates as one string", async () => {
+  const thread = await localApi.createThread({ title: "Recipes" });
+  const first = (await localApi.appendMessage(thread.id, { id: crypto.randomUUID(), content: "step one chop" }))
+    .message;
+  await localApi.appendMessage(thread.id, { id: crypto.randomUUID(), content: "step two boil" });
+  const last = (await localApi.appendMessage(thread.id, { id: crypto.randomUUID(), content: "step three serve" }))
+    .message;
+
+  const navigated: { threadId: string; messageId: string | null }[] = [];
+  const { container } = render(
+    <Harness onNavigate={(threadId, messageId) => navigated.push({ threadId, messageId })} />,
+  );
+  const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+
+  type(textarea, "[[Recip");
+  fireEvent.mouseDown(await screen.findByText("Recipes"));
+  await waitFor(() => expect(textarea.value).toBe(`[Recipes](thread=${thread.id})`));
+
+  type(textarea, `${textarea.value} chop`);
+  fireEvent.mouseDown(await screen.findByText("step one chop"));
+  await waitFor(() => expect(textarea.value).toBe(`[Recipes](thread=${thread.id}?message=${first.id})`));
+
+  // Still open, now for the range's end.
+  fireEvent.mouseDown(await screen.findByText("step three serve"));
+  const ranged = `[Recipes](thread=${thread.id}?message=${first.id}..${last.id})`;
+  await waitFor(() => expect(textarea.value).toBe(ranged));
+  expect(screen.queryByText("step three serve")).toBeNull(); // closed after the second pick
+
+  fireEvent.click(screen.getByText("save"));
+  const link = await screen.findByRole("link", { name: "Recipes" });
+  expect(link.getAttribute("href")).toBe(`thread=${thread.id}?message=${first.id}..${last.id}`);
+  fireEvent.click(link);
+  expect(navigated).toEqual([{ threadId: thread.id, messageId: `${first.id}..${last.id}` }]);
+});
