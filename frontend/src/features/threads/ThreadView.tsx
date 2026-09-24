@@ -105,6 +105,7 @@ export const ThreadView = ({
   const [pulsingIds, setPulsingIds] = useState<string[]>([]); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   const arrival = useRef<ReturnType<typeof setTimeout>[]>([]); // the arrival jump's follow-up timers
+  const following = useRef(true); // scrolled to the newest end: keep it there while rows are still being measured
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
@@ -145,8 +146,8 @@ export const ThreadView = ({
       const { thread: copy } = await api.copyThread(threadId, { newThreadId: crypto.randomUUID(), uptoMessageId });
       await pullThreads();
       onCopied(copy.id);
-    } catch {
-      // ponytail: no status line for this yet — a failed copy just does nothing, nothing was touched
+    } catch (e) {
+      toast({ title: "Clone failed", description: errorMessage(e) }); // nothing was touched
     } finally {
       setCopying(false);
     }
@@ -187,7 +188,18 @@ export const ThreadView = ({
     if (pulseMessageId) return;
     if (!scratch && reversed && orderedMessages.length) rowVirtualizer.scrollToIndex(0, { align: "start" });
     else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    following.current = true;
   }, [orderedMessages.length, scratch, pulseMessageId, reversed, rowVirtualizer]);
+
+  // Rows are only measured once they render, so the list keeps growing (or briefly collapses) after the
+  // scroll above ran against estimates — opening a thread landed at its top, a new note left the
+  // composer half cut off. While still following the newest end, re-pin whenever the height settles.
+  const totalSize = rowVirtualizer.getTotalSize();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `totalSize` is the trigger, not a value read inside
+  useEffect(() => {
+    if (pulseMessageId || reversed || !following.current) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [totalSize, pulseMessageId, reversed]);
 
   // Jump to a specific message (a todo row's click, or a `?thread=&msg=` deep link): scroll the
   // virtualizer to its index once it's actually in `orderedMessages` — a fresh mount's history load
@@ -241,8 +253,10 @@ export const ThreadView = ({
           hidden while a thread is open there, so this is the only way back, not a place for a
           full editorial heading. `lg:` gets the roomier one back: the sidebar is already visible
           beside it, so the title can afford to be a real heading. */}
-      <header className="border-b border-border px-3 py-2 md:px-10 lg:py-3">
-        <div className="mx-auto flex max-w-3xl items-center gap-1 lg:gap-2">
+      <header className="border-b border-border">
+        {/* Padding lives inside the `max-w-3xl` box (like the message column and composer below), so the
+            title starts at the same x as the messages instead of 40px left of them. */}
+        <div className="mx-auto flex max-w-3xl items-center gap-1 px-3 py-2 md:px-10 lg:gap-2 lg:py-3">
           <Button
             size="icon"
             variant="ghost"
@@ -252,7 +266,10 @@ export const ThreadView = ({
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <h1 className="min-w-0 truncate text-sm font-medium lg:font-serif lg:text-2xl lg:font-normal lg:leading-tight lg:tracking-tight">
+          <h1
+            title={thread?.title}
+            className="min-w-0 truncate text-sm font-medium lg:font-serif lg:text-2xl lg:font-normal lg:leading-tight lg:tracking-tight"
+          >
             {thread?.title ?? "…"}
           </h1>
           <Button
@@ -277,7 +294,14 @@ export const ThreadView = ({
         <p className="border-b border-destructive px-6 py-2 font-mono text-[11px] text-destructive md:px-10">{error}</p>
       )}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          following.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX;
+        }}
+      >
         <div className="flex min-h-full flex-col">
           <div className="mx-auto w-full max-w-3xl flex-1 px-6 pb-6 md:px-10">
             {messages.length === 0 && !scratch && (
@@ -391,6 +415,7 @@ const NotFound = ({ onBack }: { onBack: () => void }) => (
 );
 
 const PORTAL = "[data-radix-popper-content-wrapper]";
+const FOLLOW_SLACK_PX = 96; // closer than this to the bottom still counts as "at the newest entry"
 const tiny = "font-mono text-[10px] text-muted-foreground";
 // Icon-button hit area: 40px on a phone, the old compact 24px from `md` up.
 const tap = "flex items-center justify-center p-2.5 transition-colors md:p-1";
@@ -401,6 +426,8 @@ const tap = "flex items-center justify-center p-2.5 transition-colors md:p-1";
 // doesn't measure into an edit box taller than the thread pane itself.
 const EDIT_MIN_PX = 96;
 const EDIT_MAX_RATIO = 0.6;
+const RAW_HEADROOM = 1.25;
+const EDIT_PAD_PX = 20; // the edit box's own vertical padding (`--md-padding`: 10px top + bottom)
 
 // One entry: the content, and — only while it is the selected message — a hairline of tiny metadata and the
 // ⋯ menu under it. Your notes can be edited in place (the previous text is kept and can be shown under
@@ -491,7 +518,9 @@ export const EntryRow = ({
   };
   const startEdit = () => {
     setText(m.content);
-    const measured = contentRef.current?.getBoundingClientRect().height ?? 0;
+    // The raw-markdown box is monospace and padded: the same text wraps onto more lines than the
+    // rendered read view measured here, so it needs headroom or its last line starts out clipped.
+    const measured = (contentRef.current?.getBoundingClientRect().height ?? 0) * RAW_HEADROOM + EDIT_PAD_PX;
     setEditMinHeight(
       Math.min(Math.max(measured, EDIT_MIN_PX), (window.visualViewport?.height ?? window.innerHeight) * EDIT_MAX_RATIO),
     );
@@ -535,7 +564,7 @@ export const EntryRow = ({
     <Motion.article
       className={cn(
         "group relative border-b border-rule py-4",
-        !editing && "cursor-pointer",
+        !editing && "cursor-pointer hover:bg-accent/50",
         selected && "message-selected",
         pulsing && "message-pulse",
       )}
@@ -712,7 +741,7 @@ export const EntryRow = ({
                           onClick={startNoteEdit}
                           className={cn(tap, "text-muted-foreground hover:text-foreground")}
                         >
-                          <Pencil className="size-4 md:size-3" />
+                          <Pencil className="size-4 md:size-3.5" />
                         </button>
                         <button
                           type="button"
@@ -721,7 +750,7 @@ export const EntryRow = ({
                           onClick={deleteNote}
                           className={cn(tap, "text-muted-foreground hover:text-destructive")}
                         >
-                          <Trash2 className="size-4 md:size-3" />
+                          <Trash2 className="size-4 md:size-3.5" />
                         </button>
                       </div>
                     </div>
@@ -771,7 +800,7 @@ export const EntryRow = ({
                   title="Message actions"
                   className={cn(tap, "ml-auto -mr-2.5 text-muted-foreground hover:text-foreground")}
                 >
-                  <MoreHorizontal className="size-4 md:size-3" />
+                  <MoreHorizontal className="size-4 md:size-3.5" />
                 </button>
               }
               items={[

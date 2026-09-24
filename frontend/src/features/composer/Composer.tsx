@@ -3,9 +3,11 @@ import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
+import { toast } from "@/components/ui/toast";
 import { MessageInput, type MessageInputHandle } from "@/features/message-input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { errorMessage } from "@/lib/errors";
 import { pullThreads } from "@/lib/sync";
 import type { Message } from "@/lib/types";
 import type { VoiceState } from "@/lib/voice/engine";
@@ -106,8 +108,8 @@ export const Composer = ({
       input.current?.clear();
       await pullThreads();
       onCopied(thread.id);
-    } catch {
-      // ponytail: no status line for this yet — a failed copy just leaves the draft untouched
+    } catch (e) {
+      toast({ title: "Clone failed", description: errorMessage(e) }); // the draft is left untouched
     } finally {
       setCopying(false);
     }

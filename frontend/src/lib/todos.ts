@@ -58,7 +58,7 @@ const parseListItemLine = (line: string): { text: string; done: boolean } | null
 };
 
 // Every `/todos <title>` group in `content`: the trigger line plus the contiguous run of list-item
-// lines right after it — stops at the first blank line or the first line that isn't a list item (a
+// lines right after it — stops at the first blank line after that (or the first line that isn't a list item, a
 // paragraph resuming under the header, say). A trigger with nothing under it isn't a group (nothing
 // to show), so it's left alone entirely. `consumed` carries every line index a group ate, so
 // `parseTodos` below can skip them — a `- [ ]` item under a `/todos` header must not ALSO come back
@@ -74,6 +74,9 @@ export const parseTodoGroups = (content: string): { groups: ParsedTodoGroup[]; c
     if (!trigger) continue;
     const items: ParsedTodoItem[] = [];
     let j = i + 1;
+    // The editor serializes a title paragraph and the list under it with a blank line between them
+    // (`/todos T\n\n- a`), so blank lines are tolerated between the trigger and the *first* item only.
+    while (lines[j]?.trim() === "") j++;
     for (; j < lines.length; j++) {
       const raw = lines[j];
       if (raw === undefined || raw.trim() === "") break;

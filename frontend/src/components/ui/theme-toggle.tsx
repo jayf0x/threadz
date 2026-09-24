@@ -27,7 +27,7 @@ export const ThemeToggle = ({ className }: { className?: string }) => {
   const [theme, setTheme] = useState<Theme>(read);
 
   return (
-    <fieldset className={cn("flex gap-px border border-border p-px", className)}>
+    <fieldset className={cn("flex w-fit gap-px border border-border p-px", className)}>
       <legend className="sr-only">Colour scheme</legend>
       {OPTIONS.map(({ value, label, path }) => {
         const active = theme === value;
@@ -36,7 +36,7 @@ export const ThemeToggle = ({ className }: { className?: string }) => {
             key={value}
             title={label}
             className={cn(
-              "flex cursor-pointer items-center p-2.5 transition-colors has-focus-visible:outline md:p-1.5",
+              "flex cursor-pointer items-center p-3 transition-colors has-focus-visible:outline md:p-1.5",
               "has-focus-visible:outline-ring",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}

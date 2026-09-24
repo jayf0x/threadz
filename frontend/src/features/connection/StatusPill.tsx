@@ -25,7 +25,7 @@ export const StatusPill = () => {
       type="button"
       onClick={openPanel}
       title={hint}
-      className="group flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+      className="group -my-3 flex items-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
     >
       <span className="relative flex size-2 items-center justify-center">
         <span

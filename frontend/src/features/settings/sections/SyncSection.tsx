@@ -30,7 +30,7 @@ export const SyncSection = () => {
             disabled={syncing}
             aria-label="Sync now"
             title="Sync now"
-            className="text-muted-foreground transition-colors hover:text-foreground"
+            className="-m-2.5 p-2.5 text-muted-foreground transition-colors hover:text-foreground md:-m-1.5 md:p-1.5"
           >
             <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
           </button>

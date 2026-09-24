@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/cn";
 import { getThreads } from "@/lib/db";
-import { shortcutBlocked } from "@/lib/dom";
+import { chordBlocked } from "@/lib/dom";
 import { matchScore } from "@/lib/search";
 import { onChange } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
@@ -34,7 +34,7 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== "k" || shortcutBlocked(e)) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "k" || chordBlocked()) return;
       e.preventDefault();
       setOpen((o) => !o);
     };

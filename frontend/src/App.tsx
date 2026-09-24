@@ -168,8 +168,8 @@ const Shell = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !shortcutBlocked(e)) closeThread();
     };
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
+    addEventListener("keydown", onKey, true); // capture: see `shortcutBlocked`
+    return () => removeEventListener("keydown", onKey, true);
   }, [closeThread]);
 
   return (

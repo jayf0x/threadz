@@ -31,7 +31,7 @@ mock.module("@/features/editor", () => ({
   useImageAttach: () => ({ attach: async () => {}, error: null }),
 }));
 
-const { fireEvent, render } = await import("@testing-library/react");
+const { act, fireEvent, render } = await import("@testing-library/react");
 const { EntryRow } = await import("./ThreadView");
 
 const message = (over: Partial<Message> = {}): Message => ({
@@ -79,7 +79,7 @@ test("clicking the ⋯ message-actions trigger does not select the row", () => {
   expect(selectCount).toBe(0);
 });
 
-test("clicking the note trigger does not select the row", () => {
+test("clicking the note trigger does not select the row", async () => {
   let selectCount = 0;
   const note = { id: "a1", threadId: "t1", messageId: "m1", content: "a note", createdAt: 1 };
   const { getByLabelText } = render(
@@ -91,8 +91,13 @@ test("clicking the note trigger does not select the row", () => {
       onSelect={() => selectCount++}
     />,
   );
-  fireEvent.click(getByLabelText("Note"));
+  // The click opens a Radix Popover, whose positioning (floating-ui) resolves in a later microtask:
+  // awaiting it inside `act` lets React settle that update instead of warning about it.
+  await act(async () => {
+    fireEvent.click(getByLabelText("Note"));
+  });
   expect(selectCount).toBe(0);
+  expect(document.querySelector("[data-radix-popper-content-wrapper]")).toBeTruthy(); // it did open
 });
 
 test("an unselected message shows no metadata, no ⋯ and — with no note — no note icon", () => {
