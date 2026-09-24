@@ -73,7 +73,7 @@ test("clicking the plain message content selects the row", () => {
 test("clicking the ⋯ message-actions trigger does not select the row", () => {
   let selectCount = 0;
   const { getByLabelText } = render(
-    <EntryRow message={message()} {...baseProps()} onEdit={async () => true} onSelect={() => selectCount++} />,
+    <EntryRow message={message()} {...baseProps()} selected onEdit={async () => true} onSelect={() => selectCount++} />,
   );
   fireEvent.click(getByLabelText("Message actions"));
   expect(selectCount).toBe(0);
@@ -81,18 +81,49 @@ test("clicking the ⋯ message-actions trigger does not select the row", () => {
 
 test("clicking the note trigger does not select the row", () => {
   let selectCount = 0;
+  const note = { id: "a1", threadId: "t1", messageId: "m1", content: "a note", createdAt: 1 };
   const { getByLabelText } = render(
-    <EntryRow message={message()} {...baseProps()} onEdit={async () => true} onSelect={() => selectCount++} />,
+    <EntryRow
+      message={message()}
+      {...baseProps()}
+      note={note}
+      onEdit={async () => true}
+      onSelect={() => selectCount++}
+    />,
   );
-  fireEvent.click(getByLabelText("Add a note"));
+  fireEvent.click(getByLabelText("Note"));
   expect(selectCount).toBe(0);
+});
+
+test("an unselected message shows no metadata, no ⋯ and — with no note — no note icon", () => {
+  const edited = message({
+    edits: [{ content: "older text", at: Date.parse("2025-01-01T00:00:00Z") }],
+    meta: { voice: true },
+  });
+  const { container, queryByLabelText, queryByText } = render(
+    <EntryRow message={edited} {...baseProps()} pending onEdit={async () => true} onSelect={() => {}} />,
+  );
+  expect(queryByLabelText("Message actions")).toBeNull();
+  expect(queryByLabelText("Note")).toBeNull();
+  expect(queryByLabelText("Add a note")).toBeNull();
+  expect(queryByText("edited")).toBeNull();
+  expect(container.querySelector("time")).toBeNull();
+  expect(container.querySelector(`[${ROW_SELECT_IGNORE}]`)).toBeNull();
+});
+
+test("a note shows its icon even while the message is not selected", () => {
+  const note = { id: "a1", threadId: "t1", messageId: "m1", content: "a note", createdAt: 1 };
+  const { getByLabelText } = render(
+    <EntryRow message={message()} {...baseProps()} note={note} onEdit={async () => true} onSelect={() => {}} />,
+  );
+  expect(getByLabelText("Note")).toBeTruthy();
 });
 
 test("clicking the 'edited' history toggle does not select the row", () => {
   let selectCount = 0;
   const edited = message({ edits: [{ content: "older text", at: Date.parse("2025-01-01T00:00:00Z") }] });
   const { getByText } = render(
-    <EntryRow message={edited} {...baseProps()} onEdit={async () => true} onSelect={() => selectCount++} />,
+    <EntryRow message={edited} {...baseProps()} selected onEdit={async () => true} onSelect={() => selectCount++} />,
   );
   fireEvent.click(getByText("edited"));
   expect(selectCount).toBe(0);
@@ -102,7 +133,7 @@ test("clicking the metadata bar itself (not just its buttons) does not select ei
   // The whole bar is one ignore zone (rowSelect.ts), not just the individual buttons in it.
   let selectCount = 0;
   const { container } = render(
-    <EntryRow message={message()} {...baseProps()} onEdit={async () => true} onSelect={() => selectCount++} />,
+    <EntryRow message={message()} {...baseProps()} selected onEdit={async () => true} onSelect={() => selectCount++} />,
   );
   const bar = container.querySelector(`[${ROW_SELECT_IGNORE}]`);
   expect(bar).toBeTruthy();

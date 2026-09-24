@@ -60,6 +60,9 @@ export type MarkdownEditorHandle = {
   insertAtCaret: (text: string) => boolean;
   /** Insert an image (`img:` ref or URL) at the caret, same placement rules as `insertAtCaret`. */
   insertImage: (src: string) => boolean;
+  /** Focus the editor. If the user never put a caret in it, the caret goes to the end first, so a
+   * dictation started from a cold editor appends to the draft instead of landing in front of it. */
+  focus: () => void;
 };
 
 type EditorTrLike = {
@@ -96,6 +99,7 @@ type Loaded = {
   replaceAll: (markdown: string) => (ctx: Ctx) => void;
   insertAtCaret: (text: string, touched: boolean) => void;
   insertImage: (src: string, touched: boolean) => void;
+  focus: (touched: boolean) => void;
   /** Replace doc positions `[from, to)` with a single already-linked text node — how the reference
    * autocomplete (`lib/references.ts`'s `completeThread`/`completeMessage`) lands its result in the
    * live WYSIWYG view: `from`/`to` are absolute doc positions (the caller maps its own local,
@@ -122,7 +126,7 @@ export const MarkdownEditor = ({
   onKeyDownCapture?: (e: React.KeyboardEvent) => void;
   /** Called with an image pasted or dropped into the editor (which then inserts nothing itself). */
   onImageFile?: (file: File) => void;
-  /** A gutter checkbox (`@/todo` line, or an item inside a `@/todos` group) was clicked, naming the
+  /** A gutter checkbox (`/todo` line, or an item inside a `/todos` group) was clicked, naming the
    * line's index into `value.split("\n")`. WYSIWYG mode only (`raw` renders a plain textarea, no
    * decorations at all) — the caller re-derives the toggled content via `toggleTodoLine`
    * (`lib/todos.ts`) and persists it the same way it persists any other edit. See
@@ -288,6 +292,12 @@ const RawEditor = ({
     },
     insertAtCaret: (text) => spliceAtCaret(text),
     insertImage: (src) => spliceAtCaret(`![](${src})`),
+    focus: () => {
+      const el = ref.current;
+      if (!el) return;
+      if (!touchedRef.current) el.setSelectionRange(el.value.length, el.value.length);
+      el.focus();
+    },
   }));
 
   return (
@@ -468,7 +478,7 @@ const CrepeEditor = ({
         .addFeature(placeholderFeature, { text, mode: "doc" });
       // Photos: `img:` refs render as lazy grey boxes (./imageView.ts).
       crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
-      // `@/todo`/`@/todos` lines: gutter checkbox + highlight decoration, no new node type
+      // `/todo`/`/todos` lines: gutter checkbox + highlight decoration, no new node type
       // (./todoDecoration.ts). `getValue`/`hasToggle`/`onToggle` all read through the latest-refs
       // above so this one-time plugin instance never acts on stale props — `hasToggle` is what
       // actually decides "render a checkbox at all" (not `onTodoToggleRef.current` being handed to
@@ -536,6 +546,12 @@ const CrepeEditor = ({
             const tr = view.state.tr.insert(at, commonmark.imageSchema.type(ctx).create({ src }));
             tr.setSelection(state.Selection.near(tr.doc.resolve(at + 1)));
             view.dispatch(tr);
+          }),
+        focus: (touched) =>
+          crepe.editor.action((ctx: Ctx) => {
+            const view = viewOf(ctx);
+            if (!touched) view.dispatch(view.state.tr.setSelection(state.Selection.atEnd(view.state.doc)));
+            view.focus();
           }),
         completeReference: (from, to, text, href) =>
           crepe.editor.action((ctx: Ctx) => {
@@ -606,6 +622,13 @@ const CrepeEditor = ({
         return true;
       } catch {
         return false;
+      }
+    },
+    focus: () => {
+      try {
+        loadedRef.current?.focus(touchedRef.current);
+      } catch {
+        // editor still mounting — nothing to focus yet
       }
     },
     getMarkdown: () => crepeRef.current?.getMarkdown() ?? lastEmittedRef.current,

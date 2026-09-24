@@ -1,16 +1,10 @@
 @import "tailwindcss";
-@import "./themes/gruvbox-light.css";
-@import "./themes/gruvbox-dark.css";
-@import "./themes/one-light.css";
-@import "./themes/one-dark.css";
+@import "./themes/gruvbox.css";
+@import "./themes/one.css";
 @import "./themes/everforest.css";
-@import "./themes/solarized-light.css";
-@import "./themes/night-owl.css";
-@import "./themes/dracula.css";
-@import "./themes/nord.css";
-@import "./themes/ubuntu.css";
-@import "./themes/monokai.css";
+@import "./themes/solarized.css";
 @import "./themes/catppuccin.css";
+@import "./themes/nord.css";
 
 /* Threadz = a commonplace book: a record you append to, not a conversation.
    Tokens + theme come from the active palette (see themes/palettes.ts for the full list and
@@ -77,6 +71,58 @@ body,
   overflow: hidden;
 }
 
+/* The page itself never moves. `overflow: hidden` alone doesn't stop iOS from rubber-banding (or
+   scrolling) the root — you could swipe a tab up and see the wallpaper underneath — so the body is
+   pinned. Every scroller inside keeps its own momentum but doesn't chain into the page. */
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+.overflow-y-auto {
+  overscroll-behavior-y: contain;
+}
+
+/* How opaque the app's panes are over the wallpaper (lib/settings.ts writes it: 92% with no image,
+   lower as the image opacity slider goes up). One knob so every pane agrees. */
+:root {
+  --pane-alpha: 92%;
+}
+@utility surface-background {
+  background-color: color-mix(in oklab, var(--background) var(--pane-alpha), transparent);
+}
+@utility surface-secondary {
+  background-color: color-mix(in oklab, var(--secondary) var(--pane-alpha), transparent);
+}
+@utility surface-card {
+  background-color: color-mix(in oklab, var(--card) var(--pane-alpha), transparent);
+}
+
+/* Bottom padding that clears the iOS home indicator — and gives it back while the keyboard is up
+   (`data-keyboard` on <html>, lib/viewport.ts), when the indicator isn't on screen. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.composer-pad {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .composer-pad {
+    padding-bottom: 0.75rem;
+  }
+}
+html[data-keyboard] .pb-safe {
+  padding-bottom: 0;
+}
+html[data-keyboard] .composer-pad {
+  padding-bottom: 0.5rem;
+}
+/* With the keyboard up 60% of the screen is already keyboard: the editor shrinks to a couple of lines
+   and grows as you type (its max height is a share of the *visible* area, MessageInput.tsx). */
+html[data-keyboard] .composer-editor {
+  --md-min-height: 3.5rem;
+}
+
 /* Settings' "Lock zoom": blocks pinch and double-tap zoom, keeps scrolling on both axes. */
 html[data-lock-zoom] {
   touch-action: pan-x pan-y;
@@ -111,12 +157,6 @@ body {
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0.25;
   }
 }
 
@@ -157,9 +197,6 @@ body {
   .rise {
     animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: calc(var(--i, 0) * 28ms);
-  }
-  .blink {
-    animation: blink 1.4s ease-in-out infinite;
   }
 }
 

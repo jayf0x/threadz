@@ -19,12 +19,12 @@ const countBy = (todos: Todo[], done: boolean) =>
     0,
   );
 
-// The sidebar's third view: every `@/todo`/`@/todos`/`- [ ] ` line, plus every message flagged via
+// The sidebar's third view: every `/todo`/`/todos`/`- [ ] ` line, plus every message flagged via
 // the ⋯ menu's "Add to Todos", across every thread (see `lib/todos.ts`), newest first. Ticking a box
 // rewrites that line in place (open<->closed) through the same `editMessage` every other edit uses —
 // except a flagged message, which has no line to rewrite and flips `meta.todo.done` directly (see
 // `useTodos.ts`'s `toggle`). The closed-todo filter (default: recently closed) only ever hides flat
-// line/message entries — a `@/todos` group always shows every one of its items. Tap the rest of a
+// line/message entries — a `/todos` group always shows every one of its items. Tap the rest of a
 // row to jump to its thread, scrolled and highlighted at the exact message.
 export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, messageId: string) => void }) => {
   const { todos, toggle } = useTodos();
@@ -126,7 +126,7 @@ const TodoRow = ({
       type="button"
       onClick={onToggle}
       aria-label={done ? "Mark todo open" : "Mark todo done"}
-      className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      className="relative mt-0.5 shrink-0 text-muted-foreground transition-colors before:absolute before:-inset-3 before:content-[''] hover:text-foreground"
     >
       {done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
     </button>
@@ -139,7 +139,7 @@ const TodoRow = ({
   </li>
 );
 
-// A `@/todos <title>` group: one card, its own header (tap to jump, like a plain row) and each item
+// A `/todos <title>` group: one card, its own header (tap to jump, like a plain row) and each item
 // as its own toggle-able line underneath — not N flat rows mixed in with everything else. Always
 // renders every item, regardless of the closed-todo filter (see `isVisible`).
 const GroupCard = ({
@@ -171,7 +171,7 @@ const GroupCard = ({
             type="button"
             onClick={() => onToggleItem(item)}
             aria-label={item.done ? "Mark item open" : "Mark item done"}
-            className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+            className="relative mt-0.5 shrink-0 text-muted-foreground transition-colors before:absolute before:-inset-3 before:content-[''] hover:text-foreground"
           >
             {item.done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
           </button>

@@ -142,8 +142,10 @@ export const ThreadRow = ({
     }
   };
 
+  // 40px hit areas on a phone (where these are always visible), the compact desktop size from `md`.
   const act =
-    "p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100";
+    "p-2.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 md:p-1.5 [@media(hover:none)]:opacity-100";
+  const icon = "size-4 md:size-3.5";
 
   return (
     <div
@@ -192,13 +194,15 @@ export const ThreadRow = ({
               {format(thread.updatedAt, "MMM")}
               {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
             </span>
-            <span className="min-w-0 pr-40">
-              <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
+            <span className="min-w-0 pr-24 md:pr-16">
+              <span className={cn("block truncate font-serif text-lg leading-snug", naming && "animate-pulse")}>
+                {thread.title}
+              </span>
               {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
               {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
             </span>
           </button>
-          <div className="absolute right-2 top-2.5 flex">
+          <div className="absolute right-1 top-1.5 flex md:right-2 md:top-2.5">
             <button
               type="button"
               aria-label={pinned ? "Unpin thread" : "Pin thread"}
@@ -206,23 +210,13 @@ export const ThreadRow = ({
               className={cn(act, pinned && "opacity-100 text-primary")}
               onClick={() => setThreadFlag("pinned", thread.id, !pinned)}
             >
-              <Pin className={cn("size-3.5", pinned && "fill-current")} />
-            </button>
-            <button
-              type="button"
-              aria-label="Regenerate title"
-              title="Regenerate title from its notes"
-              disabled={naming}
-              className={cn(act, naming && "opacity-100")}
-              onClick={regenerate}
-            >
-              <PencilSparkles className={cn("size-3.5", naming && "animate-pulse")} />
+              <Pin className={cn(icon, pinned && "fill-current")} />
             </button>
             <Menu
               align="end"
               trigger={
                 <button type="button" aria-label="Thread actions" title="Thread actions" className={act}>
-                  <MoreHorizontal className="size-3.5" />
+                  <MoreHorizontal className={icon} />
                 </button>
               }
               items={[
@@ -236,6 +230,7 @@ export const ThreadRow = ({
                     setRenaming(true);
                   },
                 },
+                { label: "Regenerate title", icon: PencilSparkles, onClick: regenerate },
                 { label: "Export as Markdown", icon: Download, onClick: exportMarkdown },
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 { label: "Delete", icon: Trash2, onClick: del, destructive: true },

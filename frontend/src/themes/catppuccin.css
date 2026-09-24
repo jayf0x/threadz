@@ -1,7 +1,7 @@
 /*
- * catppuccin — Catppuccin Mocha: dark lavender-black background, pastel mauve accent.
- * Always-dark identity — base/.dark/.system all render the same look. Same 19-token shape as
- * gruvbox-light.css.
+ * catppuccin — Catppuccin Latte (light) and Mocha (dark): lavender-grey paper, mauve accent.
+ * A palette family: the base block is its light mode, `.dark` / `.system` its dark one. Light vs dark
+ * is the Light/System/Dark toggle's job alone (themes/palettes.ts); a palette never decides it.
  */
 
 :root[data-palette="catppuccin"] {
@@ -9,26 +9,26 @@
   --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
-  --background: oklch(0.243 0.030 284);
-  --foreground: oklch(0.879 0.043 272);
-  --card: oklch(0.283 0.033 284);
-  --card-foreground: oklch(0.879 0.043 272);
-  --secondary: oklch(0.213 0.033 284);
-  --secondary-foreground: oklch(0.879 0.043 272);
-  --muted: oklch(0.213 0.033 284);
-  --muted-foreground: oklch(0.720 0.034 272);
-  --accent: color-mix(in oklab, oklch(0.787 0.119 305) 16%, transparent);
-  --accent-foreground: oklch(0.879 0.043 272);
-  --border: color-mix(in oklab, oklch(0.879 0.043 272) 15%, transparent);
-  --input: oklch(0.283 0.033 284);
-  --ring: oklch(0.787 0.119 305);
-  --primary: oklch(0.787 0.119 305);
-  --primary-foreground: oklch(0.243 0.030 284);
-  --destructive: oklch(0.756 0.130 3);
-  --destructive-foreground: oklch(0.243 0.030 284);
+  --background: oklch(0.958 0.006 265);
+  --foreground: oklch(0.435 0.043 279);
+  --card: oklch(0.989 0.003 286);
+  --card-foreground: oklch(0.435 0.043 279);
+  --secondary: oklch(0.933 0.009 265);
+  --secondary-foreground: oklch(0.435 0.043 279);
+  --muted: oklch(0.933 0.009 265);
+  --muted-foreground: oklch(0.492 0.038 279);
+  --accent: color-mix(in oklab, oklch(0.555 0.250 297) 12%, transparent);
+  --accent-foreground: oklch(0.435 0.043 279);
+  --border: color-mix(in oklab, oklch(0.435 0.043 279) 16%, transparent);
+  --input: oklch(0.989 0.003 286);
+  --ring: oklch(0.555 0.250 297);
+  --primary: oklch(0.555 0.250 297);
+  --primary-foreground: oklch(0.989 0.003 286);
+  --destructive: oklch(0.550 0.216 20);
+  --destructive-foreground: oklch(0.989 0.003 286);
 
-  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
-  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  --rule: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
 :root[data-palette="catppuccin"].dark {

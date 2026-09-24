@@ -9,9 +9,14 @@
  * rather than marking every individual button. */
 export const ROW_SELECT_IGNORE = "data-row-select-ignore";
 
+/** Radix renders menus and popovers in a portal, but React still bubbles their clicks up through the
+ * row that owns them — so they're recognised by Radix's own wrapper attribute, not by being inside
+ * the row's DOM. (Picking a menu item must not toggle the row's selection.) */
+const PORTAL = "[data-radix-popper-content-wrapper]";
+
 /** Whether a click on `target` should select the row it's in. `editing` covers edit mode wholesale
  * (a live editor, its Cancel/Save buttons) without needing to mark up every element inside it. */
 export const shouldSelectRow = (target: Element, editing: boolean): boolean => {
   if (editing) return false;
-  return !target.closest(`[${ROW_SELECT_IGNORE}]`);
+  return !target.closest(`[${ROW_SELECT_IGNORE}], ${PORTAL}`);
 };

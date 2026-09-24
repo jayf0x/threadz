@@ -8,7 +8,7 @@ import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
 import { TrashPanel } from "@/features/trash";
 import { cn } from "@/lib/cn";
-import { shortcutBlocked } from "@/lib/dom";
+import { isTouch, shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { pickResurfacingThread } from "@/lib/resurfacing";
 import type { Thread } from "@/lib/types";
@@ -85,12 +85,10 @@ export const ThreadList = ({
   }, [create]);
 
   const failure = error ?? createError;
+  const touch = isTouch(); // "( / )" and "press n" are keyboard hints — noise on a phone
 
   return (
     <div className="flex h-full flex-col">
-      <nav className="border-b border-border">
-        <SidebarSwitcher panel={panel} setPanel={setPanel} />
-      </nav>
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <View shown={panel === "index"} from="left">
           <header className="px-5 pb-4 pt-6">
@@ -105,7 +103,7 @@ export const ThreadList = ({
                 className="min-w-0 flex-1"
                 type="search"
                 aria-label="Search threads"
-                placeholder="Search  ( / )"
+                placeholder={touch ? "Search" : "Search  ( / )"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -134,7 +132,8 @@ export const ThreadList = ({
             <p className="border-y border-destructive px-5 py-2 font-mono text-[11px] text-destructive">{failure}</p>
           )}
 
-          <ul className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
+          {/* `pb-20`: room for the floating New button so it never hides the last row. */}
+          <ul className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-20">
             {threads.map((t, i) => (
               <li key={t.id} className="rise" style={{ "--i": Math.min(i, 14) } as CSSProperties}>
                 <ThreadRow thread={t} active={t.id === selectedId} onClick={() => onOpen(t.id)} onDeleted={onDeleted} />
@@ -142,7 +141,11 @@ export const ThreadList = ({
             ))}
             {threads.length === 0 && !syncing && (
               <li className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
-                {query ? "Nothing matches." : "Empty index. Press n to start a thread."}
+                {query
+                  ? "Nothing matches."
+                  : touch
+                    ? "Empty index. Tap New to start a thread."
+                    : "Empty index. Press n to start a thread."}
               </li>
             )}
             {!query && resurfaced && (
@@ -161,21 +164,17 @@ export const ThreadList = ({
               </li>
             )}
           </ul>
-          <div className="flex justify-center border-t border-border py-3">
-            <Button
-              size="icon"
-              aria-label="New thread"
-              title="New thread (n)"
-              disabled={creating}
-              className="group size-10 shadow-sm transition-all duration-200 ease-out hover:scale-110 hover:shadow-md active:scale-90 disabled:opacity-60"
-              onClick={create}
-            >
-              <Plus
-                strokeWidth={2.25}
-                className="size-5 transition-transform duration-300 ease-out group-hover:rotate-90 group-active:rotate-180"
-              />
-            </Button>
-          </div>
+          {/* Labelled, not a bare "+": beside the tab bar a plus reads as "more", not "new thread". */}
+          <Button
+            aria-label="New thread"
+            title={touch ? undefined : "New thread (n)"}
+            disabled={creating}
+            className="absolute bottom-4 right-4 h-11 gap-1.5 rounded-full px-5 shadow-md transition-transform duration-200 ease-out active:scale-95 disabled:opacity-60"
+            onClick={create}
+          >
+            <Plus strokeWidth={2.25} className="size-5" />
+            New
+          </Button>
         </View>
 
         <View shown={panel === "todos"} from="right">
@@ -198,6 +197,11 @@ export const ThreadList = ({
           <SettingsPanel />
         </View>
       </div>
+      {/* Bottom tab bar, the phone convention (and where the thumb already is). `pb-safe` clears the
+          home indicator, and drops away while the keyboard is up (see lib/viewport.ts). */}
+      <nav className="pb-safe border-t border-border">
+        <SidebarSwitcher panel={panel} setPanel={setPanel} />
+      </nav>
     </div>
   );
 };
@@ -207,11 +211,11 @@ type Panel = "index" | "settings" | "todos" | "trash";
 const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "index", label: "Threads", icon: List },
   { value: "todos", label: "Todos", icon: ListTodo },
-  { value: "trash", label: "Recently Deleted", icon: Trash2 },
+  { value: "trash", label: "Bin", icon: Trash2 },
   { value: "settings", label: "Settings", icon: Settings },
 ];
 
-// The sidebar's own nav — a full-width banner (mobile and desktop alike, now that the sidebar
+// The sidebar's own nav — a full-width bottom bar (mobile and desktop alike, now that the sidebar
 // footer that used to hold sync/theme is gone) rather than a small centered icon pill. Each item
 // gets equal width; icon only, the label is the `title` (and sr-only text).
 const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Panel) => void }) => (
@@ -224,7 +228,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
           key={value}
           title={label}
           className={cn(
-            "flex flex-1 cursor-pointer items-center justify-center py-2.5 transition-colors",
+            "flex flex-1 cursor-pointer items-center justify-center py-3.5 transition-colors md:py-2.5",
             "has-focus-visible:outline has-focus-visible:outline-ring",
             active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
@@ -237,7 +241,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             onChange={() => setPanel(value)}
             className="sr-only"
           />
-          <Icon className="size-4" aria-hidden />
+          <Icon className="size-5 md:size-4" aria-hidden />
           <span className="sr-only">{label}</span>
         </label>
       );

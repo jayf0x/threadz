@@ -14,6 +14,8 @@ export type MessageInputHandle = {
   getText: () => string;
   /** Clears the draft — call only once whatever read it with `getText` has actually succeeded. */
   clear: () => void;
+  /** Focus the editor (dictation start — see Composer). */
+  focus: () => void;
 };
 
 type Status = { text: string; tone: "error" | "ghost" | "quiet" } | null;
@@ -70,13 +72,18 @@ export const MessageInput = ({
   handleRef,
   autofocus,
 }: MessageInputProps) => {
-  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear } = useMessageInput(
+  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear, focus } = useMessageInput(
     draftKey,
     busy,
     onSubmit,
   );
 
-  useImperativeHandle(handleRef, () => ({ insertAtCaret, getText, clear }), [insertAtCaret, getText, clear]);
+  useImperativeHandle(handleRef, () => ({ insertAtCaret, getText, clear, focus }), [
+    insertAtCaret,
+    getText,
+    clear,
+    focus,
+  ]);
 
   const send = async () => {
     const rest = await submit();
@@ -99,7 +106,7 @@ export const MessageInput = ({
           onReferenceClick={onReferenceClick}
           className={cn(
             "min-w-0 flex-1 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
-            "[--md-max-height:45dvh] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
+            "composer-editor [--md-max-height:calc(var(--vv-h,100dvh)*0.45)] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
             editorClassName,
           )}
           onKeyDownCapture={(e) => {
@@ -113,13 +120,16 @@ export const MessageInput = ({
         {/* Side rail, top to bottom: secondary actions first, send always last (bottom). At most
             three primary actions (attach, mic, send) — anything else goes in the `trailingActions`
             ⋯ menu instead of its own button. */}
-        <div className="flex shrink-0 flex-col items-center justify-between gap-1">
-          <div className="flex flex-col items-center gap-1">
+        {/* On a phone the four buttons make a 2×2 (send bottom-right) instead of a 170px column — a
+            column that tall made the composer far taller than its text, worst with the keyboard up. */}
+        <div className="grid shrink-0 auto-cols-min grid-cols-2 content-end items-center justify-items-center gap-1 md:flex md:flex-col md:justify-between">
+          <div className="contents md:flex md:flex-col md:items-center md:gap-1">
             <ImageButton onFiles={attach} disabled={busy} />
             {leadingActions}
             {trailingActions}
           </div>
           <Button
+            className="col-start-2 md:col-start-auto"
             size={submitButtonSize}
             aria-label={submitAriaLabel}
             title={submitAriaLabel}
@@ -131,11 +141,13 @@ export const MessageInput = ({
         </div>
       </div>
 
-      <div className="mt-1 h-4" aria-live="polite">
+      {/* No reserved height: a permanently empty line under the editor was dead space, worst with
+          the keyboard up. It exists only while there's something to say. */}
+      <div aria-live="polite">
         {status && (
           <p
             className={cn(
-              "truncate font-mono text-[11px]",
+              "mt-1 truncate font-mono text-[11px]",
               status.tone === "error" && "text-destructive",
               status.tone === "ghost" && "italic text-foreground/70",
               status.tone === "quiet" && "text-muted-foreground",

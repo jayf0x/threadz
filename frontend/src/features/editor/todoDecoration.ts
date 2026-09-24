@@ -15,28 +15,30 @@ import { type ParsedTodoItem, parseTodoGroups, parseTodos } from "@/lib/todos";
 type ProseStateModule = { Plugin: typeof Plugin; PluginKey: typeof PluginKey };
 type ProseViewModule = { Decoration: typeof Decoration; DecorationSet: typeof DecorationSet };
 
-// Decoration-only rendering for `@/todo <text>` command lines inside the message view (see
+// Decoration-only rendering for `/todo <text>` command lines inside the message view (see
 // backlog.md "Todo commands" step 4, the feedback round that replaced the old clickable widget
 // with CSS-only highlighting, and "Todo feedback round 2" item 2, which brings a checkbox back —
-// as a rail beside the paragraph, not inline in it). `@/todo` and `@/todos <title>` aren't real
+// as a rail beside the paragraph, not inline in it). `/todo` and `/todos <title>` aren't real
 // markdown, so there's no AST node for either — this doesn't add one; it decorates a top-level
-// paragraph whose *rendered* text starts with one of the two triggers, plus (for a `@/todos`
+// paragraph whose *rendered* text starts with one of the two triggers, plus (for a `/todos`
 // group) every list-item line in the contiguous run right after it.
 //
-// The `~~…~~` strikethrough that marks a single `@/todo` line done is real GFM (already parsed by
+// The `~~…~~` strikethrough that marks a single `/todo` line done is real GFM (already parsed by
 // Crepe's bundled `gfm` preset), so a closed todo's paragraph text reads identically to an open
 // one; the paragraph's own done/fade styling still reads that off the `strike_through` mark
 // (`isDone`, unchanged from the CSS-only round). The checkbox widget's own open/closed state is a
 // *separate* read, straight off `parseTodos`/`parseTodoGroups(getValue())` on every `decorations()`
 // call — never a cached/ref'd copy — so a stale render can't show a box that doesn't match the
 // message's actual current content (see backlog.md point 4, "state management").
-const TODO_TOKEN = "@/todo";
-const TODO_PREFIX = /^@\/todo(?:\s|$)/;
-// `@/todos <title>` — the group trigger. A local, lightweight matcher (same convention as
+const TODO_PREFIX = /^@?\/todo(?:\s|$)/;
+// `/todos <title>` — the group trigger. A local, lightweight matcher (same convention as
 // TODO_PREFIX above), deliberately not `lib/todos.ts`'s own unexported `GROUP_TRIGGER` — this file
 // only ever needs "does this paragraph's text start with the trigger", not the full parse.
-const TODOS_TOKEN = "@/todos";
-const TODOS_PREFIX = /^@\/todos(?:\s|$)/;
+const TODOS_PREFIX = /^@?\/todos(?:\s|$)/;
+// The command word itself (what gets the accent colour), with or without the legacy `@`.
+const TOKEN = /^@?\/todos?/;
+
+const tokenLength = (trimmed: string) => TOKEN.exec(trimmed)?.[0].length ?? 0;
 
 const isDone = (node: ProseNode) =>
   node.childCount > 0 && node.child(0).marks.some((m) => m.type.name === "strike_through");
@@ -101,7 +103,7 @@ export const todoDecorationPlugin = (prose: ProseStateModule, view: ProseViewMod
         // The group whose contiguous item list is expected right after the paragraph just seen —
         // `parseTodoGroups` guarantees a matched trigger is always followed by at least one item
         // line, in the same order Crepe rendered them in, so a `bullet_list` immediately following
-        // a matched `@/todos` paragraph is always that group's own list.
+        // a matched `/todos` paragraph is always that group's own list.
         let pendingItems: ParsedTodoItem[] | null = null;
 
         const pushLine = (offset: number, nodeSize: number, lead: number, tokenLen: number, done: boolean) => {
@@ -131,7 +133,7 @@ export const todoDecorationPlugin = (prose: ProseStateModule, view: ProseViewMod
             if (TODOS_PREFIX.test(trimmed)) {
               // The group's own title line: highlight only (per backlog.md, it's a title, not
               // itself a todo), then arm `pendingItems` for the bullet_list right after it.
-              pushLine(offset, node.nodeSize, lead, TODOS_TOKEN.length, isDone(node));
+              pushLine(offset, node.nodeSize, lead, tokenLength(trimmed), isDone(node));
               pendingItems = groups[groupPtr]?.items ?? null;
               groupPtr++;
               return;
@@ -140,7 +142,7 @@ export const todoDecorationPlugin = (prose: ProseStateModule, view: ProseViewMod
               const entry = flatTodos[todoPtr];
               todoPtr++;
               const done = entry?.done ?? isDone(node);
-              pushLine(offset, node.nodeSize, lead, TODO_TOKEN.length, done);
+              pushLine(offset, node.nodeSize, lead, tokenLength(trimmed), done);
               pushCheckbox(offset + 1, done, entry?.lineIndex);
               pendingItems = null;
               return;

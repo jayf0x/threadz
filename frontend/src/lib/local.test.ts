@@ -88,7 +88,7 @@ test("import never creates two notes at one seq, and brings back what we trashed
   expect((await exportSnapshot()).trash?.some((x) => x.thread.id === gone.id)).toBe(false);
 });
 
-test("listTrash surfaces deleted threads for Recently Deleted, newest deletion first", async () => {
+test("listTrash surfaces deleted threads for Bin, newest deletion first", async () => {
   const kept = await localApi.createThread({ title: "never deleted" });
   const first = await localApi.createThread({ title: "first deleted" });
   await localApi.deleteThread(first.id);

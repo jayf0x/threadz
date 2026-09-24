@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cachedModelIds, findLanguage } from "./models";
+import { cachedModelIds, downloadPct, findLanguage } from "./models";
 
 const file = (model: string, f: string) => `https://huggingface.co/${model}/resolve/main/onnx/${f}_quantized.onnx`;
 
@@ -25,4 +25,13 @@ test("a model id that prefixes another is not confused with it", () => {
     file("Xenova/whisper-tiny.en", "decoder_model_merged"),
   ];
   expect(cachedModelIds(urls)).not.toContain("Xenova/whisper-tiny");
+});
+
+test("download % is measured against the model's real size, not just the files seen so far", () => {
+  const MB = 1024 * 1024;
+  // Only the tiny config/tokenizer files have reported, and they're 100% done: that is ~0% of a 40MB model.
+  expect(downloadPct(20_000, 20_000, 40 * MB)).toBe(0);
+  expect(downloadPct(20 * MB, 25 * MB, 40 * MB)).toBe(50);
+  // The estimate was low: the real total wins, and it never claims done before the model is ready.
+  expect(downloadPct(60 * MB, 60 * MB, 40 * MB)).toBe(99);
 });

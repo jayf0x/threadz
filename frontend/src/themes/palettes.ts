@@ -1,99 +1,76 @@
-// The palette picker's data (Settings' Appearance section). Not a general theming API — just
-// enough to preview and pick one of the CSS files in this folder. `swatch` holds literal preview
-// colors (this directory is lint:tokens' one exemption: "Themes are the one place raw color
-// literals belong") because a preset's swatch has to show ITS colors regardless of which palette
-// is actually active — there's no CSS var for "what oklch background does dracula use".
+// The palette picker's data (Settings' Appearance section). A palette is a colour *family* that ships
+// both a light and a dark mode (the matching `themes/<id>.css`: base block = light, `.dark`/`.system`
+// = dark); which mode is showing is the Light/System/Dark toggle's job alone — a palette never
+// decides it. That's why there is no "Gruvbox Light" / "Gruvbox Dark" pair here and no always-dark
+// identities (Dracula, Monokai…): forcing "light" on those would still have shown dark, which is
+// exactly the confusion this replaced.
 //
-// Names are recognizable dev-culture theme names (editor/terminal colorschemes), not poetic ones —
-// see AGENTS.md's naming note. A light-identity entry (base block is light) pairs with a same-family
-// dark entry where one exists (gruvbox-light/gruvbox-dark, one-light/one-dark); everforest and
-// solarized-light don't have a picker-visible dark sibling, but forcing dark on either still shows
-// that family's real dark variant (see their .css files). Everything else here is an always-dark
-// identity (no real light variant) — forcing "light" on one of those still shows that theme.
+// `swatch` holds literal preview colours per mode (this directory is lint:tokens' one exemption:
+// "Themes are the one place raw color literals belong") because a preset's swatch has to show ITS
+// colours regardless of which palette is actually active. Names are recognizable dev-culture theme
+// names; they aren't shown in the UI (a dot per family, `label` is the accessible name).
 
-export type PaletteId =
-  | "gruvbox-light"
-  | "gruvbox-dark"
-  | "one-light"
-  | "one-dark"
-  | "everforest"
-  | "solarized-light"
-  | "night-owl"
-  | "dracula"
-  | "nord"
-  | "ubuntu"
-  | "monokai"
-  | "catppuccin";
+export type PaletteId = "gruvbox" | "one" | "everforest" | "solarized" | "catppuccin" | "nord";
+
+type Swatch = { background: string; primary: string };
 
 export type Palette = {
   id: PaletteId;
   label: string;
-  swatch: { background: string; primary: string };
+  swatch: { light: Swatch; dark: Swatch };
 };
 
 export const PALETTES: Palette[] = [
   {
-    id: "gruvbox-light",
-    label: "Gruvbox Light",
-    swatch: { background: "oklch(0.973 0.008 85)", primary: "oklch(0.66 0.14 68)" },
+    id: "gruvbox",
+    label: "Gruvbox",
+    swatch: {
+      light: { background: "oklch(0.973 0.008 85)", primary: "oklch(0.66 0.14 68)" },
+      dark: { background: "oklch(0.165 0.008 70)", primary: "oklch(0.74 0.13 72)" },
+    },
   },
   {
-    id: "one-light",
-    label: "One Light",
-    swatch: { background: "oklch(0.975 0.006 250)", primary: "oklch(0.55 0.09 255)" },
+    id: "one",
+    label: "One",
+    swatch: {
+      light: { background: "oklch(0.975 0.006 250)", primary: "oklch(0.55 0.09 255)" },
+      dark: { background: "oklch(0.16 0.015 255)", primary: "oklch(0.68 0.09 255)" },
+    },
   },
   {
     id: "everforest",
     label: "Everforest",
-    swatch: { background: "oklch(0.972 0.012 140)", primary: "oklch(0.55 0.1 145)" },
+    swatch: {
+      light: { background: "oklch(0.972 0.012 140)", primary: "oklch(0.55 0.1 145)" },
+      dark: { background: "oklch(0.155 0.014 145)", primary: "oklch(0.68 0.1 148)" },
+    },
   },
   {
-    id: "solarized-light",
-    label: "Solarized Light",
-    swatch: { background: "oklch(0.974 0.026 90)", primary: "oklch(0.644 0.102 187)" },
-  },
-  {
-    id: "night-owl",
-    label: "Night Owl",
-    swatch: { background: "oklch(0.193 0.045 244)", primary: "oklch(0.829 0.092 181)" },
-  },
-  {
-    id: "dracula",
-    label: "Dracula",
-    swatch: { background: "oklch(0.288 0.022 278)", primary: "oklch(0.742 0.149 302)" },
-  },
-  {
-    id: "nord",
-    label: "Nord",
-    swatch: { background: "oklch(0.324 0.023 264)", primary: "oklch(0.775 0.062 218)" },
-  },
-  {
-    id: "gruvbox-dark",
-    label: "Gruvbox Dark",
-    swatch: { background: "oklch(0.277 0 90)", primary: "oklch(0.731 0.182 52)" },
-  },
-  {
-    id: "ubuntu",
-    label: "Ubuntu",
-    swatch: { background: "oklch(0.223 0.071 343)", primary: "oklch(0.641 0.194 38)" },
-  },
-  {
-    id: "monokai",
-    label: "Monokai",
-    swatch: { background: "oklch(0.274 0.011 115)", primary: "oklch(0.642 0.24 8)" },
+    id: "solarized",
+    label: "Solarized",
+    swatch: {
+      light: { background: "oklch(0.974 0.026 90)", primary: "oklch(0.644 0.102 187)" },
+      dark: { background: "oklch(0.267 0.049 220)", primary: "oklch(0.644 0.102 187)" },
+    },
   },
   {
     id: "catppuccin",
     label: "Catppuccin",
-    swatch: { background: "oklch(0.243 0.03 284)", primary: "oklch(0.787 0.119 305)" },
+    swatch: {
+      light: { background: "oklch(0.958 0.006 265)", primary: "oklch(0.555 0.25 297)" },
+      dark: { background: "oklch(0.243 0.03 284)", primary: "oklch(0.787 0.119 305)" },
+    },
   },
   {
-    id: "one-dark",
-    label: "One Dark",
-    swatch: { background: "oklch(0.293 0.016 264)", primary: "oklch(0.73 0.121 245)" },
+    id: "nord",
+    label: "Nord",
+    swatch: {
+      light: { background: "oklch(0.951 0.007 261)", primary: "oklch(0.594 0.077 254)" },
+      dark: { background: "oklch(0.324 0.023 264)", primary: "oklch(0.775 0.062 218)" },
+    },
   },
 ];
 
-export const DEFAULT_PALETTE: PaletteId = "gruvbox-light";
+export const DEFAULT_PALETTE: PaletteId = "gruvbox";
 
 export const isPaletteId = (v: string): v is PaletteId => PALETTES.some((p) => p.id === v);

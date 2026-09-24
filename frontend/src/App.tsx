@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
 import { shortcutBlocked } from "@/lib/dom";
 import { useStatus } from "@/lib/status";
+import { trackViewport } from "@/lib/viewport";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
 // The shell is keyed by mode: switching stores remounts every view so nothing
@@ -65,6 +66,8 @@ export const App = () => {
   const onSelectMessage = useCallback((id: string | null) => {
     setSelectedMessageIdRaw(id);
   }, []);
+
+  useEffect(() => trackViewport(), []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -171,15 +174,23 @@ const Shell = ({
 
   return (
     // z-10: stacks above BackgroundLayer's fixed z-0 wallpaper (App.tsx) regardless of paint
-    // order. The aside/main panes are themselves translucent (bg-*/92, no blur — see AGENTS.md's
+    // order. The aside/main panes are themselves translucent (`surface-*`, no blur — see AGENTS.md's
     // Appearance note) so the wallpaper still shows faintly through; only floating chrome
     // (popovers, dropdown menus) also gets backdrop-blur, reserved for exactly that per Wigl's
     // pattern this was ported from.
-    <div className="relative z-10 grid h-dvh lg:grid-cols-[23rem_1fr]">
-      <aside className={cn("min-h-0 border-r border-border bg-secondary/92", selected && "hidden lg:block")}>
+    // Fixed to the *visual* viewport (lib/viewport.ts), not `h-dvh`: with the iOS keyboard up the
+    // shell is exactly the strip above it, so the composer sits on the keyboard and the message
+    // list is the only thing that scrolls. The vars fall back to a plain full-height box. The
+    // columns are `minmax(0,1fr)`, never `auto`: an auto track grows to its content's nowrap width,
+    // so one long thread title (`truncate` is nowrap) used to widen the whole layout past the screen.
+    <div
+      className="fixed left-0 top-0 z-10 grid w-full grid-cols-1 lg:grid-cols-[23rem_minmax(0,1fr)]"
+      style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
+    >
+      <aside className={cn("surface-secondary min-h-0 min-w-0 border-r border-border", selected && "hidden lg:block")}>
         <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
       </aside>
-      <main className={cn("min-h-0", !selected && "hidden lg:block")}>
+      <main className={cn("min-h-0 min-w-0", !selected && "hidden lg:block")}>
         {selected ? (
           <ThreadView
             key={selected}
@@ -201,7 +212,7 @@ const Shell = ({
 };
 
 const Blank = () => (
-  <div className="flex h-full flex-col items-center justify-center gap-4 bg-background/92 px-8 text-center">
+  <div className="surface-background flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
     <p className="font-serif text-3xl italic text-muted-foreground">Pick a thread, or start one.</p>
     <Eyebrow>
       <kbd>⌘k</kbd> jump · <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send

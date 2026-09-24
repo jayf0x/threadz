@@ -726,6 +726,106 @@ filter removed from Threadz (closed-todo filter is now a dropdown in Todos); "Co
 a side rail (send at the bottom); top line removed (it was the Local-mode indicator bar in `App.tsx`).
 The per-row "Mark resolved" toggle, its badge and the resolved filter plumbing were removed too.
 
+## V1.7 — mobile-first refinement (2026-09-24)
+
+From a real-phone session (iOS PWA, "Lock zoom" on). The app was built on desktop; this pass makes the phone the
+primary target. Each item below carries the root cause found while reading the code, not just the symptom.
+**All 19 items below are done.** Verified with `bun run check` + `bun run --cwd frontend build`, and driven in headless
+Chromium at an iPhone 13 viewport (390×664, touch, `--use-fake-device-for-media-stream`) with screenshots — including a
+real first-run whisper download through the dictation states. **Not** verified on iOS WebKit or a device (no Xcode
+simulator here, Playwright's WebKit build wasn't installed): the keyboard/visual-viewport behaviour in particular is
+built from how iOS is documented to behave and simulated by shrinking the viewport, so it's on the phone-only list in
+"Blocked on a real phone" below.
+
+**Commands**
+1. **`/` instead of `@/`.** `@` and `/` are two awkward chords on a phone keyboard. Commands are now `/todo <text>` and
+   `/todos <title>` (still anchored to the start of a line, so `see /todo below` never matches). The old `@/` form
+   keeps parsing — existing notes must not silently stop being todos — and toggling a line preserves whichever prefix
+   it was written with. Crepe's slash menu is not enabled (`CrepeBuilder` only adds list-item + placeholder), so
+   there's nothing for `/` to collide with.
+
+**Dictation**
+2. **Download "instantly 99%", then stalls — a UI-state bug, not a fast download.** `whisper-worker.ts` blended
+   progress over the files *seen so far*; the first files to report (config, tokenizer — a few KB) finish at once,
+   so `loaded/total` is 100% → clamped to 99 and then held there (`high` is monotonic) while the 40MB ONNX weights
+   start. Fix: the denominator is at least the model's known size (`models.ts`'s `mb`), so the bar moves with the real
+   download.
+3. **Recording animation plays while the model still loads.** The mic blinked for `phase === "starting"` and the
+   meter ran for `phase === "listening"`, but `listening` only meant "VAD + mic are open" — the whisper model could
+   still be downloading behind it. Now "operational" = listening **and** model `ready`; until then the button shows a
+   spinner and the status line says why (Starting microphone… / Downloading speech model… n% / Loading speech
+   model…). Meter + "Listening…" arrive together.
+4. **Focus the editor while dictating.** Starting dictation now focuses the composer (a user gesture, so iOS raises
+   the keyboard), so it's obvious where text lands and it can be edited live. Trade-off: the keyboard takes space.
+5. **iOS PWA crash on the second try — checked, not reproducible here.** Read the start/stop path: `MicVAD` is
+   created and `destroy()`ed per session, the mic tracks are stopped explicitly, the whisper worker stays resident for
+   `IDLE_UNLOAD_MS`. Nothing leaks in an obvious way; the likely cause is WebKit's memory ceiling with the whisper
+   WASM heap + a fresh ONNX (VAD) session alive at once. Not fixable from here without a device; if it recurs, the
+   experiment is to keep one `MicVAD` and `pause()/start()` it instead of `new`/`destroy` per session, and to try
+   `whisper-tiny` if `base` is selected. Left as-is on purpose (see "Blocked on a real phone").
+
+**Thread view**
+6. **A message stays selected after a todo jump, and there's no way to clear it.** Selection now also clears on any
+   click outside a message row (empty space, header, composer) — menus/popovers (Radix portals) are excluded so
+   using a menu doesn't drop the selection.
+7. **Metadata only on select.** Date, the unsynced cloud, the voice mic and "edited" render only for the selected
+   message. The ⋯ menu moved into that same bar, so an unselected message is just its text.
+8. **Note icon only when there is a note.** A message without a note shows nothing; **Add note** is an action in the ⋯
+   menu that opens the same popover (Radix `Popover.Anchor` at the gutter position).
+9. **Keyboard/overflow/scroll.** Root causes, in order of likelihood:
+   - iOS doesn't shrink the layout viewport for the keyboard; it *pans the visual viewport* to reveal the focused
+     field. With `h-dvh` the header/list slid off-screen and the page looked "overflowing". Fix: the shell is sized to
+     `visualViewport` (CSS vars `--vv-h` / `--vv-top`, `lib/viewport.ts`) and re-synced on every viewport `resize` and
+     `scroll` (the keyboard animates over several events — the "timing issue").
+   - `scrollIntoView` on the end sentinel scrolls *every* scrollable ancestor, including the visual viewport, and fought
+     the resize above. Replaced by setting the list's own `scrollTop`.
+   - `body` only had `overflow: hidden`; iOS still rubber-bands/scrolls it. `body` is now `position: fixed`.
+   - **A real overflow bug, reproduced:** the shell was a CSS grid with an implicit `auto` column, which sizes to its
+     content's *nowrap* width — one long (auto-generated) thread title, which is `truncate`d, widened the whole layout
+     past the screen and clipped the header icon and the send button. Columns are `minmax(0,1fr)` now.
+   Composer follows the described behaviour: it lives at the end of the message scroller — **focused → pinned to the
+   bottom above the keyboard while messages scroll; not focused → scrolls with the messages** (desktop keeps it pinned).
+   Pinning is `:focus-within`, not state (a focused Send that turns `disabled` after sending fires no blur — the first
+   version, state-driven, got stuck pinned; caught in the headless run). A tap outside the composer also blurs it,
+   since iOS keeps the keyboard up for a tap on plain content.
+10. **Whitespace under the composer.** The reserved 16px status line under the editor is gone (it only renders while
+    there's something to say), and with the keyboard open the composer drops the home-indicator padding and shrinks
+    the editor's minimum height (`html[data-keyboard]`, set from the same viewport hook).
+
+**Chrome / navigation**
+11. **Main navigation at the bottom** (Threads / Todos / Bin / Settings), safe-area aware.
+12. **"+" → "+ New"**: a labelled pill (floating, bottom-right of the index, above the nav).
+13. **Keyboard hints hidden on touch** (`(pointer: coarse)`): search placeholder `( / )`, "Press n…", `⌘K` palette `esc`,
+    the `(n)` tooltip.
+14. **No page scroll / rubber-band.** `body { position: fixed }` + `overscroll-behavior: none`, scrollers `contain`.
+15. **"Recently Deleted" → "Bin".**
+16. **Bigger touch targets globally** (`< md` only; desktop unchanged): icon buttons 32→40px, row actions, menu items,
+    todo/trash controls, note/edit buttons, theme toggle.
+17. **Thread row**: *Regenerate title* moved into the ⋯ menu next to Rename/Export/Delete; Pin stays as the one
+    always-visible action.
+
+**Settings**
+18. **Appearance — palettes are now light/dark agnostic.** The Light/System/Dark toggle is the only thing that decides
+    light vs dark; a palette is just a colour family that ships *both* modes. Families with a genuine light and dark
+    (Gruvbox, One, Everforest, Solarized, Catppuccin, Nord) stay; always-dark identities that had no honest light
+    variant (Night Owl, Dracula, Ubuntu, Monokai) are dropped, so 12 → 6. Old stored palette ids are migrated in
+    `index.html`. Names removed; every swatch has a border (muted when unselected, primary when selected) and shows the
+    colours of the mode currently in effect.
+19. **Background.** No None/Image switch: one **Choose image** action, a **Remove** button (returns to the default
+    wash), an opacity slider. "Fairly hidden even at 100%" root cause: not a filter — the panes themselves are painted
+    `bg-*/92`, i.e. 92% opaque *over* the wallpaper, so 8% of it was ever visible. The slider now drives pane
+    translucency (`--pane-alpha`); 100% shows the wallpaper strongly, the default is **80%**.
+
+**Notes / decisions**
+- Dropping four palettes is reversible from git history if wanted; the alternative (authoring light variants for
+  dark-only identities) would be inventing colours those themes never had.
+- Removing "None" means there is no fully flat background any more; the default wash is very low contrast by design.
+- Picking a menu item used to toggle its message's selection (Radix portals bubble React events through the row) —
+  harmless while the ⋯ was always visible, wrong now that it only exists on the selected row. `rowSelect.ts` now
+  ignores clicks inside a Radix popper wrapper (test added).
+- iOS-only, still to confirm on a phone: keyboard raise on the dictation tap, the composer pin/unpin around the
+  keyboard, the bottom-nav safe-area padding, and the second-dictation crash (item 5).
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
@@ -749,6 +849,8 @@ The per-row "Mark resolved" toggle, its badge and the resolved filter plumbing w
 
 Everything is verified headless in Chrome (desktop + 390px); none of this has run on an iPhone.
 
+- **V1.7 on iOS (see that section):** visual-viewport sizing with the keyboard up, the composer pin/unpin, scroll
+  bounds (top and bottom reachable), no page rubber-band on the tab panels, dictation focus + the second-start crash.
 - **Popovers and the message menu on iOS:** positioning with the keyboard open, tap targets, dismissal. Only
   testable on a device.
 - **Deep-link straight into capture — code done, verification isn't.** `?capture=1` / the PWA shortcut (above)

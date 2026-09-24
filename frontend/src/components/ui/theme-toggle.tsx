@@ -36,7 +36,7 @@ export const ThemeToggle = ({ className }: { className?: string }) => {
             key={value}
             title={label}
             className={cn(
-              "flex cursor-pointer items-center p-1.5 transition-colors has-focus-visible:outline",
+              "flex cursor-pointer items-center p-2.5 transition-colors has-focus-visible:outline md:p-1.5",
               "has-focus-visible:outline-ring",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}
@@ -53,8 +53,7 @@ export const ThemeToggle = ({ className }: { className?: string }) => {
               className="sr-only"
             />
             <svg
-              width="14"
-              height="14"
+              className="size-4 md:size-3.5"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"

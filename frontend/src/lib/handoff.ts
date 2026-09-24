@@ -153,7 +153,7 @@ export const goLive = (phase?: Phase) =>
     return report;
   });
 
-// --- restore: Undo toast / Recently Deleted -------------------------------------
+// --- restore: Undo toast / Bin -------------------------------------
 
 // Puts a thread this device's own trash is still holding back into play (see `local.ts`'s
 // `restoreFromTrash`, the exact inverse of its `deleteThread`). Local mode's own read is that

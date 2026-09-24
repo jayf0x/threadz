@@ -1,12 +1,10 @@
 /*
- * one-light — Atom's One Light: cool neutral background, same ledger structure (paper-light
- * background, hairline rules), a blue accent (renamed from slate-quarry — the values were already
- * One-Light-shaped, just poetically named; see AGENTS.md's naming note). Same token set, same
- * base/.dark/.system shape, so it's a drop-in swap via [data-palette] — see gruvbox-light.css.
- * Pairs with one-dark.css for the same family's dark identity.
+ * one — a palette family: `.dark` / `.system` are its dark mode, the base block its light one.
+ * Light vs dark is the Light/System/Dark toggle's job alone (themes/palettes.ts); a palette never decides it.
+ * Every palette defines exactly the same token set (copy this file's shape for a new one).
  */
 
-:root[data-palette="one-light"] {
+:root[data-palette="one"] {
   --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -33,7 +31,7 @@
   --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
-:root[data-palette="one-light"].dark {
+:root[data-palette="one"].dark {
   --background: oklch(0.16 0.015 255);
   --foreground: oklch(0.93 0.01 250);
   --card: oklch(0.205 0.016 255);
@@ -57,7 +55,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-palette="one-light"].system {
+  :root[data-palette="one"].system {
     --background: oklch(0.16 0.015 255);
     --foreground: oklch(0.93 0.01 250);
     --card: oklch(0.205 0.016 255);

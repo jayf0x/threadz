@@ -19,9 +19,10 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-xs",
-  md: "h-9 px-3.5 text-sm",
-  icon: "h-8 w-8 p-0 text-sm",
+  // Phone-sized hit areas below `md` (40px icons, 36px small buttons), the compact desktop sizes from `md`.
+  sm: "h-9 px-3 text-xs md:h-7 md:px-2.5",
+  md: "h-10 px-4 text-sm md:h-9 md:px-3.5",
+  icon: "h-10 w-10 p-0 text-sm md:h-8 md:w-8",
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

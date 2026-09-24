@@ -11,7 +11,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   ({ className, ...props }, ref) => (
     // text-base below md: iOS Safari auto-zooms the page on focus when a field's font-size is
     // under 16px, and doesn't always zoom back out on blur (markdown-editor.css has the same fix).
-    <input ref={ref} className={cn(shared, "h-9 px-3 text-base md:text-sm", className)} {...props} />
+    <input ref={ref} className={cn(shared, "h-10 px-3 text-base md:h-9 md:text-sm", className)} {...props} />
   ),
 );
 Input.displayName = "Input";

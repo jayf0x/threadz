@@ -56,3 +56,8 @@ test("a nested click deep inside an ignore zone still resolves via closest(), no
   const path = row.querySelector("path") as Element;
   expect(shouldSelectRow(path, false)).toBe(false);
 });
+
+test("a click inside a Radix menu/popover portal (bubbled up through the row by React) does not select", () => {
+  const portal = el(`<div data-radix-popper-content-wrapper=""><div role="menu"><button>Copy</button></div></div>`);
+  expect(shouldSelectRow(portal.querySelector("button") as Element, false)).toBe(false);
+});

@@ -46,5 +46,7 @@ export const useMessageInput = (draftKey: string, busy: boolean, onSubmit: (text
     setDraft("");
   };
 
-  return { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear };
+  const focus = () => editor.current?.focus();
+
+  return { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear, focus };
 };

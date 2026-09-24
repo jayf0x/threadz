@@ -2,6 +2,7 @@
 
 import { env, type PipelineType, pipeline, TextStreamer } from "@huggingface/transformers";
 import { errorMessage } from "@/lib/errors";
+import { downloadPct, findModel } from "./models";
 
 // On-device transcription in a worker so decoding never janks the UI. One pipeline is
 // resident at a time; switching models disposes the old one. Messages are handled
@@ -41,6 +42,7 @@ const getAsr = (model: string): Promise<Asr> => {
 
   // Each model ships as several files; report one blended percentage, never a per-file
   // 0→100 sawtooth. Monotonic, and held under 100 until the pipeline actually resolves.
+  const expected = findModel(model).mb * 1024 * 1024;
   const files = new Map<string, { loaded: number; total: number }>();
   let high = 0;
   const asr = pipeline("automatic-speech-recognition" as PipelineType, model, {
@@ -53,7 +55,7 @@ const getAsr = (model: string): Promise<Asr> => {
         loaded += f.loaded;
         total += f.total;
       }
-      high = Math.max(high, Math.min(99, Math.round((loaded / total) * 100)));
+      high = Math.max(high, downloadPct(loaded, total, expected));
       post({ type: "progress", model, pct: high });
     },
   });

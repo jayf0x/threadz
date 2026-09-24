@@ -20,7 +20,7 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
   return (
     <>
       <header className="px-5 pb-4 pt-6">
-        <h1 className="font-serif text-4xl leading-none tracking-tight">Recently Deleted</h1>
+        <h1 className="font-serif text-4xl leading-none tracking-tight">Bin</h1>
         <Eyebrow className="mt-2">
           {trash === null ? "Reading…" : `${trash.length} thread${trash.length === 1 ? "" : "s"}`}
         </Eyebrow>
@@ -28,7 +28,7 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
         {trash?.length === 0 && (
-          <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">Nothing deleted recently.</p>
+          <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">The bin is empty.</p>
         )}
         <ul>
           {trash?.map((t) => (
@@ -72,12 +72,12 @@ const TrashRow = ({ thread, onRestore }: { thread: TrashedThread; onRestore: () 
         title="Restore"
         disabled={busy}
         className={cn(
-          "shrink-0 p-1.5 text-muted-foreground transition-colors hover:text-foreground",
+          "-mr-2.5 shrink-0 p-2.5 text-muted-foreground transition-colors hover:text-foreground md:mr-0 md:p-1.5",
           "disabled:opacity-60",
         )}
         onClick={restore}
       >
-        <RotateCcw className={cn("size-3.5", busy && "animate-spin")} />
+        <RotateCcw className={cn("size-4 md:size-3.5", busy && "animate-spin")} />
       </button>
     </li>
   );

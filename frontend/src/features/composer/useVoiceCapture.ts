@@ -41,6 +41,9 @@ export const useVoiceCapture = (threadId: string, onText: (text: string) => void
 
   return {
     ...state,
+    // Listening AND able to transcribe: the mic can be open while the model is still downloading,
+    // and until both are true nothing you say will land anywhere.
+    operational: state.phase === "listening" && state.model.status === "ready",
     toggle: () => (getSnapshot().phase === "idle" ? start(threadId) : stop()),
     recover,
     dismissRecovery,

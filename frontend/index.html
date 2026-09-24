@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-palette="gruvbox-light">
+<html lang="en" data-palette="gruvbox">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -14,32 +14,42 @@
       // Pre-paint theme + palette: single writer for the root class/attribute, so no flash.
       // React only ever calls window._setTheme / window._setPalette (ui/theme-toggle.tsx,
       // features/settings/sections/AppearanceSection.tsx). PALETTE_BG is a rough hex stand-in for
-      // each palette's real --background (themes/*.css) — good enough for the browser-chrome
+      // each palette's real --background per mode (themes/*.css) — good enough for the browser-chrome
       // color, which can't read a CSS var before that stylesheet is guaranteed loaded.
       (function () {
         var PALETTE_BG = {
-          "gruvbox-light": { light: "#f8f5ee", dark: "#1b1917" },
-          "one-light": { light: "#f4f6f9", dark: "#15171c" },
+          gruvbox: { light: "#f8f5ee", dark: "#1b1917" },
+          one: { light: "#f4f6f9", dark: "#15171c" },
           everforest: { light: "#f3f7f2", dark: "#121714" },
-          "solarized-light": { light: "#fdf6e3", dark: "#00272f" },
-          "night-owl": { light: "#011627", dark: "#011627" },
-          dracula: { light: "#282a36", dark: "#282a36" },
-          nord: { light: "#2e3440", dark: "#2e3440" },
-          "gruvbox-dark": { light: "#282828", dark: "#282828" },
-          ubuntu: { light: "#300a24", dark: "#300a24" },
-          monokai: { light: "#272822", dark: "#272822" },
-          catppuccin: { light: "#1e1e2e", dark: "#1e1e2e" },
-          "one-dark": { light: "#282c34", dark: "#282c34" },
+          solarized: { light: "#fdf6e3", dark: "#00272f" },
+          catppuccin: { light: "#eff1f5", dark: "#1e1e2e" },
+          nord: { light: "#eceff4", dark: "#2e3440" },
+        };
+        // Palettes used to be split into light/dark identities (gruvbox-light/-dark, always-dark
+        // dracula…). They're colour families now and the Light/System/Dark toggle picks the mode, so an
+        // old stored id maps to its family — and one that was a dark identity keeps looking dark.
+        var LEGACY = {
+          "gruvbox-light": ["gruvbox"], "gruvbox-dark": ["gruvbox", true],
+          "one-light": ["one"], "one-dark": ["one", true],
+          "solarized-light": ["solarized"],
+          "night-owl": ["nord", true], dracula: ["catppuccin", true], ubuntu: ["gruvbox", true], monokai: ["gruvbox", true],
         };
         var root = document.documentElement;
         var theme = localStorage.getItem("threadz-theme") || "system";
-        var palette = localStorage.getItem("threadz-palette") || "gruvbox-light";
+        var palette = localStorage.getItem("threadz-palette") || "gruvbox";
+        var legacy = LEGACY[palette];
+        if (legacy) {
+          palette = legacy[0];
+          localStorage.setItem("threadz-palette", palette);
+          if (legacy[1]) { theme = "dark"; localStorage.setItem("threadz-theme", theme); }
+        }
+        if (!PALETTE_BG[palette]) palette = "gruvbox";
 
         function syncMeta() {
           var meta = document.querySelector('meta[name="theme-color"]');
           if (!meta) return;
           var dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-          var bg = PALETTE_BG[palette] || PALETTE_BG["gruvbox-light"];
+          var bg = PALETTE_BG[palette] || PALETTE_BG.gruvbox;
           meta.setAttribute("content", dark ? bg.dark : bg.light);
         }
 

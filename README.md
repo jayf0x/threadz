@@ -172,7 +172,7 @@ answering `503`.
 
 ### Local mode (work with no backend)
 
-The footer pill shows where you are: **Live** (● reading/writing main) or **Local** (■ this device
+The status pill (Settings → Sync) shows where you are: **Live** (● reading/writing main) or **Local** (■ this device
 is the source of truth; a hatched bar runs across the top; a ping means main is reachable). Open
 the pill for the connection dialog.
 
@@ -218,7 +218,7 @@ won't raise the keyboard from this without a direct tap, so it may land focused 
 
 ### Settings
 
-The gear in the sidebar footer flips the sidebar to Settings: the auto-name switch, a Backend URL override (see
+The gear in the bottom tab bar (Threads · Todos · Bin · Settings) flips the sidebar to Settings: the auto-name switch, a Backend URL override (see
 "Reach the backend + Ollama from the phone"; hidden on a `VITE_LOCAL` build with no backend to point at), and the
 speech model. They are per device (`localStorage`), never synced.
 
@@ -229,17 +229,17 @@ its thread, scrolled straight to that message and briefly highlighted (a plain C
 in `styles.css` — not Motion, nothing enters or leaves the tree). A sidebar entry is one of three shapes
 (`lib/todos.ts`'s `Todo`, a discriminated union on `kind`):
 
-- **A single line.** The legacy `- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a line), or `@/todo <text>`
-  — a command anchored to the start of a line, closed by wrapping it in real markdown strikethrough
-  (`~~@/todo <text>~~`). Text is the only source of truth; tapping the checkbox rewrites that one line in place
+- **A single line.** The legacy `- [ ] `/`- [x] ` checkbox (loose, matches anywhere in a line), or `/todo <text>`
+  (the older `@/todo` still works) — a command anchored to the start of a line, closed by wrapping it in real markdown strikethrough
+  (`~~/todo <text>~~`). Text is the only source of truth; tapping the checkbox rewrites that one line in place
   (open<->closed) through the same `editMessage` a normal edit uses.
-- **A titled group.** `@/todos <title>` followed immediately by a run of list-item lines (`- `, `- [ ]`, `- [x]`
+- **A titled group.** `/todos <title>` followed immediately by a run of list-item lines (`- `, `- [ ]`, `- [x]`
   — stops at the first blank line or the first line that isn't a list item) renders as one card under `<title>`
   with its own items underneath, each independently tickable. A plain `- item` with no checkbox parses as open;
   ticking it adds the checkbox rather than requiring one up front. Still text-is-truth: every toggle is the same
   `editMessage` rewrite, just targeting that item's own line.
 - **A flagged message.** The message's own ⋯ menu ("Add to Todos" / "Remove from Todos") flags the *whole
-  message* as a todo without inserting any `@/todo` text — a second, non-textual mechanism for the same sidebar
+  message* as a todo without inserting any `/todo` text — a second, non-textual mechanism for the same sidebar
   outcome (see `inspiration.md`'s "Commands: a content primitive"). State lives in `meta.todo: { done: boolean }`
   on the message (`backend/schemas.ts`'s `MessageMeta`), its own small sync-safe route
   (`PATCH /api/threads/:id/messages/:mid/meta`, merges into `meta` rather than replacing it) rather than a

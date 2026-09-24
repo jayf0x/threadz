@@ -46,3 +46,10 @@ export const cachedModelIds = (urls: string[]): string[] =>
       urls.some((u) => u.includes(`/${m.id}/resolve/`) && u.includes(`/onnx/${f}`)),
     ),
   ).map((m) => m.id);
+
+/** Blended download percentage for one model. A file only reports its total once its own download
+ * starts, and the tiny ones (config, tokenizer) come first and finish instantly — so a denominator of
+ * "what's been seen so far" reads ~100% before the weights have begun. The model's known size is the
+ * floor for the denominator instead. Capped at 99: only the pipeline resolving means done. */
+export const downloadPct = (loaded: number, total: number, expectedBytes: number): number =>
+  Math.min(99, Math.round((loaded / Math.max(total, expectedBytes)) * 100));

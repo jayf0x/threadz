@@ -6,18 +6,20 @@ import type { Message, Thread } from "./types";
 const LEGACY_OPEN = /-\s?\[\s*\]/;
 const LEGACY_DONE = /-\s?\[\s*[xX]\s*\]/;
 
-// `@/todo <text>` command syntax. Anchored to the start of the (trimmed) line, unlike the legacy
-// checkbox — "start of a line" is the whole point of a command trigger, so `I said @/todo nope`
-// mid-sentence must NOT match. Closed is real markdown strikethrough wrapping the whole command.
-const COMMAND_OPEN = /^@\/todo(?:\s+(.*))?$/;
-const COMMAND_DONE = /^~~@\/todo(?:\s+(.*?))?~~$/;
+// `/todo <text>` command syntax (a bare `/` — `@/` was awkward to type on a phone; the old `@/todo`
+// still parses so existing notes keep working, and a toggle preserves whichever prefix was written).
+// Anchored to the start of the (trimmed) line, unlike the legacy checkbox — "start of a line" is the
+// whole point of a command trigger, so `I said /todo nope` mid-sentence must NOT match. Closed is real
+// markdown strikethrough wrapping the whole command. Group 1 = the prefix, group 2 = the text.
+const COMMAND_OPEN = /^(@?\/todo)(?:\s+(.*))?$/;
+const COMMAND_DONE = /^~~(@?\/todo)(?:\s+(.*?))?~~$/;
 
-// `@/todos <title>` — a second command, its own trigger (note the "s"; `^@\/todo(?:\s+…)?$` above
-// requires end-of-line or whitespace right after "@/todo", so it never matches this one). Anchored
+// `/todos <title>` — a second command, its own trigger (note the "s"; `^(@?\/todo)(?:\s+…)?$` above
+// requires end-of-line or whitespace right after "/todo", so it never matches this one). Anchored
 // the same way. The title is everything after the space; empty falls back to "Todos".
-const GROUP_TRIGGER = /^@\/todos(?:\s+(.*))?$/;
+const GROUP_TRIGGER = /^@?\/todos(?:\s+(.*))?$/;
 
-// A list-item line under a `@/todos` header. Crepe/remark-stringify always serialize a bullet list
+// A list-item line under a `/todos` header. Crepe/remark-stringify always serialize a bullet list
 // as `- ` (checked against @milkdown/preset-commonmark's bullet-list toMarkdown — it always emits
 // the configured `-` bullet regardless of what was typed), so that's the only marker this app itself
 // will ever produce; `*`/`+` are accepted too since CommonMark allows them and raw/imported/pasted
@@ -55,11 +57,11 @@ const parseListItemLine = (line: string): { text: string; done: boolean } | null
   return null;
 };
 
-// Every `@/todos <title>` group in `content`: the trigger line plus the contiguous run of list-item
+// Every `/todos <title>` group in `content`: the trigger line plus the contiguous run of list-item
 // lines right after it — stops at the first blank line or the first line that isn't a list item (a
 // paragraph resuming under the header, say). A trigger with nothing under it isn't a group (nothing
 // to show), so it's left alone entirely. `consumed` carries every line index a group ate, so
-// `parseTodos` below can skip them — a `- [ ]` item under a `@/todos` header must not ALSO come back
+// `parseTodos` below can skip them — a `- [ ]` item under a `/todos` header must not ALSO come back
 // as its own flat legacy todo.
 export const parseTodoGroups = (content: string): { groups: ParsedTodoGroup[]; consumed: Set<number> } => {
   const lines = content.split("\n");
@@ -89,7 +91,7 @@ export const parseTodoGroups = (content: string): { groups: ParsedTodoGroup[]; c
 };
 
 // Every single-line todo (either syntax, open or closed) in `content`, trimmed, in source order —
-// skipping any line a `@/todos` group above already claimed. Multiple todos in one message each
+// skipping any line a `/todos` group above already claimed. Multiple todos in one message each
 // come back as their own entry.
 export const parseTodos = (content: string): ParsedTodo[] => {
   const { consumed } = parseTodoGroups(content);
@@ -105,7 +107,7 @@ export const parseTodos = (content: string): ParsedTodo[] => {
   return todos;
 };
 
-// A sidebar entry is one of three shapes — a single command/checkbox line, a titled `@/todos` group
+// A sidebar entry is one of three shapes — a single command/checkbox line, a titled `/todos` group
 // of list items, or a whole message flagged via the ⋯ menu's "Add to Todos" (non-textual, `meta.todo`
 // — see backend/schemas.ts's MessageMeta). `kind` is how the sidebar tells them apart; the fields
 // every kind shares (thread/message identity, when it was written) are repeated on each rather than
@@ -231,14 +233,14 @@ export const collectTodos = (threads: Thread[], messages: Message[]): Todo[] => 
   return todos.sort((a, b) => b.createdAt - a.createdAt);
 };
 
-// Display text: whichever marker matched (`@/todo `, the `~~` wrapper, `- [ ]`/`- [x]`/plain bullet)
+// Display text: whichever marker matched (`/todo `, the `~~` wrapper, `- [ ]`/`- [x]`/plain bullet)
 // stripped, for a plain row. Group items don't need this — parseTodoGroups already returns them
 // with the marker stripped (see ParsedTodoItem.text).
 export const stripTodoMarker = (line: string): string => {
   const commandDone = line.match(COMMAND_DONE);
-  if (commandDone) return commandDone[1] ?? "";
+  if (commandDone) return commandDone[2] ?? "";
   const commandOpen = line.match(COMMAND_OPEN);
-  if (commandOpen) return commandOpen[1] ?? "";
+  if (commandOpen) return commandOpen[2] ?? "";
   return line.replace(/^[-*+]\s?\[\s*[xX]?\s*\]\s?/, "").replace(/^[-*+]\s+/, "");
 };
 
@@ -258,9 +260,9 @@ export const toggleTodoLine = (content: string, lineIndex: number): string => {
 
 const toggleLine = (line: string): string => {
   const commandDone = line.match(COMMAND_DONE);
-  if (commandDone) return `@/todo ${commandDone[1] ?? ""}`;
+  if (commandDone) return `${commandDone[1]} ${commandDone[2] ?? ""}`;
   const commandOpen = line.match(COMMAND_OPEN);
-  if (commandOpen) return `~~@/todo ${commandOpen[1] ?? ""}~~`;
+  if (commandOpen) return `~~${commandOpen[1]} ${commandOpen[2] ?? ""}~~`;
   if (LEGACY_DONE.test(line)) return line.replace(/\[\s*[xX]\s*\]/, "[ ]");
   if (LEGACY_OPEN.test(line)) return line.replace(/\[\s*\]/, "[x]");
   const listPlain = line.match(LIST_ITEM_PLAIN);

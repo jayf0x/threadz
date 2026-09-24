@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, m as Motion, useReducedMotion } from "motion/react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Menu } from "@/components/ui/menu";
@@ -95,8 +95,13 @@ export const ThreadView = ({
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The composer sits at the end of the scroller. Focused (keyboard up) it sticks to the bottom of the
+  // visible area while the messages scroll under it; unfocused it scrolls away with them (desktop
+  // always pins it — see the wrapper below). `:focus-within` decides, not React state: a focused
+  // Send button that turns `disabled` after sending loses focus without any blur event, which left
+  // state-driven pinning stuck on.
+  const composerRef = useRef<HTMLDivElement>(null);
   const [pulsingId, setPulsingId] = useState<string | null>(null); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
@@ -168,11 +173,13 @@ export const ThreadView = ({
   // specific message (below) is pending, which wins. The scratch answer always renders after the
   // list, right above the composer, regardless of order, so it always means "scroll to the end";
   // a genuinely new message means "scroll to wherever newest now sits" — index 0 when reversed,
-  // the end otherwise.
+  // the end otherwise. The end is reached by setting the list's own `scrollTop`, never
+  // `scrollIntoView`: that scrolls every scrollable ancestor too, including iOS's visual viewport,
+  // which is what shoved the whole layout around while the keyboard was opening.
   useEffect(() => {
     if (pulseMessageId) return;
     if (!scratch && reversed && orderedMessages.length) rowVirtualizer.scrollToIndex(0, { align: "start" });
-    else end.current?.scrollIntoView({ block: "end" });
+    else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [orderedMessages.length, scratch, pulseMessageId, reversed, rowVirtualizer]);
 
   // Jump to a specific message (a todo row's click, or a `?thread=&msg=` deep link): scroll the
@@ -194,10 +201,25 @@ export const ThreadView = ({
     return () => clearTimeout(t);
   }, [pulseMessageId, orderedMessages, rowVirtualizer]);
 
+  // Clicks that land outside the thing they'd act on: anywhere but the composer lets go of it (iOS
+  // doesn't close the keyboard for a tap on plain content, and while the composer is focused it stays
+  // pinned instead of scrolling with the messages), and anywhere but a message clears the selection —
+  // after a todo jump the target stays selected, and this is the way to let go of it. Menus and
+  // popovers render in portals but still bubble React events up through their row/composer, so they're
+  // matched by Radix's wrapper attribute rather than by DOM containment.
+  const onBackgroundClick = (e: MouseEvent) => {
+    const target = e.target as Element;
+    if (composerRef.current?.contains(document.activeElement) && !target.closest(`[data-composer], ${PORTAL}`))
+      (document.activeElement as HTMLElement | null)?.blur();
+    if (selectedMessageId && !target.closest(`article, ${PORTAL}`)) onSelectMessage(null);
+  };
+
   if (missing) return <NotFound onBack={onBack} />;
 
   return (
-    <div className="flex h-full flex-col bg-background/92">
+    // biome-ignore lint/a11y/noStaticElementInteractions: a background click only clears the selection; every action has its own control
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same — nothing here is keyboard-reachable only through this handler
+    <div className="surface-background flex h-full flex-col" onClick={onBackgroundClick}>
       {/* A breadcrumb on a phone (back arrow + small title, one compact row) — the sidebar is
           hidden while a thread is open there, so this is the only way back, not a place for a
           full editorial heading. `lg:` gets the roomier one back: the sidebar is already visible
@@ -238,93 +260,101 @@ export const ThreadView = ({
         <p className="border-b border-destructive px-6 py-2 font-mono text-[11px] text-destructive md:px-10">{error}</p>
       )}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 md:px-10">
-        <div className="mx-auto max-w-3xl pb-6">
-          {messages.length === 0 && !scratch && (
-            <p className="py-16 font-serif text-lg italic text-muted-foreground">
-              Blank page. Write the first line below.
-            </p>
-          )}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full flex-col">
+          <div className="mx-auto w-full max-w-3xl flex-1 px-6 pb-6 md:px-10">
+            {messages.length === 0 && !scratch && (
+              <p className="py-16 font-serif text-lg italic text-muted-foreground">
+                Blank page. Write the first line below.
+              </p>
+            )}
 
-          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
-            {rowVirtualizer.getVirtualItems().map((row) => {
-              const m = orderedMessages[row.index];
-              if (!m) return null;
-              return (
-                <div
-                  key={row.key}
-                  data-index={row.index}
-                  ref={rowVirtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${row.start}px)`,
-                  }}
+            <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+              {rowVirtualizer.getVirtualItems().map((row) => {
+                const m = orderedMessages[row.index];
+                if (!m) return null;
+                return (
+                  <div
+                    key={row.key}
+                    data-index={row.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${row.start}px)`,
+                    }}
+                  >
+                    <EntryRow
+                      message={m}
+                      pending={unsynced.has(m.id)}
+                      busy={busy}
+                      isNew={justAdded.has(m.id)}
+                      selected={selectedMessageId === m.id}
+                      pulsing={pulsingId === m.id}
+                      onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
+                      onEdit={(text) => editMessage(m.id, text)}
+                      onCopyThread={() => copyThreadFrom(m.id)}
+                      onSetTodo={(done) => setMessageTodo(m.id, done)}
+                      note={noteByMessage.get(m.id)}
+                      unsyncedAnnotations={unsyncedAnnotations}
+                      onAddAnnotation={(text) => addAnnotation(m.id, text)}
+                      onEditAnnotation={editAnnotation}
+                      onDeleteAnnotation={deleteAnnotation}
+                      onNavigateReference={onNavigateReference}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <AnimatePresence>
+              {scratch && (
+                <Motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="mt-4 border border-dashed border-border p-4"
                 >
-                  <EntryRow
-                    message={m}
-                    pending={unsynced.has(m.id)}
-                    busy={busy}
-                    isNew={justAdded.has(m.id)}
-                    selected={selectedMessageId === m.id}
-                    pulsing={pulsingId === m.id}
-                    onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
-                    onEdit={(text) => editMessage(m.id, text)}
-                    onCopyThread={() => copyThreadFrom(m.id)}
-                    onSetTodo={(done) => setMessageTodo(m.id, done)}
-                    note={noteByMessage.get(m.id)}
-                    unsyncedAnnotations={unsyncedAnnotations}
-                    onAddAnnotation={(text) => addAnnotation(m.id, text)}
-                    onEditAnnotation={editAnnotation}
-                    onDeleteAnnotation={deleteAnnotation}
-                    onNavigateReference={onNavigateReference}
+                  <Eyebrow className="flex items-center justify-between">
+                    Scratch — not saved
+                    <button type="button" aria-label="Dismiss scratch answer" onClick={() => setScratch(null)}>
+                      <X className="size-3.5" />
+                    </button>
+                  </Eyebrow>
+                  <MarkdownEditor
+                    readOnly
+                    value={scratch}
+                    className="[--md-padding:0.5rem_0_0]"
+                    onReferenceClick={(threadId, messageId) => onNavigateReference(threadId, messageId ?? undefined)}
                   />
-                </div>
-              );
-            })}
+                </Motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <AnimatePresence>
-            {scratch && (
-              <Motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.18, ease: "easeOut" }}
-                className="mt-4 border border-dashed border-border p-4"
-              >
-                <Eyebrow className="flex items-center justify-between">
-                  Scratch — not saved
-                  <button type="button" aria-label="Dismiss scratch answer" onClick={() => setScratch(null)}>
-                    <X className="size-3.5" />
-                  </button>
-                </Eyebrow>
-                <MarkdownEditor
-                  readOnly
-                  value={scratch}
-                  className="[--md-padding:0.5rem_0_0]"
-                  onReferenceClick={(threadId, messageId) => onNavigateReference(threadId, messageId ?? undefined)}
-                />
-              </Motion.div>
-            )}
-          </AnimatePresence>
-          <div ref={end} />
+          {/* `bg-background` under the (translucent) composer only once it can overlap messages. */}
+          <div
+            ref={composerRef}
+            data-composer=""
+            className="mt-auto focus-within:sticky focus-within:bottom-0 focus-within:z-10 focus-within:bg-background md:sticky md:bottom-0 md:z-10 md:bg-background"
+          >
+            <Composer
+              threadId={threadId}
+              messages={messages}
+              busy={busy}
+              canAsk={!local}
+              onNote={addMessage}
+              onAsk={onAsk}
+              onCopied={onCopied}
+              autofocus={autofocus}
+              onNavigateReference={onNavigateReference}
+            />
+          </div>
         </div>
       </div>
-
-      <Composer
-        threadId={threadId}
-        messages={messages}
-        busy={busy}
-        canAsk={!local}
-        onNote={addMessage}
-        onAsk={onAsk}
-        onCopied={onCopied}
-        autofocus={autofocus}
-        onNavigateReference={onNavigateReference}
-      />
     </div>
   );
 };
@@ -343,11 +373,14 @@ const NotFound = ({ onBack }: { onBack: () => void }) => (
   </div>
 );
 
+const PORTAL = "[data-radix-popper-content-wrapper]";
 const tiny = "font-mono text-[10px] text-muted-foreground";
+// Icon-button hit area: 40px on a phone, the old compact 24px from `md` up.
+const tap = "flex items-center justify-center p-2.5 transition-colors md:p-1";
 
 // Edit box starts close to the size of the text it's replacing, not a fixed one-size box that's
 // too cramped for a long note and too roomy for a one-liner — floor so a short message still gets
-// a comfortable box, ceiling matching the editor's own `60dvh` scroll cap so a giant message
+// a comfortable box, ceiling matching the editor's own 60%-of-visible-height scroll cap so a giant message
 // doesn't measure into an edit box taller than the thread pane itself.
 const EDIT_MIN_PX = 96;
 const EDIT_MAX_RATIO = 0.6;
@@ -403,6 +436,7 @@ export const EntryRow = ({
   const [noteText, setNoteText] = useState(note?.content ?? "");
   const editor = useRef<MarkdownEditorHandle>(null);
   const noteEditor = useRef<MarkdownEditorHandle>(null);
+  const openNoteAfterMenu = useRef(false); // set by the menu's "Add note", consumed when the menu finishes closing
   const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
   const { attach: noteAttach, error: noteImageError } = useImageAttach(noteEditor);
@@ -441,7 +475,9 @@ export const EntryRow = ({
   const startEdit = () => {
     setText(m.content);
     const measured = contentRef.current?.getBoundingClientRect().height ?? 0;
-    setEditMinHeight(Math.min(Math.max(measured, EDIT_MIN_PX), window.innerHeight * EDIT_MAX_RATIO));
+    setEditMinHeight(
+      Math.min(Math.max(measured, EDIT_MIN_PX), (window.visualViewport?.height ?? window.innerHeight) * EDIT_MAX_RATIO),
+    );
     setEditing(true);
   };
 
@@ -513,7 +549,7 @@ export const EntryRow = ({
               readOnly={busy}
               autofocus
               onImageFile={(f) => attach([f])}
-              className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:60dvh] [--md-padding:10px_44px_10px_12px]"
+              className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-max-height:calc(var(--vv-h,100dvh)*0.6)] [--md-padding:10px_44px_10px_12px]"
               style={{ "--md-min-height": `${editMinHeight}px` } as CSSProperties}
               onKeyDownCapture={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -551,36 +587,34 @@ export const EntryRow = ({
       )}
 
       {/* The gutter: a per-message left rail, one consistent x for every icon in it —
-          `left-[-20px]` here is the exact same literal `todoDecoration.ts`'s checkbox widget uses
-          (via `.threadz-todo-checkbox` in markdown-editor.css). Both read off the same x=0: this
-          `<article>` has no left padding of its own, and neither does `contentRef`'s
-          `.threadz-md`/`.ProseMirror` (`--md-padding:0` above) or a `@/todo` paragraph/`@/todos`
-          item's `<li>` — so "−20px relative to the article" and "−20px relative to the paragraph/
-          list item" land at the identical screen x, despite one being a React-positioned element
-          and the other a ProseMirror decoration in an entirely separately laid out tree. Fixed at
-          `top-5` (20px): roughly the first line's vertical centre (`py-4` = 16px top padding, plus
-          about half of a 15px/1.5 line box) — a static number, not measured, same "no DOM
-          measurement" mechanism as the checkbox itself. Only for `mine` (a note is only ever added
-          to your own entries) and only outside edit mode (was already the case in the metadata bar
-          before this moved). */}
+          `left-[-22px]` puts the icon's glyph at the same x=-20px `todoDecoration.ts`'s checkbox
+          widget uses (via `.threadz-todo-checkbox` in markdown-editor.css). Both read off the same
+          x=0: this `<article>` has no left padding of its own, and neither does `contentRef`'s
+          `.threadz-md`/`.ProseMirror` (`--md-padding:0` above) or a `/todo` paragraph/`/todos`
+          item's `<li>`. Fixed at `top-5` (20px): roughly the first line's vertical centre — a static
+          number, not measured, same "no DOM measurement" mechanism as the checkbox itself. Only for
+          `mine` (a note is only ever added to your own entries) and only outside edit mode.
+          The icon exists only while there IS a note (a note-less message shows nothing here — "Add
+          note" is in its ⋯ menu); the `Anchor` is always there so the popover has somewhere to open
+          from either way. */}
       {!editing && mine && (
         <Popover.Root open={noteOpen} onOpenChange={onNoteOpenChange}>
-          <Popover.Trigger asChild>
-            <button
-              type="button"
-              aria-label={note ? "Note" : "Add a note"}
-              title={note ? "Note" : "Add a note"}
-              {...{ [ROW_SELECT_IGNORE]: "" }}
-              className={cn(
-                "absolute left-[-20px] top-5 p-0.5 transition-colors",
-                note
-                  ? "text-primary/70 hover:text-primary"
-                  : "text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-              )}
-            >
-              <StickyNote className="size-3.5" />
-            </button>
-          </Popover.Trigger>
+          <Popover.Anchor asChild>
+            <span aria-hidden className="pointer-events-none absolute left-[-20px] top-5 size-4" />
+          </Popover.Anchor>
+          {note && (
+            <Popover.Trigger asChild>
+              <button
+                type="button"
+                aria-label="Note"
+                title="Note"
+                {...{ [ROW_SELECT_IGNORE]: "" }}
+                className="absolute left-[-22px] top-[18px] p-1 text-primary/70 transition-colors hover:text-primary"
+              >
+                <StickyNote className="size-4" />
+              </button>
+            </Popover.Trigger>
+          )}
           <Popover.Portal>
             <Popover.Content
               side="bottom"
@@ -601,7 +635,7 @@ export const EntryRow = ({
                       autofocus
                       placeholder="A quick note…"
                       onImageFile={(f) => noteAttach([f])}
-                      className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_38px_8px_10px]"
+                      className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring [--md-min-height:3rem] [--md-max-height:12rem] [--md-padding:8px_44px_8px_10px]"
                       onKeyDownCapture={(e) => {
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                           e.preventDefault();
@@ -624,9 +658,9 @@ export const EntryRow = ({
                       aria-label="Cancel"
                       title="Cancel"
                       onClick={cancelNoteEdit}
-                      className="p-1 text-muted-foreground hover:text-foreground"
+                      className={cn(tap, "text-muted-foreground hover:text-foreground")}
                     >
-                      <X className="size-3.5" />
+                      <X className="size-4 md:size-3.5" />
                     </button>
                     <button
                       type="button"
@@ -634,9 +668,12 @@ export const EntryRow = ({
                       title="Save note"
                       disabled={noteSaveDisabled}
                       onClick={saveNote}
-                      className="p-1 text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40"
+                      className={cn(
+                        tap,
+                        "text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-40",
+                      )}
                     >
-                      <Check className="size-3.5" />
+                      <Check className="size-4 md:size-3.5" />
                     </button>
                   </div>
                 </>
@@ -650,24 +687,24 @@ export const EntryRow = ({
                         className="min-w-0 flex-1 [--md-padding:0]"
                         onReferenceClick={navigateReference}
                       />
-                      <div className="flex shrink-0 items-center gap-0.5">
+                      <div className="flex shrink-0 items-center">
                         <button
                           type="button"
                           aria-label="Edit note"
                           title="Edit note"
                           onClick={startNoteEdit}
-                          className="p-1 text-muted-foreground hover:text-foreground"
+                          className={cn(tap, "text-muted-foreground hover:text-foreground")}
                         >
-                          <Pencil className="size-3" />
+                          <Pencil className="size-4 md:size-3" />
                         </button>
                         <button
                           type="button"
                           aria-label="Delete note"
                           title="Delete note"
                           onClick={deleteNote}
-                          className="p-1 text-muted-foreground hover:text-destructive"
+                          className={cn(tap, "text-muted-foreground hover:text-destructive")}
                         >
-                          <Trash2 className="size-3" />
+                          <Trash2 className="size-4 md:size-3" />
                         </button>
                       </div>
                     </div>
@@ -686,11 +723,11 @@ export const EntryRow = ({
         </Popover.Root>
       )}
 
-      {!editing && (
-        // The whole metadata bar is one row-select-ignore zone (see rowSelect.ts) — the ⋯ menu, the
-        // note trigger, and the "edited" toggle all live here, and none of them should select the
-        // row out from under their own click.
-        <p {...{ [ROW_SELECT_IGNORE]: "" }} className={`mt-1.5 flex items-center gap-2 ${tiny}`}>
+      {!editing && selected && (
+        // Metadata is only for the message you're looking at: date, unsynced/voice/edited, and the
+        // actions. One row-select-ignore zone (see rowSelect.ts) — the ⋯ menu and the "edited"
+        // toggle both live here, and neither should select the row out from under their own click.
+        <p {...{ [ROW_SELECT_IGNORE]: "" }} className={`mt-1.5 flex min-h-9 items-center gap-2.5 ${tiny}`}>
           <time>{format(m.createdAt, "d MMM HH:mm")}</time>
           {!!m.meta?.voice && <Mic className="size-2.5" aria-label="voice" />}
           {pending && <CloudOff className="size-2.5" aria-label="only on this device so far" />}
@@ -702,19 +739,38 @@ export const EntryRow = ({
           {mine && (
             <Menu
               align="end"
+              onCloseAutoFocus={(e) => {
+                // "Add note" opens a popover whose editor autofocuses; without this Radix hands focus
+                // back to the ⋯ trigger a beat later and the popover's editor loses it.
+                if (!openNoteAfterMenu.current) return;
+                openNoteAfterMenu.current = false;
+                e.preventDefault();
+                onNoteOpenChange(true);
+              }}
               trigger={
                 <button
                   type="button"
                   aria-label="Message actions"
                   title="Message actions"
-                  className="ml-auto p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                  className={cn(tap, "ml-auto -mr-2.5 text-muted-foreground hover:text-foreground")}
                 >
-                  <MoreHorizontal className="size-3" />
+                  <MoreHorizontal className="size-4 md:size-3" />
                 </button>
               }
               items={[
                 { label: "Edit", icon: Pencil, onClick: startEdit },
                 { label: "Copy", icon: Copy, onClick: copyText },
+                ...(note
+                  ? []
+                  : [
+                      {
+                        label: "Add note",
+                        icon: StickyNote,
+                        onClick: () => {
+                          openNoteAfterMenu.current = true;
+                        },
+                      },
+                    ]),
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 m.meta?.todo
@@ -727,6 +783,7 @@ export const EntryRow = ({
       )}
 
       {history &&
+        selected &&
         !editing &&
         [...(m.edits ?? [])].reverse().map((v) => (
           <div key={v.at} className="mt-2 border-l-2 border-border pl-3 opacity-70">

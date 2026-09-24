@@ -431,11 +431,11 @@ export const localApi: Api = {
   },
 };
 
-// --- trash: query + restore surface for Recently Deleted / Undo ---------------
+// --- trash: query + restore surface for Bin / Undo ---------------
 
 export type TrashedThread = { id: string; title: string; deletedAt: number };
 
-// Backs the Recently Deleted view: everything `deleteThread`/`applyRemoteDelete` keeps in
+// Backs the Bin view: everything `deleteThread`/`applyRemoteDelete` keeps in
 // `trash` right now, without the full thread/messages/annotations payload a restore doesn't need
 // until it's actually invoked. Newest deletion first.
 export const listTrash = async (): Promise<TrashedThread[]> => {

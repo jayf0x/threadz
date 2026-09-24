@@ -1,11 +1,10 @@
 /*
- * solarized-light — Ethan Schoonover's Solarized, light variant: warm cream background, muted
- * cyan accent, deliberately low-contrast text (Solarized's own design choice). Forcing dark on
- * this palette shows the real Solarized Dark variant (same cyan accent, dark teal background) —
- * see .dark/.system below. Same 19-token shape as gruvbox-light.css.
+ * solarized — a palette family: `.dark` / `.system` are its dark mode, the base block its light one.
+ * Light vs dark is the Light/System/Dark toggle's job alone (themes/palettes.ts); a palette never decides it.
+ * Every palette defines exactly the same token set (copy this file's shape for a new one).
  */
 
-:root[data-palette="solarized-light"] {
+:root[data-palette="solarized"] {
   --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -32,7 +31,7 @@
   --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
-:root[data-palette="solarized-light"].dark {
+:root[data-palette="solarized"].dark {
   --background: oklch(0.267 0.049 220);
   --foreground: oklch(0.698 0.016 197);
   --card: oklch(0.307 0.054 220);
@@ -56,7 +55,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-palette="solarized-light"].system {
+  :root[data-palette="solarized"].system {
     --background: oklch(0.267 0.049 220);
     --foreground: oklch(0.698 0.016 197);
     --card: oklch(0.307 0.054 220);

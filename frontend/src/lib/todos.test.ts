@@ -321,3 +321,25 @@ test("isTodoVisible: 'recent' — visible just inside the 24h window, hidden jus
   expect(isTodoVisible(closedLine, "recent", closedAt + RECENT_CLOSED_MS - 1)).toBe(true);
   expect(isTodoVisible(closedLine, "recent", closedAt + RECENT_CLOSED_MS + 1)).toBe(false);
 });
+
+// --- bare `/` prefix (the `@/` form above stays supported for notes written before the change) ---
+
+test("/todo and /todos parse like their @/ forms, mid-sentence still doesn't match", () => {
+  expect(parseTodos("/todo write more docs")).toEqual([{ text: "/todo write more docs", done: false, lineIndex: 0 }]);
+  expect(parseTodos("~~/todo write more docs~~")).toEqual([
+    { text: "~~/todo write more docs~~", done: true, lineIndex: 0 },
+  ]);
+  expect(parseTodos("see /todo below")).toEqual([]);
+  expect(parseTodos("/todos-like path")).toEqual([]);
+  expect(parseTodoGroups("/todos Groceries\n- milk").groups).toEqual([
+    { title: "Groceries", titleLineIndex: 0, items: [{ text: "milk", done: false, lineIndex: 1 }] },
+  ]);
+});
+
+test("toggleTodoLine and stripTodoMarker keep whichever prefix the line was written with", () => {
+  expect(toggleTodoLine("/todo call mom", 0)).toBe("~~/todo call mom~~");
+  expect(toggleTodoLine("~~/todo call mom~~", 0)).toBe("/todo call mom");
+  expect(toggleTodoLine("@/todo call mom", 0)).toBe("~~@/todo call mom~~");
+  expect(stripTodoMarker("/todo call mom")).toBe("call mom");
+  expect(stripTodoMarker("~~/todo call mom~~")).toBe("call mom");
+});

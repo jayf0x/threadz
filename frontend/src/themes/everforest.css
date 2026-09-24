@@ -1,8 +1,6 @@
 /*
- * everforest — Everforest's light variant: muted warm-green background, a forest-green accent
- * (renamed from moss-ledger — the values were already Everforest-shaped, just poetically named;
- * see AGENTS.md's naming note). Same token set, same base/.dark/.system shape — see
- * gruvbox-light.css.
+ * everforest — a palette family: `.dark` / `.system` are its dark mode, the base block its light one.
+ * Light vs dark is the Light/System/Dark toggle's job alone (themes/palettes.ts); a palette never decides it.
  */
 
 :root[data-palette="everforest"] {

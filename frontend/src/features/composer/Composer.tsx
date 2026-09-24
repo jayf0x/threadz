@@ -78,8 +78,10 @@ export const Composer = ({
   };
 
   const voice = useVoiceCapture(threadId, insert);
-  const listening = voice.phase === "listening";
   const active = voice.phase !== "idle";
+  // The button only "records" (meter, stop square) once transcription can actually happen; until
+  // then it spins, and the status line under the editor says what it's waiting for.
+  const preparing = active && !voice.operational;
   const status = voiceStatus(voice);
 
   const onSubmit = (text: string) =>
@@ -112,7 +114,7 @@ export const Composer = ({
   };
 
   return (
-    <div className="border-t border-border bg-card/92">
+    <div className="surface-card border-t border-border">
       <AnimatePresence>
         {voice.recovery && (
           <m.div
@@ -144,7 +146,7 @@ export const Composer = ({
         )}
       </AnimatePresence>
 
-      <div className="mx-auto max-w-3xl px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:px-10 md:py-3">
+      <div className="composer-pad mx-auto max-w-3xl px-3 pt-2 md:px-10 md:pt-3">
         <MessageInput
           handleRef={input}
           draftKey={threadId}
@@ -163,18 +165,25 @@ export const Composer = ({
               variant={active ? "danger" : "ghost"}
               aria-label={active ? "Stop dictation" : "Dictate"}
               aria-pressed={active}
-              className={cn("gap-2 transition-[width]", listening && "w-[3.25rem]")}
-              onClick={voice.toggle}
+              className={cn("gap-2 transition-[width]", voice.operational && "w-[3.25rem]")}
+              onClick={() => {
+                // Focus first, inside the tap: the editor is where the words will land (and stay
+                // editable while you talk), and only a user gesture raises the iOS keyboard.
+                if (!active) input.current?.focus();
+                voice.toggle();
+              }}
               // keep the caret where the user left it: don't let the tap blur/refocus the editor
               onPointerDown={(e) => e.preventDefault()}
             >
-              {listening ? (
+              {voice.operational ? (
                 <>
                   <VoiceMeter />
                   <Square className="size-3 fill-current" />
                 </>
+              ) : preparing ? (
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Mic className={cn("size-4", active && "blink")} />
+                <Mic className="size-4" />
               )}
             </Button>
           }
@@ -242,7 +251,7 @@ export const Composer = ({
                     aria-label="More actions"
                     title="More actions"
                     disabled={copying}
-                    className="rounded-md p-2 text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring disabled:opacity-50"
+                    className="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring disabled:opacity-50 md:size-8"
                   >
                     <MoreHorizontal className="size-4" />
                   </button>

@@ -60,8 +60,23 @@ label — reserve text labels for actions without an obvious icon, or where the 
 - **Rarely-used UI is never shown up front.** Filters, sort and secondary actions live in a dropdown
   (`components/ui/select.tsx`) or an action menu (`components/ui/menu.tsx`), not as always-visible
   segmented controls. Nav is icon-only with a `title`.
-- **Composer**: editor on the left, a vertical action rail on the right (attach, mic, ⋯ overflow on
-  top; send always at the bottom). Max three primary actions; extras go in the ⋯ menu.
+- **Composer**: editor on the left, an action rail on the right (attach, mic, ⋯ overflow on top; send always
+  last, at the bottom — a 2×2 on phones so the composer isn't taller than its text, a column from `md`). Max
+  three primary actions; extras go in the ⋯ menu. It lives at the *end of the message scroller*: focused it
+  pins to the bottom (`:focus-within` — never React state, a focused Send that turns `disabled` fires no blur),
+  unfocused it scrolls away with the messages; from `md` it's always pinned.
+- **Mobile is the primary target.** Nav is a bottom tab bar. Touch targets are 40px below `md` (compact from
+  `md` up — `Button`'s sizes, `tap` in `ThreadView.tsx`, `md:` variants). Keyboard hints ("press n", `( / )`)
+  are gated on `isTouch()` (`lib/dom.ts`). Slash commands are a bare `/` (`/todo`, `/todos`); `@/` still
+  parses. Per-message metadata (date, sync/voice/edited, ⋯) shows only on the selected message. A message
+  shows a note icon only when it has a note; "Add note" is in its ⋯ menu.
+- **The keyboard and the viewport** (`lib/viewport.ts`, `App.tsx`'s `Shell`): iOS overlays the keyboard and
+  pans the visual viewport instead of resizing the layout viewport, so the shell is `position: fixed`, sized
+  and offset from `visualViewport` (`--vv-h`, `--vv-top`) — never `h-dvh`, and size anything meant to fit
+  "the visible area" from `--vv-h`, not `dvh`. `html[data-keyboard]` is set while the keyboard is up (drop
+  home-indicator padding, shrink the editor). Never `scrollIntoView` inside the thread (it scrolls the visual
+  viewport too): set the scroller's `scrollTop`. Grid tracks are `minmax(0,1fr)`, never `auto` (a nowrap
+  title widens an auto track past the screen).
 - `export const` arrow functions. PascalCase component files, camelCase modules.
 - Layout: `components/ui/` primitives · `features/<name>/` (other features import only its `index.ts`) · `lib/`.
   `@/` across folders, `./` within one. See README "Structure & conventions".
@@ -76,7 +91,8 @@ label — reserve text labels for actions without an obvious icon, or where the 
   positioning/focus/dismissal logic yourself only if no primitive fits. (The native `<dialog>` in
   `ConnectionDialog` and the native `<select>` in `components/ui/select.tsx` are the platform already covering
   this — leave those as they are, no library needed.)
-- **`html`/`body` never scroll** (`styles.css`: `overflow: hidden`). Every scrollable region is its own
+- **`html`/`body` never scroll** (`styles.css`: `overflow: hidden`, and `body` is `position: fixed` — iOS
+  rubber-bands an overflow-hidden root otherwise). Every scrollable region is its own
   `overflow-y-auto` element (`ThreadView`'s message list, `ThreadList`'s index) — the page itself doesn't, on
   purpose: it stops a too-wide child from becoming a horizontal scrollbar instead of just clipping, and it stops
   iOS from scrolling the whole page to "reveal" a focused input when nothing actually needs scrolling (which
@@ -90,7 +106,7 @@ label — reserve text labels for actions without an obvious icon, or where the 
   top-level import — that keeps ProseMirror out of the static import graph (and so out of `bun test`/typecheck
   and the initial bundle; `vite build` warns if something breaks this). A node view for an existing markdown
   construct (`![]()` images) is `imageView.ts` — a plain function returning `{ dom, destroy }`, registered with
-  `utils.$view(schema.node, () => view)`. Decorating something that *isn't* real markdown (`@/todo` lines —
+  `utils.$view(schema.node, () => view)`. Decorating something that *isn't* real markdown (`/todo` lines —
   they're a plain-text convention, not an AST node) is `todoDecoration.ts` — a `prosemirror-state` `Plugin`
   returning widget/node `Decoration`s, registered with `utils.$prose(() => plugin(...))`. Either way, only
   type-only imports (`import type … from "@milkdown/kit/prose/*"`) belong at a helper file's top level; the
@@ -121,32 +137,22 @@ label — reserve text labels for actions without an obvious icon, or where the 
   `exportSnapshot`/`saveBackup`/`mergeSnapshot`/Export, never in SQLite, `backupDb()` or `/api/snapshot`. A `dirty`
   image is never deleted; it is `PUT` to main before `/api/sync`.
 - **Appearance** (`themes/*.css`, `themes/palettes.ts`, `features/appearance/`, `features/settings/sections/`
-  Appearance + Background): a **palette** (color values, picked in Settings, applied via `data-palette` on
-  `<html>`, `window._setPalette`) is a separate axis from **theme** (light/dark/system, `ThemeToggle`,
-  `window._setTheme`) — both are pre-paint single-writer scripts in `index.html`, same pattern, so there's no
-  flash on load either way. Palette names are recognizable dev-culture/editor-terminal names, not poetic ones —
-  12 of them: `gruvbox-light`/`gruvbox-dark`, `one-light`/`one-dark`, `everforest`, `solarized-light`,
-  `night-owl`, `dracula`, `nord`, `ubuntu`, `monokai`, `catppuccin` (`themes/palettes.ts`'s `PALETTES`, default
-  `gruvbox-light`). A light-identity palette's `.dark`/`.system` blocks render that family's real dark
-  counterpart where one exists (`gruvbox-dark`, `one-dark`, or an unlisted-but-real Everforest/Solarized dark
-  variant); an always-dark-identity palette (night-owl, dracula, nord, ubuntu, monokai, catppuccin,
-  gruvbox-dark, one-dark) renders the same look in all three blocks — forcing "light" on Dracula still shows
-  Dracula. Every palette defines the exact same token set as `gruvbox-light.css` (copy its shape for a new
-  one) — components never know which palette is active, only the token names. The **background** (image/GIF,
-  or the one built-in token-built gradient, plus opacity) is one more device-local setting (`lib/settings.ts`'s
-  `background` field) with its own IndexedDB for the image bytes (`lib/backgroundImage.ts`, `threadz-background`
-  — same reasoning as Images below: too big for localStorage, never in a snapshot/backup). A fresh install
-  defaults to `{ type: "gradient", opacity: 10 }` — a subtle ambient wash (`features/appearance/gradients.ts`'s
-  `DEFAULT_BACKGROUND_GRADIENT`, an accent→secondary blend) shown at low opacity out of the box, not a flat
-  background. `"gradient"` isn't a choice in Settings' Background section though (a per-preset gradient picker
-  didn't read well) — only **None** (explicit opt-out, flat) and **Image** (the user's own wallpaper) are;
-  picking either is one-directional, there's no UI path back to the default gradient. It's rendered once,
-  behind everything (`features/appearance/BackgroundLayer.tsx`, `App.tsx`), and — being pure device state — is
-  already identical in Local and Live without either mode knowing it exists. For a surface to let it show
-  through: a big persistent pane (sidebar, main, the composer bar) gets `bg-<token>/NN` opacity only, no blur
-  (cheap, and correct against a static layer); a small *floating* piece of chrome (a popover, a dropdown menu)
-  additionally gets `backdrop-blur-md` — reserve blur for that transient-overlay case, not for large always-on
-  surfaces (rendering cost, and Wigl — this pattern's source — draws the same line).
+  Appearance + Background): light vs dark is **only** the Light/System/Dark toggle (`ThemeToggle`,
+  `window._setTheme`); a **palette** (`data-palette` on `<html>`, `window._setPalette`) is a colour *family*
+  that ships both modes — the base block of its CSS file is light, `.dark` / `.system` are dark. Both are
+  pre-paint single-writer scripts in `index.html`, so no flash. Six families: `gruvbox`, `one`, `everforest`,
+  `solarized`, `catppuccin`, `nord` (default `gruvbox`); always-dark identities with no honest light variant
+  (Dracula, Monokai…) were dropped rather than pretend, and old stored ids are migrated in `index.html`. Every
+  palette defines the exact same token set (copy `gruvbox.css` for a new one) — components never know which is
+  active. The picker shows a bordered dot per family (no names), previewing the mode currently in effect.
+  The **background** is one more device-local setting (`lib/settings.ts`'s `background`; image bytes in
+  `lib/backgroundImage.ts`'s own IndexedDB, never in a snapshot/backup): the default is a faint token-built
+  gradient (`gradients.ts`), or the user's image — picked and **Remove**d in Settings (removing returns to the
+  default; there is no "none"). Rendered once, behind everything (`BackgroundLayer.tsx`). How much of an image
+  shows is the panes' opacity, not the image's: panes use `surface-background/-secondary/-card`
+  (`styles.css`) over `--pane-alpha`, which `lib/settings.ts` derives from the slider (92% without an image,
+  falling as opacity rises; default 80%). Big persistent panes get that alpha only, no blur (cheap); small
+  floating chrome (popover, dropdown) additionally gets `backdrop-blur-md`.
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint and not in the UI; see `backlog.md`.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
 - Metadata generation is fire-and-forget after each append (no queue) — off by default; set `THREADZ_METADATA=1`

@@ -1,23 +1,10 @@
 /*
- * gruvbox-light — Gruvbox's light variant: warm paper background, hairline rules, serif titles,
- * one warm-amber/orange accent reserved for live/selected/named things (renamed from ochre-paper —
- * the values were already Gruvbox-Light-shaped, just poetically named; see AGENTS.md's naming
- * note). Token values carried over verbatim from weighted-grid/demo and dyslexia-logger, which had
- * already converged on the same oklch accent (oklch(0.66 0.14 68)) independently. Pairs with
- * gruvbox-dark.css for the same family's dark identity.
- *
- * --rule and --hatch are extras beyond the shared token set in base.css —
- * decorative-only, for showcase chrome. Registry components never read them,
- * so this theme stays a drop-in for the same Button/Card/Field as
- * periwinkle-system.
- *
- * Scoped under [data-palette="gruvbox-light"] so a project running both themes
- * (this repo's own gallery) can switch at runtime. A project that only ever
- * imports this file can ignore data-palette — set it once on <html> if you
- * also ship periwinkle-system.css alongside it (see README).
+ * gruvbox — a palette family: `.dark` / `.system` are its dark mode, the base block its light one.
+ * Light vs dark is the Light/System/Dark toggle's job alone (themes/palettes.ts); a palette never decides it.
+ * Every palette defines exactly the same token set (copy this file's shape for a new one).
  */
 
-:root[data-palette="gruvbox-light"] {
+:root[data-palette="gruvbox"] {
   --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -44,7 +31,7 @@
   --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
-:root[data-palette="gruvbox-light"].dark {
+:root[data-palette="gruvbox"].dark {
   --background: oklch(0.165 0.008 70);
   --foreground: oklch(0.935 0.008 85);
   --card: oklch(0.205 0.009 70);
@@ -68,7 +55,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-palette="gruvbox-light"].system {
+  :root[data-palette="gruvbox"].system {
     --background: oklch(0.165 0.008 70);
     --foreground: oklch(0.935 0.008 85);
     --card: oklch(0.205 0.009 70);

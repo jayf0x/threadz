@@ -29,7 +29,7 @@ export const VoiceSettings = () => {
             <label
               key={m.id}
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors",
+                "flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 text-sm transition-colors md:py-1.5",
                 "hover:bg-accent has-focus-visible:outline has-focus-visible:outline-ring",
                 selected && "bg-accent",
               )}
@@ -61,7 +61,7 @@ export const VoiceSettings = () => {
         // biome-ignore lint/a11y/noLabelWithoutControl: wraps the native <select> inside our Select component
         <label className="mt-2.5 flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">Language</span>
-          <Select className="h-8 text-xs" value={s.prefs.language} onChange={(e) => setLanguage(e.target.value)}>
+          <Select className="text-xs md:h-8" value={s.prefs.language} onChange={(e) => setLanguage(e.target.value)}>
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>
                 {l.label}
