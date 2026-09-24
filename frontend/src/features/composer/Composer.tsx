@@ -92,7 +92,7 @@ export const Composer = ({
   const lastMessage = messages.at(-1);
 
   // Copies A up to the last message and appends whatever's typed as B's next note, in the one
-  // call (see backlog.md: a second request here could lose the text if it failed). The
+  // call (a second request here could lose the text if it failed). The
   // draft is only cleared once the copy actually lands.
   const copyThreadFromHere = async () => {
     if (copying || !lastMessage) return;

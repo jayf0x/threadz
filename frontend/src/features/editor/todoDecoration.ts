@@ -9,14 +9,14 @@ import type { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 // import, unlike the prose types above. Only the read-only parsers: this file never mutates
 // content itself, it just needs to know which paragraph is which line and whether it's done. The
 // actual toggle (`toggleTodoLine`) is left to the caller of `onTodoToggle` (ThreadView.tsx's
-// `EntryRow`, which already holds the message's full content) — see backlog.md "The full gutter".
+// `EntryRow`, which already holds the message's full content).
 import { type ParsedTodoItem, parseTodoGroups, parseTodos } from "@/lib/todos";
 
 type ProseStateModule = { Plugin: typeof Plugin; PluginKey: typeof PluginKey };
 type ProseViewModule = { Decoration: typeof Decoration; DecorationSet: typeof DecorationSet };
 
 // Decoration-only rendering for `/todo <text>` command lines inside the message view (see
-// backlog.md "Todo commands" step 4, the feedback round that replaced the old clickable widget
+// the feedback round that replaced the old clickable widget
 // with CSS-only highlighting, and "Todo feedback round 2" item 2, which brings a checkbox back —
 // as a rail beside the paragraph, not inline in it). `/todo` and `/todos <title>` aren't real
 // markdown, so there's no AST node for either — this doesn't add one; it decorates a top-level
@@ -29,7 +29,7 @@ type ProseViewModule = { Decoration: typeof Decoration; DecorationSet: typeof De
 // (`isDone`, unchanged from the CSS-only round). The checkbox widget's own open/closed state is a
 // *separate* read, straight off `parseTodos`/`parseTodoGroups(getValue())` on every `decorations()`
 // call — never a cached/ref'd copy — so a stale render can't show a box that doesn't match the
-// message's actual current content (see backlog.md point 4, "state management").
+// message's actual current content.
 const TODO_PREFIX = /^@?\/todo(?:\s|$)/;
 // `/todos <title>` — the group trigger. A local, lightweight matcher (same convention as
 // TODO_PREFIX above), deliberately not `lib/todos.ts`'s own unexported `GROUP_TRIGGER` — this file
@@ -131,7 +131,7 @@ export const todoDecorationPlugin = (prose: ProseStateModule, view: ProseViewMod
             const lead = text.length - text.trimStart().length; // leading whitespace, if any
             const trimmed = text.slice(lead);
             if (TODOS_PREFIX.test(trimmed)) {
-              // The group's own title line: highlight only (per backlog.md, it's a title, not
+              // The group's own title line: highlight only (it's a title, not
               // itself a todo), then arm `pendingItems` for the bullet_list right after it.
               pushLine(offset, node.nodeSize, lead, tokenLength(trimmed), isDone(node));
               pendingItems = groups[groupPtr]?.items ?? null;

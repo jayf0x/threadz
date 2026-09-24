@@ -177,7 +177,7 @@
 .threadz-md .ProseMirror-selectednode.threadz-img { outline: 2px solid var(--ring); }
 
 /* `/todo`/`/todos <title>` command lines (lib/todos.ts, ./todoDecoration.ts; `@/` still parses): a highlight plus a
- * gutter checkbox — brought back in "Todo feedback round 2" (backlog.md) after a first cut's
+ * gutter checkbox — brought back after a first cut's
  * clickable widget was removed for reading as "UI bolted onto markdown, not markdown." The fix
  * was never "no checkbox," it was "don't render it inline in the text flow" — this positions it
  * absolute, to the left of the paragraph/list-item (`position: relative` below), so it reads as a

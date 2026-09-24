@@ -7,7 +7,10 @@ Open items only. Resolved work lives in the git history; deliberate scope choice
 
 ## Open — v1
 
-_Nothing._
+- **Design call: accent contrast as text.** In the light modes of Gruvbox and Solarized, `--primary` on
+  `--background` measures ~2.9–3.0:1 (white on primary ~3.1–3.2:1; Nord light 3.8:1) — below 4.5:1 for small
+  accent-coloured text and button labels. Meeting it means darkening the brand accent (orange → brown-ish), so it's
+  a choice, not a bug fix; every other measured pair passes.
 
 ## v2 features (deferred by design)
 

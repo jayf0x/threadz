@@ -1,4 +1,4 @@
-// Real end-to-end coverage for References (backlog.md's Phase 1 "(G)"): type the `[[` trigger, let
+// Real end-to-end coverage for References : type the `[[` trigger, let
 // the live autocomplete complete a thread and then a message inside it, and click the resulting
 // rendered link to navigate — the one item in this groundwork slice explicitly called out as
 // needing more than a unit test. Real render, real typing, real Crepe mount for the click half (not

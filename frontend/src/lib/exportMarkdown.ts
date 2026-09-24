@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import type { Annotation, Message, Thread } from "./types";
 
 // Assembles one thread into a portable markdown document — the pure formatting step behind
-// "Export thread as markdown" (see backlog.md). No file I/O or DOM: callers own writing/sharing the
+// "Export thread as markdown". No file I/O or DOM: callers own writing/sharing the
 // result (handoff.ts's `download` already does this for the JSON backup).
 //
 // Format choices:

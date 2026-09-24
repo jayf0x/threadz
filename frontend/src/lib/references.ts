@@ -1,4 +1,4 @@
-// References: linking a thread or a specific message, inline. Decision 1 (backlog.md) is "the
+// References: linking a thread or a specific message, inline. Decision 1 is "the
 // hybrid" — a trigger drives a live autocomplete while typing, but what's actually stored is a
 // real markdown link (`[text](href)`), never the trigger itself. Everything here is pure (no DOM,
 // no React, no IndexedDB) so it's independently testable — the two feature/editor files that use it

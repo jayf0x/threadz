@@ -164,12 +164,12 @@ export type Todo = LineTodo | GroupTodo | MessageTodo;
 // none, or only ones closed recently.
 export type ClosedFilter = "always" | "never" | "recent";
 
-// "Recently closed" window for the filter above — 24h, the backlog's suggested default; not
+// "Recently closed" window for the filter above — 24h; not
 // configurable (YAGNI, nobody asked for a setting).
 export const RECENT_CLOSED_MS = 24 * 60 * 60 * 1000;
 
 // Whether `t` should be visible under `filter` at time `now`. A group's own items are never
-// filtered (backlog.md's "Closed-todo filter" point 1) — hiding some of a list you're looking at
+// filtered — hiding some of a list you're looking at
 // (groceries) reads as broken, not tidy — and a group card itself is never hidden either, even
 // when every one of its items is closed: same "don't hide list contents" reasoning.
 export const isTodoVisible = (t: Todo, filter: ClosedFilter, now: number): boolean => {
@@ -251,7 +251,7 @@ export const stripTodoMarker = (line: string): string => {
 // index into `content.split("\n")` — a LineTodo's `lineIndex`, or one item's, from the same parse
 // that found it. Pure text transform: the caller is responsible for persisting the result
 // (`editMessage`). A plain list item with no checkbox (`- buy milk`) toggling to done ADDS the
-// checkbox syntax rather than requiring it up front — see backlog.md's grouped-lists item.
+// checkbox syntax rather than requiring it up front.
 export const toggleTodoLine = (content: string, lineIndex: number): string => {
   const lines = content.split("\n");
   const raw = lines[lineIndex];

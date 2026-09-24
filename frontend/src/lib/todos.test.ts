@@ -146,7 +146,7 @@ test("collectTodos returns both open and closed todos, each carrying done and en
   expect(todos.map((t) => t.lineIndex)).toEqual([0, 1]);
 });
 
-// --- @/todos grouped lists (backlog.md "Grouped todo lists + convert-a-message action") ---
+// --- @/todos grouped lists ---
 
 test("parseTodoGroups: a trigger followed by list items becomes one group, marker stripped", () => {
   const content = "@/todos Groceries\n- milk\n- [x] eggs\n- [ ] bread";
@@ -237,7 +237,7 @@ test("collectTodos surfaces a message flagged via meta.todo as its own entry, in
   ]);
 });
 
-// --- closed-at derivation + the "recent" filter window (backlog.md "Closed-todo filter") ---
+// --- closed-at derivation + the "recent" filter window ---
 
 test("a LineTodo's closedAt approximates via the message's editedAt, falling back to createdAt", () => {
   const threads = [thread("t1", "List")];

@@ -24,7 +24,7 @@ import type { WorkerIn, WorkerOut } from "./whisper-worker";
 // Memory is bounded: in flight is at most one utterance (≤ MAX_UTTER_S) plus the
 // decodes already queued; the text itself lives in the textarea and IndexedDB.
 //
-// iOS reality (backlog): WebKit suspends the mic seconds after the screen locks.
+// iOS reality: WebKit suspends the mic seconds after the screen locks.
 // We hold a Screen Wake Lock and release the mic when the page is hidden.
 // ─────────────────────────────────────────────────────────────────────────────
 

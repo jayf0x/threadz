@@ -249,7 +249,7 @@ export const getMessage = (id: string) => db.query<MessageRow, [string]>("SELECT
 export const allAnnotations = () =>
   db.query<AnnotationRow, []>("SELECT * FROM annotations ORDER BY thread_id, created_at, id").all();
 
-// Ordered by (createdAt, id), per the backlog's rendering order.
+// Ordered by (createdAt, id), the rendering order.
 export const getAnnotations = (threadId: string) =>
   db
     .query<AnnotationRow, [string]>("SELECT * FROM annotations WHERE thread_id = ? ORDER BY created_at, id")

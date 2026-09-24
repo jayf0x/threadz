@@ -1375,7 +1375,7 @@ describe("local mode (invariant: no data lost across sync)", () => {
     await mainDelete(t.id); // main deletes it without ever seeing the annotation
 
     const outcome = await local.applyRemoteDelete(t.id);
-    expect(outcome).toBe("kept"); // this is the bug the backlog named: it must NOT be "removed"
+    expect(outcome).toBe("kept"); // this is a real bug it guards against: it must NOT be "removed"
     const survivor = await local.localApi.getThread(t.id);
     expect(survivor.thread.id).toBe(t.id);
 

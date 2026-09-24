@@ -104,6 +104,12 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   lazy-loaded Milkdown editor, not cheap to all mount at once. Rows are measured (`measureElement`), not a fixed
   guess, since edit mode, an image, or a note popover all change a row's real height. Follow the same "measure,
   don't guess" pattern for any other list that can get long instead of a fixed row-height virtualizer.
+- **Shortcuts and layers.** An open Radix layer (menu, popover, dialog) blocks bare-key shortcuts
+  (`lib/dom.ts`'s `shortcutBlocked`; Esc-closes-thread listens in the capture phase so it sees the layer before
+  Radix removes it); `chordBlocked` is the ⌘/Ctrl variant, which only stands down for a layer (⌘K works while the
+  composer is focused). `.ProseMirror` overflow is visible by default (a gutter checkbox at `left:-20px` is clipped
+  otherwise); only `.composer-editor` scrolls. The thread list re-pins to the newest end while you're at the bottom
+  (`following` ref), since row heights settle after their lazy editors mount.
 - **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into both editors): both adapters
   drive the one `nextAutocompleteState` machine. In the Crepe (WYSIWYG) editor its offsets are into the *rendered*
   block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`

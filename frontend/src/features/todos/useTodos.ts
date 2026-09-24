@@ -27,7 +27,7 @@ export const useTodos = () => {
   // every other edit uses — text is the only source of truth, ticking a box is a content edit.
   // A "group" todo has several items, each its own line, so `item` picks which one; a "message"
   // todo has no line at all — it's non-textual (`meta.todo.done`), so it skips `toggleTodoLine`/
-  // `editMessage` entirely and goes through the meta-only call instead (see backlog.md's
+  // `editMessage` entirely and goes through the meta-only call instead (see
   // "Grouped todo lists + convert-a-message action"). `pullThread` (not `load`) refreshes the
   // mirror/replica and fires `onChange`, which re-runs `load`.
   const toggle = useCallback(async (todo: Todo, item?: ParsedTodoItem) => {
