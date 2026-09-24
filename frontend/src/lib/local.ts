@@ -431,6 +431,20 @@ export const localApi: Api = {
   },
 };
 
+// --- trash: read-only query surface for Recently Deleted ----------------------
+
+export type TrashedThread = { id: string; title: string; deletedAt: number };
+
+// Backs a future Recently Deleted view: everything `deleteThread`/`applyRemoteDelete` keeps in
+// `trash` right now, without the full thread/messages/annotations payload a restore doesn't need
+// until it's actually invoked. Newest deletion first.
+export const listTrash = async (): Promise<TrashedThread[]> => {
+  const rows = await (await getDB()).getAll("trash");
+  return rows
+    .map((t) => ({ id: t.id, title: t.thread.title, deletedAt: t.deletedAt }))
+    .sort((a, b) => b.deletedAt - a.deletedAt);
+};
+
 // --- sync bookkeeping ---------------------------------------------------------
 
 export const countUnsynced = async (): Promise<Unsynced> => {

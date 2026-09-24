@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import {
   commitPush,
   exportSnapshot,
+  listTrash,
   localApi,
   mergeSnapshot,
   parseSnapshot,
@@ -85,6 +86,21 @@ test("import never creates two notes at one seq, and brings back what we trashed
   await mergeSnapshot({ version: 1, exportedAt: 0, threads: [gone], messages: [] });
   expect((await localApi.getThread(gone.id)).messages.map((m) => m.content)).toEqual(["only on this device"]);
   expect((await exportSnapshot()).trash?.some((x) => x.thread.id === gone.id)).toBe(false);
+});
+
+test("listTrash surfaces deleted threads for Recently Deleted, newest deletion first", async () => {
+  const kept = await localApi.createThread({ title: "never deleted" });
+  const first = await localApi.createThread({ title: "first deleted" });
+  await localApi.deleteThread(first.id);
+  const second = await localApi.createThread({ title: "second deleted" });
+  await localApi.deleteThread(second.id);
+
+  const trash = await listTrash();
+  expect(trash.find((t) => t.id === kept.id)).toBeUndefined();
+  expect(trash.find((t) => t.id === first.id)).toMatchObject({ title: "first deleted" });
+  expect(trash.find((t) => t.id === second.id)).toMatchObject({ title: "second deleted" });
+  const deletedAts = trash.map((t) => t.deletedAt);
+  expect(deletedAts).toEqual([...deletedAts].sort((a, b) => b - a));
 });
 
 test("a backup file is checked for field types, not just for keys", () => {
