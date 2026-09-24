@@ -489,6 +489,12 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   (`localStorage` + typed getter/setter + `useSyncExternalStore`, keyed by thread id) rather than a new `Thread`
   schema field. **Resolved (Decisions #2): per-device, not synced.** Groundwork: Phase 1 slice (A), shared with
   Resolved/unresolved status below. Integration: Phase 2 step 2, paired with Resolved/unresolved status.
+  **Done:** `ThreadRow.tsx`'s ⋯-style action row gets a `Pin` toggle (`lib/threadFlags.ts`'s `"pinned"` flag,
+  filled + `text-primary` once set, visible even without hovering the row — unlike the always-hover-only rename/
+  delete actions). `visibleThreads.ts`'s `visibleThreads()` takes an optional `pinned` id set and stable-
+  partitions the already-sorted/ranked result so pinned matches float to the top ahead of everything else,
+  in both the plain-sort and search-ranked paths, without disturbing relative order within either group.
+  `useThreads.ts` supplies that set via `threadFlags.ts`'s new `useFlaggedThreadIds()` hook.
 
 - **Recently Deleted, with restore.** The data model already fully supports this and is unused by any UI: for
   Local, `frontend/src/lib/local.ts`'s `trash` IndexedDB store (keyed by thread id, a `dirty` flag, and
@@ -555,6 +561,14 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   References item's link format (Decisions #1) — a markdown link to a specific message id already is a stable
   permalink, no separate mechanism needed. So only **(1) resolved/unresolved status** is actual new work here.
   Groundwork: Phase 1 slice (A), shared with Pin above. Integration: Phase 2 step 2, paired with Pin.
+  **Done:** same `ThreadRow.tsx` action row gets a `Check` toggle (`lib/threadFlags.ts`'s `"resolved"` flag),
+  and a resolved thread shows a small muted `Check` mark prepended to its title (Zulip's ✔-prefix convention,
+  reusing the app's own icon set rather than a literal checkmark glyph) — quiet by design, no separate badge or
+  color change. `ThreadList.tsx` gets a two-way `EyeOff`/`Eye` segmented filter (`ResolvedFilterSwitcher`, same
+  icon-only fieldset pattern as `SidebarSwitcher`/`TodosPanel`'s closed-todo filter) next to the sort `Select`,
+  defaulting to "active" (resolved hidden); `visibleThreads.ts` grew a generic `hidden` id-set parameter (not
+  resolved-specific) that drops those ids before sorting/ranking, and `useThreads.ts` feeds it the resolved set
+  only when the filter is set to hide them.
 
 - **Export one thread as portable markdown.** Today's only export is the whole-vault JSON backup
   (`frontend/src/features/connection/BackupSection.tsx`, `frontend/src/lib/handoff.ts`'s `exportBackup`/`download`)
