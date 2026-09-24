@@ -72,6 +72,7 @@ export const useThreads = () => {
 
   return {
     threads: visible,
+    allThreads: threads, // unfiltered/unsorted, for callers that need the whole set (e.g. resurfacing)
     query,
     setQuery,
     sort,

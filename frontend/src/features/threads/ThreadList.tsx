@@ -1,4 +1,4 @@
-import { Eye, EyeOff, List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
+import { Eye, EyeOff, History, List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -13,10 +13,29 @@ import { cn } from "@/lib/cn";
 import { shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { getMode } from "@/lib/mode";
+import { pickResurfacingThread } from "@/lib/resurfacing";
+import type { Thread } from "@/lib/types";
 import { createOrReuseThread } from "./createOrReuseThread";
 import { ThreadRow } from "./ThreadRow";
 import { useThreads } from "./useThreads";
 import { isSort, type ResolvedFilter, SORTS } from "./visibleThreads";
+
+// Rolls once per session, the moment the full thread list first arrives — not on every render, and
+// not re-rolled as `threads` keeps changing underneath it (search, sync, edits). The pick then holds
+// for the rest of the app's lifetime, same as opening the app once shows you one "you wrote this a
+// while back" thread rather than a different one every time the list re-renders.
+const useResurfacingThread = (threads: Thread[]): Thread | undefined => {
+  const [picked, setPicked] = useState<Thread | undefined>(undefined);
+  const rolled = useRef(false);
+
+  useEffect(() => {
+    if (rolled.current || threads.length === 0) return;
+    rolled.current = true;
+    setPicked(pickResurfacingThread(threads));
+  }, [threads]);
+
+  return picked;
+};
 
 // The sidebar: every thread as a row in a ledger, and the settings it flips to. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({
@@ -29,8 +48,20 @@ export const ThreadList = ({
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
-  const { threads, query, setQuery, sort, setSort, resolvedFilter, setResolvedFilter, syncing, error, refresh } =
-    useThreads();
+  const {
+    threads,
+    allThreads,
+    query,
+    setQuery,
+    sort,
+    setSort,
+    resolvedFilter,
+    setResolvedFilter,
+    syncing,
+    error,
+    refresh,
+  } = useThreads();
+  const resurfaced = useResurfacingThread(allThreads);
   const [panel, setPanel] = useState<Panel>("index");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -145,6 +176,21 @@ export const ThreadList = ({
             {threads.length === 0 && !syncing && (
               <li className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
                 {query ? "Nothing matches." : "Empty index. Press n to start a thread."}
+              </li>
+            )}
+            {!query && resurfaced && (
+              <li className="border-t border-rule">
+                <button
+                  type="button"
+                  onClick={() => onOpen(resurfaced.id)}
+                  className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-accent/50"
+                >
+                  <History aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <Eyebrow>You wrote this a while back</Eyebrow>
+                    <span className="mt-1 block truncate font-serif text-lg leading-snug">{resurfaced.title}</span>
+                  </span>
+                </button>
               </li>
             )}
           </ul>
