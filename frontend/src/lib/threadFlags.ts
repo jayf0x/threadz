@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-// Device-local per-thread boolean flags, keyed by flag name (e.g. "pinned", "resolved") plus
+// Device-local per-thread boolean flags, keyed by flag name (e.g. "pinned") plus
 // thread id — same shape as lib/threadOrder.ts, generalized to hold several independent flags
 // in one store instead of one store per flag. Not synced — per-device only. A thread that's
 // never had a flag set has no entry (default: false), so this never grows unbounded with every

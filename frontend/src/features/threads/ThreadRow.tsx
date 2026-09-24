@@ -1,5 +1,5 @@
 import { format, isThisYear } from "date-fns";
-import { Check, Download, Link, MoreHorizontal, Pencil, Pin, Trash2 } from "lucide-react";
+import { Download, Link, MoreHorizontal, Pencil, Pin, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Menu } from "@/components/ui/menu";
@@ -47,7 +47,6 @@ export const ThreadRow = ({
   // The input's blur fires as it unmounts (after Enter or Esc): one rename per edit, and none after Esc.
   const settled = useRef(false);
   const pinned = useThreadFlag("pinned", thread.id);
-  const resolved = useThreadFlag("resolved", thread.id);
 
   const rename = async () => {
     if (settled.current) return;
@@ -194,12 +193,7 @@ export const ThreadRow = ({
               {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
             </span>
             <span className="min-w-0 pr-40">
-              <span className="block truncate font-serif text-lg leading-snug">
-                {resolved && (
-                  <Check aria-hidden className="mr-1 inline size-3.5 shrink-0 align-[-2px] text-muted-foreground" />
-                )}
-                {thread.title}
-              </span>
+              <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
               {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
               {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
             </span>
@@ -213,15 +207,6 @@ export const ThreadRow = ({
               onClick={() => setThreadFlag("pinned", thread.id, !pinned)}
             >
               <Pin className={cn("size-3.5", pinned && "fill-current")} />
-            </button>
-            <button
-              type="button"
-              aria-label={resolved ? "Mark unresolved" : "Mark resolved"}
-              title={resolved ? "Mark unresolved" : "Mark resolved"}
-              className={cn(act, resolved && "opacity-100 text-primary")}
-              onClick={() => setThreadFlag("resolved", thread.id, !resolved)}
-            >
-              <Check className="size-3.5" />
             </button>
             <button
               type="button"

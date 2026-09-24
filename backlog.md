@@ -724,8 +724,7 @@ Done: icon-only nav with titles; "+" new thread moved to bottom-center of the Th
 filter removed from Threadz (closed-todo filter is now a dropdown in Todos); "Copy here" renamed
 "Clone from here" (branch icon) and a plain "Copy" added to the message menu; composer actions back in
 a side rail (send at the bottom); top line removed (it was the Local-mode indicator bar in `App.tsx`).
-Open: the per-row "Mark resolved" toggle still lives on thread rows, and resolved threads never show in
-Todos — decide whether threads-as-todos should appear in the Todos tab.
+The per-row "Mark resolved" toggle, its badge and the resolved filter plumbing were removed too.
 
 ## v2 features (deferred by design)
 

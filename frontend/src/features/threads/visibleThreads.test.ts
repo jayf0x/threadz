@@ -71,10 +71,3 @@ test("pinning also floats a match to the top while searching", () => {
   const pinned = new Set(["apricot"]);
   expect(ids(visibleThreads(rows, "ap", "updated", new Map(), pinned))).toEqual(["apricot", "apple"]);
 });
-
-test("hidden ids are dropped entirely, from both the no-query and search paths", () => {
-  const rows = [t("a"), t("b"), t("c")];
-  const hidden = new Set(["b"]);
-  expect(ids(visibleThreads(rows, "", "updated", new Map(), new Set(), hidden))).toEqual(["a", "c"]);
-  expect(ids(visibleThreads(rows, "a", "updated", new Map(), new Set(), hidden))).toEqual(["a"]);
-});

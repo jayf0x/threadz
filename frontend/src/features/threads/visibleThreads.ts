@@ -11,16 +11,11 @@ export type Sort = (typeof SORTS)[number]["value"];
 
 export const isSort = (v: string): v is Sort => SORTS.some((s) => s.value === v);
 
-// The resolved filter: "active" hides resolved threads, "all" shows everything. Not persisted —
-// same as TodosPanel's closed-todo filter, resets to "active" each session.
-export type ResolvedFilter = "active" | "all";
-
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
-// The index as the user sees it: filtered by the search box (and, unless `hidden` says otherwise,
-// resolved threads), ordered, then pinned threads floated to the top. `contentHits` maps a thread
+// The index as the user sees it: filtered by the search box, ordered, then pinned threads floated to the top. `contentHits` maps a thread
 // id to its position in the API's own results (only the API can tell a note matches: the mirror
-// holds no note text until a thread is opened) — lower is more relevant. `pinned`/`hidden` come
+// holds no note text until a thread is opened) — lower is more relevant. `pinned` comes
 // from `lib/threadFlags.ts`'s device-local flags, not the `Thread` schema.
 export const visibleThreads = (
   threads: Thread[],
@@ -28,9 +23,8 @@ export const visibleThreads = (
   sort: Sort,
   contentHits: ReadonlyMap<string, number> = new Map(),
   pinned: ReadonlySet<string> = EMPTY_IDS,
-  hidden: ReadonlySet<string> = EMPTY_IDS,
 ): Thread[] => {
-  const pool = hidden.size === 0 ? threads : threads.filter((t) => !hidden.has(t.id));
+  const pool = threads;
   const q = query.trim().toLowerCase();
   const ordered = !q
     ? sortByField(pool, sort)

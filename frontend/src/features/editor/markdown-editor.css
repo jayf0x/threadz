@@ -151,6 +151,11 @@
   font-size: 14px;
   line-height: 1.5;
 }
+/* Same iOS focus-zoom rule as --crepe-base-font-size above; this textarea (the note popover's
+   editor, autofocused) missed that fix and stayed at 14px. */
+@media (max-width: 767px) {
+  .threadz-md-raw { font-size: 16px; }
+}
 .threadz-md-raw::placeholder { color: var(--muted-foreground); }
 
 /* Photos (`img:` refs, see imageView.ts): a grey box of the right aspect ratio until the bytes arrive. */
