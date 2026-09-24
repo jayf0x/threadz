@@ -348,6 +348,234 @@ Verified: `bun run check` (typecheck + Biome + token lint + 181 tests, all green
 `bun run --cwd frontend build`, both clean. No test asserted on any of the exact strings changed, so nothing
 needed updating on that side.
 
+## Known issues
+
+- **`EntryRow.test.tsx` logs a React `act(...)` warning** (Radix `Popover`'s `PopperContent` updating state
+  outside `act`) on every run — pre-existing, unrelated to any recent change; tests still pass. Noticed while
+  landing the Appearance/theming work (2026-09-24), not touched then since it's unrelated to that change.
+
+## Items - v1.5
+
+Surfaced 2026-09-24, out of a "what could we build next, local-only, no AI" pass over `inspiration.md`, `backlog.md`
+and a fresh read of the current code. Nine items, all meant to be built — **do not skip any of them.** Unlike
+every other section in this file, this one carries its own execution plan (below) instead of leaving sequencing to
+whoever picks it up: independent groundwork runs first, in parallel, isolated (worktrees); once every piece of
+groundwork is merged back, the remaining integration work goes sequentially, one item (or paired items) at a time,
+each its own sub-agent, in the fixed order below — no one needs to sit and say "now do the next one." None of
+these need main reachable except where noted; all are meant to work the same in Local and Live unless flagged.
+
+### Decisions (resolved 2026-09-24, before handing this off)
+
+Four questions were genuinely open and got asked and answered before writing the plan below; a fifth was resolved
+by reading the code, not asked. Treat all five as settled — don't re-litigate them mid-build.
+
+1. **Reference format:** the hybrid. A trigger fires the live autocomplete while typing (CLI-`cd`-style, see the
+   References item), but what actually gets inserted into the text is a real markdown link (`[text](...)`) — there
+   is only ever one stored representation, the trigger is a typing-time affordance only, never itself saved. This
+   gets Crepe's existing link rendering for free (no new node type) and degrades to a plain, if inert, link in any
+   other markdown viewer. Still open, left to whoever builds it: the exact URL-scheme spelling inside the
+   parentheses, and whether message *ranges* (not just a single message) are in v1 or a fast-follow — starting
+   with a single target and treating ranges as a fast-follow is the reasonable default absent a reason not to.
+2. **Pin sync:** per-device only, not synced — same `localStorage`/`useSyncExternalStore` shape as
+   `lib/threadOrder.ts`'s existing per-thread reverse-order flag. No `Thread` schema change, no sync/merge rule.
+3. **Resurfacing data:** reuse existing `createdAt`/`updatedAt`, no new "last viewed" field. Weaker signal (an
+   edit moves `updatedAt` same as opening it would have) but zero schema change and nothing new to carry through
+   sync — acceptable for a first cut.
+4. **Reference scope:** local-copy-only. Autocomplete only ever offers threads/messages already in this device's
+   copy (`lib/local.ts`'s `exportSnapshot`) — same as everything else in this app that reads device-local state.
+   No fetch-on-demand for a thread this device hasn't synced yet.
+5. **Recently Deleted / Live-mode restore — resolved by reading `backend/db.ts`, not asked:** main's `deleteThread`
+   is a hard SQL `DELETE` (`backend/db.ts:389-391`), no soft-delete, no trash-equivalent on main. So Live-mode
+   restore can only ever work for a thread still sitting in *this device's own* `trash` from before its delete
+   synced — once a delete reaches main, it's gone everywhere, permanently. Build the feature around that
+   constraint, don't try to make it symmetric with something main doesn't support.
+
+One thing explicitly **not** resolved, deliberately deferred rather than built: the "breadcrumb when content
+moves" sub-part of the Zulip-style item below depends on Branching (parent pointers, sub-threads — see
+`inspiration.md`'s Branching sections), which doesn't exist yet and isn't itself part of this v1.5 list. Skip
+that one sub-clause explicitly (it's called out again in the item itself) rather than building a half-version of
+it against nothing — this is the one documented exception to "do all of these."
+
+### Execution plan
+
+**Phase 1 — independent groundwork, worktree-isolated, runs in parallel.** Each slice below touches only new or
+pure/logic-only files (no shared UI files — `ThreadRow.tsx`/`ThreadList.tsx`/`ThreadView.tsx`/`visibleThreads.ts`
+are untouched in this phase), so none of these can conflict with each other; merge each back to the main branch
+as it lands rather than waiting for all seven. Kick off (G) first/earliest — it's by far the largest and most
+likely to take longest, so it shouldn't be the thing everything else waits on starting.
+
+- (A) A generic per-thread, per-device boolean-flag store (same shape as `lib/threadOrder.ts`) — backs both **Pin**
+  and **Resolved/unresolved status** below; build it once, generically (a flag *name* plus thread id), not as two
+  separate one-off stores.
+- (B) `lib/local.ts`: a new export to *list* trashed threads (the `trash` store already exists; a query surface
+  over it likely doesn't) — backs **Recently Deleted**.
+- (C) A reusable toast/snackbar primitive, `components/ui/toast.tsx` on `@radix-ui/react-toast` (new dependency;
+  not yet installed) — backs **Undo toast**, and is generically reusable afterward.
+- (D) `lib/search.ts`: typo-tolerant `matchScore` (small edit-distance or subsequence match, replacing the current
+  exact-substring check) — backs **Typo-tolerant search** and, later, **Command palette**.
+- (E) A pure thread → markdown-string assembly function — backs **Export one thread as markdown**.
+- (F) A pure weighted-pick function over existing timestamps (decision 3 above: no new field) — backs
+  **Resurfacing**.
+- (G) **References** core: the format (decision 1), the parser for detecting a completed reference in text, the
+  trigger-driven two-stage autocomplete (thread titles, then that thread's messages, Tab/Enter to complete at each
+  stage, Esc/outside-click to cancel at whatever stage without forcing the next one, editable afterward — full
+  behavior spec is in the References item below), wired into both the raw-edit path and the live Milkdown/Crepe
+  view, plus in-app click-to-navigate (reusing `App.tsx`'s `openThreadAt`). **Needs at least one real end-to-end
+  test** (type a reference, autocomplete it, click it, land on the right thread/message) — this is explicitly
+  called out because everything else in this plan is small enough for a unit test to cover its logic, this one
+  isn't. The "Copy link" ⋯-menu action is *not* part of this groundwork slice — it's cheap, and it depends on this
+  slice existing, so it's a Phase 2 step instead.
+
+**Phase 2 — sequential integration, ordered, one sub-agent per step (pairs share a step where they share both
+groundwork and touched files), only starts once every Phase 1 slice above is merged:**
+
+1. **Undo toast + Recently Deleted/Restore**, together — both touch `ThreadRow.tsx`'s delete flow and both build
+   directly on the same `trash` mechanism, so land them in the same pass rather than touching that flow twice.
+2. **Pin + Resolved/unresolved status**, together — both consume groundwork slice (A) and both touch
+   `ThreadRow.tsx`/`visibleThreads.ts`/`ThreadList.tsx`; the permalinks sub-part of the original Zulip item is
+   *not* a separate step here — it's absorbed into the References format (decision 1: a markdown link to a
+   specific message id already *is* a stable permalink), and the breadcrumb sub-part is skipped per the Decisions
+   section above.
+3. **Command palette** — depends on groundwork slice (D) already being merged. The **typo-tolerant search** item
+   itself needs no separate step here: it's fully resolved by its own Phase 1 groundwork (D) already being wired
+   into `visibleThreads.ts`, which it already consumes today — this step is really just Command palette, with
+   search's groundwork as a prerequisite, not a second piece of work.
+4. **Export one thread as markdown** — wire groundwork slice (E) into a per-thread action (⋯ menu on `ThreadRow`,
+   following the same pattern `ThreadView.tsx`'s message-level `Menu` already uses) and `handoff.ts`'s `download`.
+5. **Resurfacing** — wire groundwork slice (F) into somewhere low-friction (opening the app, an idle sidebar
+   moment — left as a judgment call, not decided here).
+6. **References: Copy link + final integration polish** — the "Copy link" ⋯-menu action (message and thread),
+   plus closing out anything Phase 1's slice (G) left as a fast-follow (e.g. range support, if not done already).
+
+- **Pin a thread.** No folder hierarchy exists (by design) and sort is only Recent/Newest/A–Z
+  (`frontend/src/features/threads/visibleThreads.ts`'s `SORTS`) — there is currently no way to keep a few live
+  threads always at the top regardless of sort/search. `inspiration.md`'s "What folders did, and what could
+  replace it" names pinning as one of the mechanisms that could replace folder-based scoping. Likely shape: a
+  device-local flag, same pattern as `frontend/src/lib/threadOrder.ts`'s per-thread reverse-order setting
+  (`localStorage` + typed getter/setter + `useSyncExternalStore`, keyed by thread id) rather than a new `Thread`
+  schema field. **Resolved (Decisions #2): per-device, not synced.** Groundwork: Phase 1 slice (A), shared with
+  Resolved/unresolved status below. Integration: Phase 2 step 2, paired with Resolved/unresolved status.
+
+- **Recently Deleted, with restore.** The data model already fully supports this and is unused by any UI: for
+  Local, `frontend/src/lib/local.ts`'s `trash` IndexedDB store (keyed by thread id, a `dirty` flag, and
+  resurrection logic — see `local.ts`'s "Main deleted a thread we last saw" handling and the `resurrected` return
+  value) already exists and is exercised by `local.test.ts`. Right now `ThreadRow.tsx`'s delete action
+  (`api.deleteThread`) looks final from the user's side even though the device copy quietly keeps the trashed
+  thread. Feature: a view listing recently-deleted threads (a new sidebar panel, same pattern as
+  `frontend/src/features/todos/TodosPanel.tsx`, or a mode of the existing Index) with a restore action per row.
+  **Live-mode restore, resolved (Decisions #5):** main hard-deletes, no trash-equivalent — restore only ever works
+  for a thread still sitting in this device's own `trash` from before its delete synced, never a general "undelete
+  on main." Groundwork: Phase 1 slice (B), a `local.ts` export to *list* trashed threads (the store exists, a
+  query surface over it likely doesn't). Integration: Phase 2 step 1, paired with Undo toast.
+
+- **Command palette / quick switcher.** The sidebar search box (`ThreadList.tsx`) works but needs navigating to
+  first; a keyboard-triggered overlay reachable from anywhere (⌘K-style: type, fuzzy-match thread titles, Enter
+  opens it) would match the app's existing "capture in seconds" bar for retrieval, not just capture. The `/` and
+  `n` global shortcuts already live in `ThreadList.tsx`'s top-level `keydown` listener, guarded by
+  `frontend/src/lib/dom.ts`'s `shortcutBlocked` (so they don't fire while typing in an input/editor) — a new
+  shortcut would follow that exact precedent. No overlay-dialog component exists yet for this; per AGENTS.md's
+  "Menus, popovers, dropdowns, dialogs: a real primitives library, never hand-rolled" rule, this means reaching
+  for `@radix-ui/react-dialog` (not yet a dependency — `@radix-ui/react-dropdown-menu` and
+  `@radix-ui/react-popover` are, `-dialog` isn't) rather than hand-rolling one. Shares its matching logic with the
+  "typo-tolerant local search" item below rather than reinventing it. Groundwork: none of its own — depends on
+  Phase 1 slice (D). Integration: Phase 2 step 3.
+
+- **Typo-tolerant local search.** `frontend/src/lib/search.ts`'s `matchScore` is exact-substring-only
+  (`hay.indexOf(needle)`) — no fuzzy/typo tolerance. `inspiration.md`'s research on Mem (a similar app) already
+  logged "unreliable AI search and weak exact-keyword search" as a real user complaint from that space. This is
+  the local, no-model fix for the "weak exact-keyword search" half of that lesson: a kinder matcher (small
+  edit-distance tolerance, or a subsequence match) so a typo or a partial/reordered word still surfaces the right
+  thread. Touches `lib/search.ts` (`matchScore`/`combineScore`), consumed by `visibleThreads.ts` (title-only,
+  local) — check whether the backend's own SQLite FTS5 `bm25()` content-search path (referenced in `search.ts`'s
+  own top comment) should get equivalent forgiveness too, or whether that's a separate, larger change out of
+  scope for this item. **Already (mostly) resolved by its own groundwork:** Phase 1 slice (D) is this item — once
+  it's merged, `visibleThreads.ts` already consumes `matchScore` today, so there's no separate Phase 2 step for
+  this one specifically; Command palette (above) is the only thing still waiting on it.
+
+- **Resurfacing (decaying-recall, local-only).** `inspiration.md`'s "Ideas that came out" section names
+  Readwise's resurfacing-by-decaying-recall-probability (not by date) as a lesson worth carrying over, but files
+  it right next to the AI-powered "nightly dream pass" idea — worth separating: the resurfacing *mechanic itself*
+  is just a scored/weighted pick over existing timestamps, no model or embedding involved. Feature: somewhere
+  low-friction (opening the app, an idle sidebar moment) surface one older thread or note "you wrote a while back"
+  instead of nothing, weighted so older/less-recently-seen things resurface more often than a flat random pick,
+  but not strictly oldest-first either. **Resolved (Decisions #3): reuse existing `createdAt`/`updatedAt`, no new
+  field.** Groundwork: Phase 1 slice (F), a pure weighted-pick function. Integration: Phase 2 step 5 — where
+  exactly it surfaces (app open, idle sidebar moment, elsewhere) is left as a judgment call for that step.
+
+- **Zulip-style thread status and stable links.** Three related, already-researched ideas from `inspiration.md`'s
+  Zulip section ("Links survive", "Status in the label", "Breadcrumbs"), promoted here from "parked" to "worth
+  scoping": (1) a **resolved/unresolved status** on a thread — a quiet marker (Zulip prepends ✔ to the topic name)
+  plus a filter, the most standalone/buildable of the three (just a boolean-ish field on `Thread` and a filter in
+  `visibleThreads.ts`/`ThreadList.tsx`); (2) **permalinks that survive edits** — a link to one specific message
+  that keeps working even if the thread's content around it changes (link by message id, which the app already
+  has, not by position); (3) an automatic **breadcrumb when content moves** — most relevant once Branching or
+  Copy-with-provenance exists (see `inspiration.md`'s "Provenance for Copy" and the Branching sections). **(3) is
+  the one documented exception to "build all of these" — explicitly skipped, blocked on Branching (not part of
+  this list, no ETA); don't build a half-version against nothing.** **(2), resolved:** absorbed into the
+  References item's link format (Decisions #1) — a markdown link to a specific message id already is a stable
+  permalink, no separate mechanism needed. So only **(1) resolved/unresolved status** is actual new work here.
+  Groundwork: Phase 1 slice (A), shared with Pin above. Integration: Phase 2 step 2, paired with Pin.
+
+- **Export one thread as portable markdown.** Today's only export is the whole-vault JSON backup
+  (`frontend/src/features/connection/BackupSection.tsx`, `frontend/src/lib/handoff.ts`'s `exportBackup`/`download`)
+  — there's no way to get a single thread out as a real, shareable or printable markdown file, which is the more
+  natural unit for "replace Obsidian" than a full-vault dump. Feature: a per-thread "Export" or "Copy as Markdown"
+  action (the message-level ⋯ menu, `frontend/src/features/threads/ThreadView.tsx`'s `Menu` usage, is the existing
+  precedent for a per-item action menu; `ThreadRow.tsx` would need an equivalent for thread-level actions if one
+  doesn't already exist there). `handoff.ts`'s `download` helper already exists and is reusable for a `.md` file,
+  not just the JSON export. Thread content is already plain markdown messages, so this is mostly an assembly/
+  formatting question left open: one message per line vs. per section, whether to include timestamps, whether to
+  inline annotations/notes or drop them, whether images (referenced only as `img:<hash>` per AGENTS.md's Images
+  section) get resolved to something in the output or left as broken references. Groundwork: Phase 1 slice (E), a
+  pure assembly function. Integration: Phase 2 step 4.
+
+- **Undo toast on delete.** `local.ts`'s `trash` mechanism (see "Recently Deleted" above) already means a delete
+  isn't actually destructive underneath, but `ThreadRow.tsx`'s delete flow (a `confirm()` dialog today) gives no
+  way back in the moment it happens. `inspiration.md`'s "Ideas parked for later" already names "Undo toast for
+  Copy" as a parked idea; this is the same UI pattern applied to Delete instead — arguably higher-value, since
+  Delete already has `trash` to undo *into*, where Copy has no real "undo" target. No toast/snackbar primitive
+  exists anywhere in `frontend/src/components/ui/` today — this would likely be the first, and per AGENTS.md's
+  primitives rule should probably be built on a Radix pattern (`@radix-ui/react-toast` isn't a dependency yet)
+  rather than hand-rolled, same reasoning as the command-palette item above. Groundwork: Phase 1 slice (C), the
+  primitive component on its own. Integration: Phase 2 step 1, paired with Recently Deleted/Restore.
+
+- **References: linking a thread or a specific message, inline.** Scoped down deliberately from a bigger, later
+  idea — read `inspiration.md`'s new "References" entry (added alongside this backlog item) for the full,
+  deferred vision (linking *everything* — notes, threads, messages, whatever else the app eventually has — plus a
+  cross-content browser); this item is only the buildable slice: referencing another **thread** or a **specific
+  message** from inside a note/message, inline, clickable. Four sub-parts; the first and fourth are resolved
+  (Decisions #1 and #4 above), the middle two are the actual work:
+  1. **Format — resolved (Decisions #1): the hybrid.** A trigger character fires live autocomplete while typing
+     (see (2) below); what actually lands in the text once completed is a real markdown link,
+     `[custom text](...)` — a single stored representation, never the trigger syntax itself. Two things still left
+     to whoever builds this: (i) the exact URL-scheme spelling inside the parentheses — `thread={id}?message={id}`
+     and `link:{thread_id}/{message_id}` were both floated, a range-capable shape
+     (`link:{thread_id}/{from}-{to}`) is worth having in mind even if range support itself is a fast-follow, so
+     the scheme doesn't need a breaking change to add it later; (ii) confirm against `@milkdown/crepe`'s actual
+     link/autolink handling that this doesn't collide with anything Crepe already parses as something else —
+     Crepe already renders a plain `[text](url)` as a clickable link with zero new node types needed, which is
+     exactly why the hybrid was chosen, but verify rather than assume. Should navigate in-app (reuse `App.tsx`'s
+     `openThreadAt`/deep-link machinery), not a hard page reload.
+  2. **Autocomplete**, live and fully local — per Decisions #4, scoped to whatever this device's copy already
+     holds (`lib/local.ts`'s `exportSnapshot`/`pullMain`), no fetch-on-demand for a thread not yet synced here.
+     Typed from the trigger in (1). Must work anywhere text is composed or edited — the composer (`Composer`/
+     `MessageInput`), a message's inline edit mode, and the note popover's editor (`ThreadView.tsx`'s `EntryRow`)
+     — meaning it likely needs to hook into both the raw-textarea edit path and the live Milkdown/Crepe view (see
+     AGENTS.md's "Custom rendering inside the Milkdown view" conventions for how existing decorations/node-views
+     are wired in — `todoDecoration.ts` is probably the closer precedent than `imageView.ts`, since a reference
+     isn't a real markdown AST node either). Exact behavior, CLI-`cd`-tab-completion-style, spec'd already: first
+     shows truncated thread titles (same truncation the sidebar already applies); Enter or Tab completes the
+     thread reference and *continues* autocompleting into that thread's messages next; Esc or an outside click
+     stops the autocomplete entirely at whatever stage it's at — critically, Esc right after the thread-level
+     completion must leave a thread-only reference behind, not force a message id onto it. An already-completed
+     reference sitting in existing text must remain editable afterward, not a one-shot locked-in widget.
+  3. **Copy link.** A "Copy link" action on both a message and a thread (the existing ⋯ menus —
+     `ThreadView.tsx`'s `EntryRow` message menu, and a thread-row equivalent — are the natural home) that copies
+     the reference to the clipboard already formatted per (1), ready to paste straight into another note.
+  4. **Local/Live scope — resolved (Decisions #4):** local-copy-only, no fetch-on-demand. Groundwork: Phase 1
+     slice (G) — parts 1 and 2 above, plus the required end-to-end test. Integration: Phase 2 step 6 — part 3
+     (Copy link) plus any fast-follow (range support) left over from slice (G).
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it

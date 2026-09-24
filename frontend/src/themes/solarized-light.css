@@ -1,0 +1,81 @@
+/*
+ * solarized-light — Ethan Schoonover's Solarized, light variant: warm cream background, muted
+ * cyan accent, deliberately low-contrast text (Solarized's own design choice). Forcing dark on
+ * this palette shows the real Solarized Dark variant (same cyan accent, dark teal background) —
+ * see .dark/.system below. Same 19-token shape as gruvbox-light.css.
+ */
+
+:root[data-palette="solarized-light"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.974 0.026 90);
+  --foreground: oklch(0.523 0.028 219);
+  --card: oklch(0.996 0.013 90);
+  --card-foreground: oklch(0.523 0.028 219);
+  --secondary: oklch(0.946 0.036 90);
+  --secondary-foreground: oklch(0.523 0.028 219);
+  --muted: oklch(0.946 0.036 90);
+  --muted-foreground: oklch(0.460 0.024 219);
+  --accent: color-mix(in oklab, oklch(0.644 0.102 187) 12%, transparent);
+  --accent-foreground: oklch(0.523 0.028 219);
+  --border: color-mix(in oklab, oklch(0.523 0.028 219) 14%, transparent);
+  --input: oklch(0.996 0.013 90);
+  --ring: oklch(0.644 0.102 187);
+  --primary: oklch(0.644 0.102 187);
+  --primary-foreground: oklch(0.996 0.013 90);
+  --destructive: oklch(0.586 0.206 27);
+  --destructive-foreground: oklch(0.996 0.013 90);
+
+  --rule: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+:root[data-palette="solarized-light"].dark {
+  --background: oklch(0.267 0.049 220);
+  --foreground: oklch(0.698 0.016 197);
+  --card: oklch(0.307 0.054 220);
+  --card-foreground: oklch(0.698 0.016 197);
+  --secondary: oklch(0.237 0.054 220);
+  --secondary-foreground: oklch(0.698 0.016 197);
+  --muted: oklch(0.237 0.054 220);
+  --muted-foreground: oklch(0.720 0.013 197);
+  --accent: color-mix(in oklab, oklch(0.644 0.102 187) 16%, transparent);
+  --accent-foreground: oklch(0.698 0.016 197);
+  --border: color-mix(in oklab, oklch(0.698 0.016 197) 15%, transparent);
+  --input: oklch(0.307 0.054 220);
+  --ring: oklch(0.644 0.102 187);
+  --primary: oklch(0.644 0.102 187);
+  --primary-foreground: oklch(0.267 0.049 220);
+  --destructive: oklch(0.586 0.206 27);
+  --destructive-foreground: oklch(0.267 0.049 220);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="solarized-light"].system {
+    --background: oklch(0.267 0.049 220);
+    --foreground: oklch(0.698 0.016 197);
+    --card: oklch(0.307 0.054 220);
+    --card-foreground: oklch(0.698 0.016 197);
+    --secondary: oklch(0.237 0.054 220);
+    --secondary-foreground: oklch(0.698 0.016 197);
+    --muted: oklch(0.237 0.054 220);
+    --muted-foreground: oklch(0.720 0.013 197);
+    --accent: color-mix(in oklab, oklch(0.644 0.102 187) 16%, transparent);
+    --accent-foreground: oklch(0.698 0.016 197);
+    --border: color-mix(in oklab, oklch(0.698 0.016 197) 15%, transparent);
+    --input: oklch(0.307 0.054 220);
+    --ring: oklch(0.644 0.102 187);
+    --primary: oklch(0.644 0.102 187);
+    --primary-foreground: oklch(0.267 0.049 220);
+    --destructive: oklch(0.586 0.206 27);
+    --destructive-foreground: oklch(0.267 0.049 220);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

@@ -1,0 +1,80 @@
+/*
+ * gruvbox-dark — Gruvbox's dark variant: warm dark-brown/retro, orange accent. Pairs with
+ * gruvbox-light.css (the old gruvbox-light.css, renamed). Always-dark identity — base/.dark/.system
+ * all render the same look. Same 19-token shape as gruvbox-light.css.
+ */
+
+:root[data-palette="gruvbox-dark"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.277 0.000 90);
+  --foreground: oklch(0.894 0.057 89);
+  --card: oklch(0.317 0.000 90);
+  --card-foreground: oklch(0.894 0.057 89);
+  --secondary: oklch(0.247 0.000 90);
+  --secondary-foreground: oklch(0.894 0.057 89);
+  --muted: oklch(0.247 0.000 90);
+  --muted-foreground: oklch(0.720 0.046 89);
+  --accent: color-mix(in oklab, oklch(0.731 0.182 52) 16%, transparent);
+  --accent-foreground: oklch(0.894 0.057 89);
+  --border: color-mix(in oklab, oklch(0.894 0.057 89) 15%, transparent);
+  --input: oklch(0.317 0.000 90);
+  --ring: oklch(0.731 0.182 52);
+  --primary: oklch(0.731 0.182 52);
+  --primary-foreground: oklch(0.277 0.000 90);
+  --destructive: oklch(0.660 0.218 30);
+  --destructive-foreground: oklch(0.277 0.000 90);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+:root[data-palette="gruvbox-dark"].dark {
+  --background: oklch(0.277 0.000 90);
+  --foreground: oklch(0.894 0.057 89);
+  --card: oklch(0.317 0.000 90);
+  --card-foreground: oklch(0.894 0.057 89);
+  --secondary: oklch(0.247 0.000 90);
+  --secondary-foreground: oklch(0.894 0.057 89);
+  --muted: oklch(0.247 0.000 90);
+  --muted-foreground: oklch(0.720 0.046 89);
+  --accent: color-mix(in oklab, oklch(0.731 0.182 52) 16%, transparent);
+  --accent-foreground: oklch(0.894 0.057 89);
+  --border: color-mix(in oklab, oklch(0.894 0.057 89) 15%, transparent);
+  --input: oklch(0.317 0.000 90);
+  --ring: oklch(0.731 0.182 52);
+  --primary: oklch(0.731 0.182 52);
+  --primary-foreground: oklch(0.277 0.000 90);
+  --destructive: oklch(0.660 0.218 30);
+  --destructive-foreground: oklch(0.277 0.000 90);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="gruvbox-dark"].system {
+    --background: oklch(0.277 0.000 90);
+    --foreground: oklch(0.894 0.057 89);
+    --card: oklch(0.317 0.000 90);
+    --card-foreground: oklch(0.894 0.057 89);
+    --secondary: oklch(0.247 0.000 90);
+    --secondary-foreground: oklch(0.894 0.057 89);
+    --muted: oklch(0.247 0.000 90);
+    --muted-foreground: oklch(0.720 0.046 89);
+    --accent: color-mix(in oklab, oklch(0.731 0.182 52) 16%, transparent);
+    --accent-foreground: oklch(0.894 0.057 89);
+    --border: color-mix(in oklab, oklch(0.894 0.057 89) 15%, transparent);
+    --input: oklch(0.317 0.000 90);
+    --ring: oklch(0.731 0.182 52);
+    --primary: oklch(0.731 0.182 52);
+    --primary-foreground: oklch(0.277 0.000 90);
+    --destructive: oklch(0.660 0.218 30);
+    --destructive-foreground: oklch(0.277 0.000 90);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

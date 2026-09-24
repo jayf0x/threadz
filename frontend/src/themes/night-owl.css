@@ -1,0 +1,81 @@
+/*
+ * night-owl — Sarah Drasner's Night Owl: deep navy-blue background, cyan/green accents. An
+ * always-dark identity (no real light variant), so all three blocks (base/.dark/.system) render
+ * the same look — forcing "light" on this palette still shows Night Owl, not an inversion of it.
+ * Same 19-token shape as gruvbox-light.css.
+ */
+
+:root[data-palette="night-owl"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.193 0.045 244);
+  --foreground: oklch(0.898 0.020 260);
+  --card: oklch(0.233 0.050 244);
+  --card-foreground: oklch(0.898 0.020 260);
+  --secondary: oklch(0.163 0.050 244);
+  --secondary-foreground: oklch(0.898 0.020 260);
+  --muted: oklch(0.163 0.050 244);
+  --muted-foreground: oklch(0.720 0.016 260);
+  --accent: color-mix(in oklab, oklch(0.829 0.092 181) 16%, transparent);
+  --accent-foreground: oklch(0.898 0.020 260);
+  --border: color-mix(in oklab, oklch(0.898 0.020 260) 15%, transparent);
+  --input: oklch(0.233 0.050 244);
+  --ring: oklch(0.829 0.092 181);
+  --primary: oklch(0.829 0.092 181);
+  --primary-foreground: oklch(0.193 0.045 244);
+  --destructive: oklch(0.654 0.193 25);
+  --destructive-foreground: oklch(0.193 0.045 244);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+:root[data-palette="night-owl"].dark {
+  --background: oklch(0.193 0.045 244);
+  --foreground: oklch(0.898 0.020 260);
+  --card: oklch(0.233 0.050 244);
+  --card-foreground: oklch(0.898 0.020 260);
+  --secondary: oklch(0.163 0.050 244);
+  --secondary-foreground: oklch(0.898 0.020 260);
+  --muted: oklch(0.163 0.050 244);
+  --muted-foreground: oklch(0.720 0.016 260);
+  --accent: color-mix(in oklab, oklch(0.829 0.092 181) 16%, transparent);
+  --accent-foreground: oklch(0.898 0.020 260);
+  --border: color-mix(in oklab, oklch(0.898 0.020 260) 15%, transparent);
+  --input: oklch(0.233 0.050 244);
+  --ring: oklch(0.829 0.092 181);
+  --primary: oklch(0.829 0.092 181);
+  --primary-foreground: oklch(0.193 0.045 244);
+  --destructive: oklch(0.654 0.193 25);
+  --destructive-foreground: oklch(0.193 0.045 244);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="night-owl"].system {
+    --background: oklch(0.193 0.045 244);
+    --foreground: oklch(0.898 0.020 260);
+    --card: oklch(0.233 0.050 244);
+    --card-foreground: oklch(0.898 0.020 260);
+    --secondary: oklch(0.163 0.050 244);
+    --secondary-foreground: oklch(0.898 0.020 260);
+    --muted: oklch(0.163 0.050 244);
+    --muted-foreground: oklch(0.720 0.016 260);
+    --accent: color-mix(in oklab, oklch(0.829 0.092 181) 16%, transparent);
+    --accent-foreground: oklch(0.898 0.020 260);
+    --border: color-mix(in oklab, oklch(0.898 0.020 260) 15%, transparent);
+    --input: oklch(0.233 0.050 244);
+    --ring: oklch(0.829 0.092 181);
+    --primary: oklch(0.829 0.092 181);
+    --primary-foreground: oklch(0.193 0.045 244);
+    --destructive: oklch(0.654 0.193 25);
+    --destructive-foreground: oklch(0.193 0.045 244);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

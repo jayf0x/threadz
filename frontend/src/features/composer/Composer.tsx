@@ -108,7 +108,7 @@ export const Composer = ({
   };
 
   return (
-    <div className="border-t border-border bg-card">
+    <div className="border-t border-border bg-card/92">
       <AnimatePresence>
         {voice.recovery && (
           <m.div

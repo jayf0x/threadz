@@ -1,0 +1,82 @@
+/*
+ * one-light — Atom's One Light: cool neutral background, same ledger structure (paper-light
+ * background, hairline rules), a blue accent (renamed from slate-quarry — the values were already
+ * One-Light-shaped, just poetically named; see AGENTS.md's naming note). Same token set, same
+ * base/.dark/.system shape, so it's a drop-in swap via [data-palette] — see gruvbox-light.css.
+ * Pairs with one-dark.css for the same family's dark identity.
+ */
+
+:root[data-palette="one-light"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.975 0.006 250);
+  --foreground: oklch(0.24 0.02 255);
+  --card: oklch(0.995 0.003 250);
+  --card-foreground: oklch(0.24 0.02 255);
+  --secondary: oklch(0.94 0.012 250);
+  --secondary-foreground: oklch(0.24 0.02 255);
+  --muted: oklch(0.94 0.012 250);
+  --muted-foreground: oklch(0.48 0.02 255);
+  --accent: color-mix(in oklab, oklch(0.55 0.09 255) 12%, transparent);
+  --accent-foreground: oklch(0.24 0.02 255);
+  --border: color-mix(in oklab, oklch(0.24 0.02 255) 14%, transparent);
+  --input: oklch(0.995 0.003 250);
+  --ring: oklch(0.55 0.09 255);
+  --primary: oklch(0.55 0.09 255);
+  --primary-foreground: oklch(0.995 0.003 250);
+  --destructive: oklch(0.6 0.17 27);
+  --destructive-foreground: oklch(0.995 0.003 250);
+
+  --rule: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+:root[data-palette="one-light"].dark {
+  --background: oklch(0.16 0.015 255);
+  --foreground: oklch(0.93 0.01 250);
+  --card: oklch(0.205 0.016 255);
+  --card-foreground: oklch(0.93 0.01 250);
+  --secondary: oklch(0.135 0.014 255);
+  --secondary-foreground: oklch(0.93 0.01 250);
+  --muted: oklch(0.135 0.014 255);
+  --muted-foreground: oklch(0.72 0.012 250);
+  --accent: color-mix(in oklab, oklch(0.68 0.09 255) 16%, transparent);
+  --accent-foreground: oklch(0.93 0.01 250);
+  --border: color-mix(in oklab, oklch(0.93 0.01 250) 15%, transparent);
+  --input: oklch(0.205 0.016 255);
+  --ring: oklch(0.68 0.09 255);
+  --primary: oklch(0.68 0.09 255);
+  --primary-foreground: oklch(0.16 0.015 255);
+  --destructive: oklch(0.7 0.16 27);
+  --destructive-foreground: oklch(0.16 0.015 255);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="one-light"].system {
+    --background: oklch(0.16 0.015 255);
+    --foreground: oklch(0.93 0.01 250);
+    --card: oklch(0.205 0.016 255);
+    --card-foreground: oklch(0.93 0.01 250);
+    --secondary: oklch(0.135 0.014 255);
+    --secondary-foreground: oklch(0.93 0.01 250);
+    --muted: oklch(0.135 0.014 255);
+    --muted-foreground: oklch(0.72 0.012 250);
+    --accent: color-mix(in oklab, oklch(0.68 0.09 255) 16%, transparent);
+    --accent-foreground: oklch(0.93 0.01 250);
+    --border: color-mix(in oklab, oklch(0.93 0.01 250) 15%, transparent);
+    --input: oklch(0.205 0.016 255);
+    --ring: oklch(0.68 0.09 255);
+    --primary: oklch(0.68 0.09 255);
+    --primary-foreground: oklch(0.16 0.015 255);
+    --destructive: oklch(0.7 0.16 27);
+    --destructive-foreground: oklch(0.16 0.015 255);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

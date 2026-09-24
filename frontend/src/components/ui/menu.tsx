@@ -30,7 +30,7 @@ export const Menu = ({ trigger, items, align = "start", className }: MenuProps) 
         sideOffset={6}
         collisionPadding={8}
         className={cn(
-          "z-50 min-w-40 overflow-hidden rounded-md border border-border bg-card py-1 shadow-lg outline-none",
+          "z-50 min-w-40 overflow-hidden rounded-md border border-border bg-card/90 py-1 shadow-lg outline-none backdrop-blur-md",
           className,
         )}
       >

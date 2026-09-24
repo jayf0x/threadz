@@ -1,6 +1,7 @@
 import { domAnimation, LazyMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { BackgroundLayer } from "@/features/appearance";
 import { ConnectionDialog } from "@/features/connection";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
@@ -122,6 +123,7 @@ export const App = () => {
 
   return (
     <LazyMotion features={domAnimation}>
+      <BackgroundLayer />
       {mode === "local" && (
         <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
       )}
@@ -166,8 +168,13 @@ const Shell = ({
   }, [closeThread]);
 
   return (
-    <div className="grid h-dvh lg:grid-cols-[23rem_1fr]">
-      <aside className={cn("min-h-0 border-r border-border bg-secondary", selected && "hidden lg:block")}>
+    // z-10: stacks above BackgroundLayer's fixed z-0 wallpaper (App.tsx) regardless of paint
+    // order. The aside/main panes are themselves translucent (bg-*/92, no blur — see AGENTS.md's
+    // Appearance note) so the wallpaper still shows faintly through; only floating chrome
+    // (popovers, dropdown menus) also gets backdrop-blur, reserved for exactly that per Wigl's
+    // pattern this was ported from.
+    <div className="relative z-10 grid h-dvh lg:grid-cols-[23rem_1fr]">
+      <aside className={cn("min-h-0 border-r border-border bg-secondary/92", selected && "hidden lg:block")}>
         <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
       </aside>
       <main className={cn("min-h-0", !selected && "hidden lg:block")}>
@@ -191,7 +198,7 @@ const Shell = ({
 };
 
 const Blank = () => (
-  <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+  <div className="flex h-full flex-col items-center justify-center gap-4 bg-background/92 px-8 text-center">
     <p className="font-serif text-3xl italic text-muted-foreground">Pick a thread, or start one.</p>
     <Eyebrow>
       <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send

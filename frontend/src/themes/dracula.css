@@ -1,0 +1,79 @@
+/*
+ * dracula — the Dracula theme: dark purple-gray background, pink/purple accent. Always-dark
+ * identity — base/.dark/.system all render the same look. Same 19-token shape as gruvbox-light.css.
+ */
+
+:root[data-palette="dracula"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.288 0.022 278);
+  --foreground: oklch(0.977 0.008 107);
+  --card: oklch(0.328 0.024 278);
+  --card-foreground: oklch(0.977 0.008 107);
+  --secondary: oklch(0.258 0.024 278);
+  --secondary-foreground: oklch(0.977 0.008 107);
+  --muted: oklch(0.258 0.024 278);
+  --muted-foreground: oklch(0.720 0.008 107);
+  --accent: color-mix(in oklab, oklch(0.742 0.149 302) 16%, transparent);
+  --accent-foreground: oklch(0.977 0.008 107);
+  --border: color-mix(in oklab, oklch(0.977 0.008 107) 15%, transparent);
+  --input: oklch(0.328 0.024 278);
+  --ring: oklch(0.742 0.149 302);
+  --primary: oklch(0.742 0.149 302);
+  --primary-foreground: oklch(0.288 0.022 278);
+  --destructive: oklch(0.682 0.206 24);
+  --destructive-foreground: oklch(0.288 0.022 278);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+:root[data-palette="dracula"].dark {
+  --background: oklch(0.288 0.022 278);
+  --foreground: oklch(0.977 0.008 107);
+  --card: oklch(0.328 0.024 278);
+  --card-foreground: oklch(0.977 0.008 107);
+  --secondary: oklch(0.258 0.024 278);
+  --secondary-foreground: oklch(0.977 0.008 107);
+  --muted: oklch(0.258 0.024 278);
+  --muted-foreground: oklch(0.720 0.008 107);
+  --accent: color-mix(in oklab, oklch(0.742 0.149 302) 16%, transparent);
+  --accent-foreground: oklch(0.977 0.008 107);
+  --border: color-mix(in oklab, oklch(0.977 0.008 107) 15%, transparent);
+  --input: oklch(0.328 0.024 278);
+  --ring: oklch(0.742 0.149 302);
+  --primary: oklch(0.742 0.149 302);
+  --primary-foreground: oklch(0.288 0.022 278);
+  --destructive: oklch(0.682 0.206 24);
+  --destructive-foreground: oklch(0.288 0.022 278);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="dracula"].system {
+    --background: oklch(0.288 0.022 278);
+    --foreground: oklch(0.977 0.008 107);
+    --card: oklch(0.328 0.024 278);
+    --card-foreground: oklch(0.977 0.008 107);
+    --secondary: oklch(0.258 0.024 278);
+    --secondary-foreground: oklch(0.977 0.008 107);
+    --muted: oklch(0.258 0.024 278);
+    --muted-foreground: oklch(0.720 0.008 107);
+    --accent: color-mix(in oklab, oklch(0.742 0.149 302) 16%, transparent);
+    --accent-foreground: oklch(0.977 0.008 107);
+    --border: color-mix(in oklab, oklch(0.977 0.008 107) 15%, transparent);
+    --input: oklch(0.328 0.024 278);
+    --ring: oklch(0.742 0.149 302);
+    --primary: oklch(0.742 0.149 302);
+    --primary-foreground: oklch(0.288 0.022 278);
+    --destructive: oklch(0.682 0.206 24);
+    --destructive-foreground: oklch(0.288 0.022 278);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

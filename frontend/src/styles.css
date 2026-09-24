@@ -1,9 +1,21 @@
 @import "tailwindcss";
-@import "./themes/ochre-paper.css";
+@import "./themes/gruvbox-light.css";
+@import "./themes/gruvbox-dark.css";
+@import "./themes/one-light.css";
+@import "./themes/one-dark.css";
+@import "./themes/everforest.css";
+@import "./themes/solarized-light.css";
+@import "./themes/night-owl.css";
+@import "./themes/dracula.css";
+@import "./themes/nord.css";
+@import "./themes/ubuntu.css";
+@import "./themes/monokai.css";
+@import "./themes/catppuccin.css";
 
 /* Threadz = a commonplace book: a record you append to, not a conversation.
-   Tokens + theme come from the active palette (ochre-paper). Components read colour through
-   token names only — `bun run lint:tokens` enforces it. */
+   Tokens + theme come from the active palette (see themes/palettes.ts for the full list and
+   Settings' Appearance section). Components read colour through token names only —
+   `bun run lint:tokens` enforces it. */
 
 :root {
   color-scheme: light dark;

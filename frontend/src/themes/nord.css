@@ -1,0 +1,79 @@
+/*
+ * nord — the Nord palette: cool blue-gray, arctic. Always-dark identity — base/.dark/.system all
+ * render the same look. Same 19-token shape as gruvbox-light.css.
+ */
+
+:root[data-palette="nord"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.324 0.023 264);
+  --foreground: oklch(0.951 0.007 261);
+  --card: oklch(0.364 0.025 264);
+  --card-foreground: oklch(0.951 0.007 261);
+  --secondary: oklch(0.294 0.025 264);
+  --secondary-foreground: oklch(0.951 0.007 261);
+  --muted: oklch(0.294 0.025 264);
+  --muted-foreground: oklch(0.720 0.008 261);
+  --accent: color-mix(in oklab, oklch(0.775 0.062 218) 16%, transparent);
+  --accent-foreground: oklch(0.951 0.007 261);
+  --border: color-mix(in oklab, oklch(0.951 0.007 261) 15%, transparent);
+  --input: oklch(0.364 0.025 264);
+  --ring: oklch(0.775 0.062 218);
+  --primary: oklch(0.775 0.062 218);
+  --primary-foreground: oklch(0.324 0.023 264);
+  --destructive: oklch(0.606 0.121 15);
+  --destructive-foreground: oklch(0.324 0.023 264);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+:root[data-palette="nord"].dark {
+  --background: oklch(0.324 0.023 264);
+  --foreground: oklch(0.951 0.007 261);
+  --card: oklch(0.364 0.025 264);
+  --card-foreground: oklch(0.951 0.007 261);
+  --secondary: oklch(0.294 0.025 264);
+  --secondary-foreground: oklch(0.951 0.007 261);
+  --muted: oklch(0.294 0.025 264);
+  --muted-foreground: oklch(0.720 0.008 261);
+  --accent: color-mix(in oklab, oklch(0.775 0.062 218) 16%, transparent);
+  --accent-foreground: oklch(0.951 0.007 261);
+  --border: color-mix(in oklab, oklch(0.951 0.007 261) 15%, transparent);
+  --input: oklch(0.364 0.025 264);
+  --ring: oklch(0.775 0.062 218);
+  --primary: oklch(0.775 0.062 218);
+  --primary-foreground: oklch(0.324 0.023 264);
+  --destructive: oklch(0.606 0.121 15);
+  --destructive-foreground: oklch(0.324 0.023 264);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="nord"].system {
+    --background: oklch(0.324 0.023 264);
+    --foreground: oklch(0.951 0.007 261);
+    --card: oklch(0.364 0.025 264);
+    --card-foreground: oklch(0.951 0.007 261);
+    --secondary: oklch(0.294 0.025 264);
+    --secondary-foreground: oklch(0.951 0.007 261);
+    --muted: oklch(0.294 0.025 264);
+    --muted-foreground: oklch(0.720 0.008 261);
+    --accent: color-mix(in oklab, oklch(0.775 0.062 218) 16%, transparent);
+    --accent-foreground: oklch(0.951 0.007 261);
+    --border: color-mix(in oklab, oklch(0.951 0.007 261) 15%, transparent);
+    --input: oklch(0.364 0.025 264);
+    --ring: oklch(0.775 0.062 218);
+    --primary: oklch(0.775 0.062 218);
+    --primary-foreground: oklch(0.324 0.023 264);
+    --destructive: oklch(0.606 0.121 15);
+    --destructive-foreground: oklch(0.324 0.023 264);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

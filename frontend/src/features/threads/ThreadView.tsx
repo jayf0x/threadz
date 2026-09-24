@@ -187,7 +187,7 @@ export const ThreadView = ({
   if (missing) return <NotFound onBack={onBack} />;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-background/92">
       {/* A breadcrumb on a phone (back arrow + small title, one compact row) — the sidebar is
           hidden while a thread is open there, so this is the only way back, not a place for a
           full editorial heading. `lg:` gets the roomier one back: the sidebar is already visible
@@ -544,7 +544,7 @@ export const EntryRow = ({
               align="start"
               sideOffset={8}
               collisionPadding={8}
-              className="z-50 w-80 max-w-[min(20rem,var(--radix-popover-content-available-width))] rounded-md border border-border bg-card p-3 shadow-lg outline-none"
+              className="z-50 w-80 max-w-[min(20rem,var(--radix-popover-content-available-width))] rounded-md border border-border bg-card/90 p-3 shadow-lg outline-none backdrop-blur-md"
             >
               {composingNote ? (
                 <>

@@ -147,6 +147,18 @@ Not in the backlog. Draw from here when picking the next features.
 - **Provenance for Copy.** Inert `copiedFrom` (per message) and `forkedFrom` (per thread), read only by the derived
   layer to collapse near-duplicates in search and trend detection and to draw a branch tree. They cannot be back-filled
   for copies made before they exist. Pointer branches would make them unnecessary.
+- **References, the global version (2026-09-24).** If cross-content linking is done, the intent is to do it well
+  and make it global — not limited to notes: threads, messages, notes, and whatever else the app eventually holds
+  should all be linkable to each other. The blocker is that a real cross-thread/notes/message *browser* (a UI for
+  exploring the whole reference graph, not just following one link at a time) is a genuinely complex, separate
+  piece of work — not viable to build alongside the actual linking mechanism. So the near-term, buildable slice
+  (referencing a **thread** or a **specific message**, inline, with autocomplete and a copy-link action — format
+  still undecided between an `@/ref`-style command and a couple of markdown-link shapes, one of which supports a
+  message range) is in `backlog.md`'s "Items - v1.5" as its own item; this entry is the wider ambition it's
+  deliberately *not* building yet. Speculative extension, explicitly untested, not even a firm idea yet: when an
+  agent reads a thread (`askModel()`), a message containing a reference could have the referenced content pulled
+  in and attached as context automatically — gated behind a setting, or offered as something the person composing
+  the ask opts into per-message. Revisit once the thread/message-only slice actually exists and gets used.
 - **Annotation extensions.** AI feedback as an annotation ("ask about this message" adds an assistant annotation on
   it, not a reply at the end of the thread). **Staleness citations:** an annotation may cite a range of messages
   (e.g. A0-A5) with a hash of it, only to show "the source changed since" (unchanged / changed / gone): a

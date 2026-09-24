@@ -1,0 +1,80 @@
+/*
+ * catppuccin — Catppuccin Mocha: dark lavender-black background, pastel mauve accent.
+ * Always-dark identity — base/.dark/.system all render the same look. Same 19-token shape as
+ * gruvbox-light.css.
+ */
+
+:root[data-palette="catppuccin"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.243 0.030 284);
+  --foreground: oklch(0.879 0.043 272);
+  --card: oklch(0.283 0.033 284);
+  --card-foreground: oklch(0.879 0.043 272);
+  --secondary: oklch(0.213 0.033 284);
+  --secondary-foreground: oklch(0.879 0.043 272);
+  --muted: oklch(0.213 0.033 284);
+  --muted-foreground: oklch(0.720 0.034 272);
+  --accent: color-mix(in oklab, oklch(0.787 0.119 305) 16%, transparent);
+  --accent-foreground: oklch(0.879 0.043 272);
+  --border: color-mix(in oklab, oklch(0.879 0.043 272) 15%, transparent);
+  --input: oklch(0.283 0.033 284);
+  --ring: oklch(0.787 0.119 305);
+  --primary: oklch(0.787 0.119 305);
+  --primary-foreground: oklch(0.243 0.030 284);
+  --destructive: oklch(0.756 0.130 3);
+  --destructive-foreground: oklch(0.243 0.030 284);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+:root[data-palette="catppuccin"].dark {
+  --background: oklch(0.243 0.030 284);
+  --foreground: oklch(0.879 0.043 272);
+  --card: oklch(0.283 0.033 284);
+  --card-foreground: oklch(0.879 0.043 272);
+  --secondary: oklch(0.213 0.033 284);
+  --secondary-foreground: oklch(0.879 0.043 272);
+  --muted: oklch(0.213 0.033 284);
+  --muted-foreground: oklch(0.720 0.034 272);
+  --accent: color-mix(in oklab, oklch(0.787 0.119 305) 16%, transparent);
+  --accent-foreground: oklch(0.879 0.043 272);
+  --border: color-mix(in oklab, oklch(0.879 0.043 272) 15%, transparent);
+  --input: oklch(0.283 0.033 284);
+  --ring: oklch(0.787 0.119 305);
+  --primary: oklch(0.787 0.119 305);
+  --primary-foreground: oklch(0.243 0.030 284);
+  --destructive: oklch(0.756 0.130 3);
+  --destructive-foreground: oklch(0.243 0.030 284);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="catppuccin"].system {
+    --background: oklch(0.243 0.030 284);
+    --foreground: oklch(0.879 0.043 272);
+    --card: oklch(0.283 0.033 284);
+    --card-foreground: oklch(0.879 0.043 272);
+    --secondary: oklch(0.213 0.033 284);
+    --secondary-foreground: oklch(0.879 0.043 272);
+    --muted: oklch(0.213 0.033 284);
+    --muted-foreground: oklch(0.720 0.034 272);
+    --accent: color-mix(in oklab, oklch(0.787 0.119 305) 16%, transparent);
+    --accent-foreground: oklch(0.879 0.043 272);
+    --border: color-mix(in oklab, oklch(0.879 0.043 272) 15%, transparent);
+    --input: oklch(0.283 0.033 284);
+    --ring: oklch(0.787 0.119 305);
+    --primary: oklch(0.787 0.119 305);
+    --primary-foreground: oklch(0.243 0.030 284);
+    --destructive: oklch(0.756 0.130 3);
+    --destructive-foreground: oklch(0.243 0.030 284);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}

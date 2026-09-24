@@ -1,0 +1,81 @@
+/*
+ * everforest — Everforest's light variant: muted warm-green background, a forest-green accent
+ * (renamed from moss-ledger — the values were already Everforest-shaped, just poetically named;
+ * see AGENTS.md's naming note). Same token set, same base/.dark/.system shape — see
+ * gruvbox-light.css.
+ */
+
+:root[data-palette="everforest"] {
+  --palette-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --palette-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --palette-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --background: oklch(0.972 0.012 140);
+  --foreground: oklch(0.23 0.018 140);
+  --card: oklch(0.995 0.006 140);
+  --card-foreground: oklch(0.23 0.018 140);
+  --secondary: oklch(0.94 0.014 140);
+  --secondary-foreground: oklch(0.23 0.018 140);
+  --muted: oklch(0.94 0.014 140);
+  --muted-foreground: oklch(0.47 0.016 140);
+  --accent: color-mix(in oklab, oklch(0.55 0.1 145) 12%, transparent);
+  --accent-foreground: oklch(0.23 0.018 140);
+  --border: color-mix(in oklab, oklch(0.23 0.018 140) 14%, transparent);
+  --input: oklch(0.995 0.006 140);
+  --ring: oklch(0.55 0.1 145);
+  --primary: oklch(0.55 0.1 145);
+  --primary-foreground: oklch(0.995 0.006 140);
+  --destructive: oklch(0.6 0.17 27);
+  --destructive-foreground: oklch(0.995 0.006 140);
+
+  --rule: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+:root[data-palette="everforest"].dark {
+  --background: oklch(0.155 0.014 145);
+  --foreground: oklch(0.93 0.012 140);
+  --card: oklch(0.2 0.015 145);
+  --card-foreground: oklch(0.93 0.012 140);
+  --secondary: oklch(0.13 0.013 145);
+  --secondary-foreground: oklch(0.93 0.012 140);
+  --muted: oklch(0.13 0.013 145);
+  --muted-foreground: oklch(0.71 0.014 140);
+  --accent: color-mix(in oklab, oklch(0.68 0.1 148) 16%, transparent);
+  --accent-foreground: oklch(0.93 0.012 140);
+  --border: color-mix(in oklab, oklch(0.93 0.012 140) 15%, transparent);
+  --input: oklch(0.2 0.015 145);
+  --ring: oklch(0.68 0.1 148);
+  --primary: oklch(0.68 0.1 148);
+  --primary-foreground: oklch(0.155 0.014 145);
+  --destructive: oklch(0.7 0.16 27);
+  --destructive-foreground: oklch(0.155 0.014 145);
+
+  --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="everforest"].system {
+    --background: oklch(0.155 0.014 145);
+    --foreground: oklch(0.93 0.012 140);
+    --card: oklch(0.2 0.015 145);
+    --card-foreground: oklch(0.93 0.012 140);
+    --secondary: oklch(0.13 0.013 145);
+    --secondary-foreground: oklch(0.93 0.012 140);
+    --muted: oklch(0.13 0.013 145);
+    --muted-foreground: oklch(0.71 0.014 140);
+    --accent: color-mix(in oklab, oklch(0.68 0.1 148) 16%, transparent);
+    --accent-foreground: oklch(0.93 0.012 140);
+    --border: color-mix(in oklab, oklch(0.93 0.012 140) 15%, transparent);
+    --input: oklch(0.2 0.015 145);
+    --ring: oklch(0.68 0.1 148);
+    --primary: oklch(0.68 0.1 148);
+    --primary-foreground: oklch(0.155 0.014 145);
+    --destructive: oklch(0.7 0.16 27);
+    --destructive-foreground: oklch(0.155 0.014 145);
+
+    --rule: color-mix(in oklab, var(--foreground) 15%, transparent);
+    --hatch: color-mix(in oklab, var(--foreground) 11%, transparent);
+  }
+}
