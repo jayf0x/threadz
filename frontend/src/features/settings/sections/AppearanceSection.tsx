@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { cn } from "@/lib/cn";
 import { DEFAULT_PALETTE, isPaletteId, PALETTES, type PaletteId } from "@/themes/palettes";
 import { Section } from "./SettingsSection";
@@ -8,14 +9,15 @@ const readPalette = (): PaletteId => {
   return isPaletteId(current) ? current : DEFAULT_PALETTE;
 };
 
-// Light/dark/system lives in the sidebar footer (ThemeToggle) — this is the other half of
-// appearance, the color palette itself. `window._setPalette` is index.html's pre-paint script,
-// same single-writer pattern as `window._setTheme`.
+// Light/dark/system (ThemeToggle) sits above the palette picker — the two halves of appearance,
+// together instead of split between here and a sidebar footer. `window._setPalette` is
+// index.html's pre-paint script, same single-writer pattern as `window._setTheme`.
 export const AppearanceSection = () => {
   const [palette, setPalette] = useState<PaletteId>(readPalette);
 
   return (
     <Section title="Appearance">
+      <ThemeToggle className="mb-4" />
       <fieldset className="flex flex-wrap gap-3">
         <legend className="sr-only">Palette</legend>
         {PALETTES.map((p) => {

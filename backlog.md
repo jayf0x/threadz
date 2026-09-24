@@ -693,6 +693,26 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
      slice (G) — parts 1 and 2 above, plus the required end-to-end test. Integration: Phase 2 step 6 — part 3
      (Copy link) plus any fast-follow (range support) left over from slice (G).
 
+## V1.6 — mobile QA pass
+
+From a real-phone QA session (2026-09-24). Goal: more intuitive, coherent, mobile-friendly UX.
+
+1. **Remove the sidebar footer bar** (StatusPill + sync refresh + ThemeToggle) — its own bottom bar on
+   mobile, a cramped row under the index on desktop. Fold it into Settings instead:
+   - Light/dark under the Appearance section's palette picker.
+   - A new first Settings section for sync/connection status — status only, minimal copy, opens the
+     existing `ConnectionDialog` for the real actions.
+   - Import/export moves to its own section near the bottom of Settings (low-usage functionality).
+2. **Composer spacing/alignment.** Too much surrounding whitespace, especially on mobile. Fold the "+"
+   attach button and the "…" overflow menu in with the image/mic actions, bottom-aligned,
+   `justify-between`; cap primary actions at 3, everything else moves into the overflow menu.
+3. **Mobile scroll/overflow.** The input bar should stay pinned; only the message list scrolls.
+   Sending a message while the iOS keyboard shows/hides can leave the page in an overflow-x/-y state
+   until a manual pinch-zoom resets it — root cause unconfirmed, needs a real device to chase further.
+4. **Sidebar nav as a full-width banner.** Now that the footer bar is gone, `SidebarSwitcher`
+   (Threads/Todos/Bin/Settings) becomes a full-width row on mobile and stays full-width inside the
+   sidebar on desktop, instead of a small centered pill.
+
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it

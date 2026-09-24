@@ -1,13 +1,13 @@
+import { formatDistanceToNow } from "date-fns";
 import { HardDriveDownload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { errorMessage } from "@/lib/errors";
-import { enterLocal, goLive } from "@/lib/handoff";
+import { download, enterLocal, goLive } from "@/lib/handoff";
 import { latestBackup } from "@/lib/local";
 import { replicaReady } from "@/lib/mode";
 import { closePanel, total, useStatus } from "@/lib/status";
-import { BackupSection } from "./BackupSection";
 import { describeReport, describeUnsynced } from "./connectionCopy";
 
 // The one place mode changes happen. Nothing switches on its own: going local and
@@ -137,7 +137,24 @@ export const ConnectionDialog = () => {
           </section>
         )}
 
-        {local && <BackupSection busy={busy} run={run} setNote={setNote} backupAt={backupAt} persisted={persisted} />}
+        {local && backupAt && (
+          <p className="border-t border-rule pt-3 text-xs text-muted-foreground">
+            Safety copy from before your last sync ({formatDistanceToNow(backupAt)} ago){" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={() =>
+                run(async () => {
+                  const b = await latestBackup();
+                  if (b) await download(b.json, `threadz-safety-${b.id}.json`);
+                })
+              }
+            >
+              download
+            </button>
+            . {persisted === false && "This browser may clear local storage if it's unused — export now and then."}
+          </p>
+        )}
 
         <footer className="flex justify-end">
           <Button variant="ghost" disabled={busy} onClick={closePanel}>

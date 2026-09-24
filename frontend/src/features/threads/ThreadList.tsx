@@ -1,18 +1,15 @@
-import { Eye, EyeOff, History, List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
+import { Eye, EyeOff, History, List, ListTodo, type LucideIcon, Plus, Settings, Trash2 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { StatusPill } from "@/features/connection";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
 import { TrashPanel } from "@/features/trash";
 import { cn } from "@/lib/cn";
 import { shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
-import { getMode } from "@/lib/mode";
 import { pickResurfacingThread } from "@/lib/resurfacing";
 import type { Thread } from "@/lib/types";
 import { createOrReuseThread } from "./createOrReuseThread";
@@ -48,19 +45,8 @@ export const ThreadList = ({
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
-  const {
-    threads,
-    allThreads,
-    query,
-    setQuery,
-    sort,
-    setSort,
-    resolvedFilter,
-    setResolvedFilter,
-    syncing,
-    error,
-    refresh,
-  } = useThreads();
+  const { threads, allThreads, query, setQuery, sort, setSort, resolvedFilter, setResolvedFilter, syncing, error } =
+    useThreads();
   const resurfaced = useResurfacingThread(allThreads);
   const [panel, setPanel] = useState<Panel>("index");
   const [creating, setCreating] = useState(false);
@@ -103,7 +89,7 @@ export const ThreadList = ({
 
   return (
     <div className="flex h-full flex-col">
-      <nav className="flex items-center justify-center border-b border-border px-5 py-2.5">
+      <nav className="border-b border-border">
         <SidebarSwitcher panel={panel} setPanel={setPanel} />
       </nav>
       <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -216,25 +202,6 @@ export const ThreadList = ({
           <SettingsPanel />
         </View>
       </div>
-
-      <footer className="flex items-center justify-between border-t border-border px-5 py-3">
-        <div className="flex items-center gap-3">
-          <StatusPill />
-          {getMode() === "live" && (
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={syncing}
-              aria-label="Sync now"
-              title="Sync now"
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <RefreshCw className={cn("size-3", syncing && "animate-spin")} />
-            </button>
-          )}
-        </div>
-        <ThemeToggle />
-      </footer>
     </div>
   );
 };
@@ -248,12 +215,11 @@ const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "settings", label: "Settings", icon: Settings },
 ];
 
-// The header's view switcher — same segmented-fieldset pattern as `ThemeToggle`, so the two
-// three-way toggles in this sidebar (this one, and appearance in the footer) read as one family
-// instead of two different button styles. Replaces the old footer icon buttons (easy to miss,
-// no label until you hovered) with something that reads as navigation on sight.
+// The sidebar's own nav — a full-width banner (mobile and desktop alike, now that the sidebar
+// footer that used to hold sync/theme is gone) rather than a small centered icon pill. Each item
+// gets equal width and a visible label, so it reads as navigation on sight.
 const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Panel) => void }) => (
-  <fieldset className="flex gap-px border border-border p-px">
+  <fieldset className="flex">
     <legend className="sr-only">Sidebar view</legend>
     {PANELS.map(({ value, label, icon: Icon }) => {
       const active = panel === value;
@@ -262,8 +228,8 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
           key={value}
           title={label}
           className={cn(
-            "flex cursor-pointer items-center gap-1.5 px-3 py-1.5 transition-colors has-focus-visible:outline",
-            "has-focus-visible:outline-ring",
+            "flex flex-1 cursor-pointer flex-col items-center gap-1 py-2.5 text-[11px] transition-colors",
+            "has-focus-visible:outline has-focus-visible:outline-ring",
             active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -275,8 +241,8 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             onChange={() => setPanel(value)}
             className="sr-only"
           />
-          <Icon className="size-3.5" aria-hidden />
-          <span className="sr-only">{label}</span>
+          <Icon className="size-4" aria-hidden />
+          {label}
         </label>
       );
     })}
