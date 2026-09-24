@@ -489,6 +489,13 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
    an optional mime `type`, default unchanged, so the vault-backup caller needed no changes).
 5. **Resurfacing** — wire groundwork slice (F) into somewhere low-friction (opening the app, an idle sidebar
    moment — left as a judgment call, not decided here).
+   **Done:** a quiet row at the bottom of `ThreadList.tsx`'s index (`useResurfacingThread`, same file) — "You
+   wrote this a while back" plus the thread's title, opened via `App.tsx`'s `openThreadAt` like any other row.
+   Picked from `useThreads.ts`'s new `allThreads` (the unfiltered set it already had in hand, no second fetch)
+   once per session — a `useRef` gate keeps the effect from re-rolling as `threads` changes underneath it (sync,
+   edits, search). Hidden while searching (`!query`) so it never mixes into search results; not shown as its own
+   panel/idle-timer since the index was the lowest-effort, always-visible surface that didn't need new
+   idle-detection plumbing (none exists elsewhere in the codebase).
 6. **References: Copy link + final integration polish** — the "Copy link" ⋯-menu action (message and thread),
    plus closing out anything Phase 1's slice (G) left as a fast-follow (e.g. range support, if not done already).
 
@@ -565,6 +572,12 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
   but not strictly oldest-first either. **Resolved (Decisions #3): reuse existing `createdAt`/`updatedAt`, no new
   field.** Groundwork: Phase 1 slice (F), a pure weighted-pick function. Integration: Phase 2 step 5 — where
   exactly it surfaces (app open, idle sidebar moment, elsewhere) is left as a judgment call for that step.
+  **Done:** surfaces as a quiet row at the bottom of `ThreadList.tsx`'s index — "You wrote this a while back"
+  plus the thread's title, opening it via `App.tsx`'s `openThreadAt`. Picked once per session
+  (`useResurfacingThread` in `ThreadList.tsx`, a `useRef`-gated effect over `useThreads.ts`'s new `allThreads`
+  field — the unfiltered list it already fetches, so no second `getThreads()` call) rather than re-rolled on
+  every render. Chose the index over an idle-sidebar timer: no idle-detection pattern exists elsewhere in the
+  codebase, and the index is already the always-visible, low-friction surface the other four steps built on.
 
 - **Zulip-style thread status and stable links.** Three related, already-researched ideas from `inspiration.md`'s
   Zulip section ("Links survive", "Status in the label", "Breadcrumbs"), promoted here from "parked" to "worth
