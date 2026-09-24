@@ -21,6 +21,7 @@ import {
   buildReferenceHref,
   completeMessage,
   completeThread,
+  messageRangeParam,
   nextAutocompleteState,
   parseReferenceHref,
   type ReferenceAutocompleteState,
@@ -130,7 +131,8 @@ export const MarkdownEditor = ({
   onTodoToggle?: (lineIndex: number) => void;
   /** A rendered reference link (`[text](thread=…)`, see `lib/references.ts`) was clicked. WYSIWYG
    * mode only — `raw` shows the literal markdown source, nothing there is a clickable link. The
-   * caller navigates in-app (`App.tsx`'s `openThreadAt`), never a page reload. */
+   * caller navigates in-app (`App.tsx`'s `openThreadAt`), never a page reload. `messageId` is `<id>`
+   * or, for a range, `<from>..<to>` (`lib/references.ts`'s `resolveMessageRange` reads it). */
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
@@ -420,13 +422,8 @@ const CrepeEditor = ({
     } else if (st.stage === "message") {
       const message = ac.findMessage(opt.id);
       if (!message) return;
-      const { edit, next } = completeMessage(st, message);
-      loaded.completeReference(
-        local.blockStart + edit.from,
-        local.blockStart + edit.to,
-        st.displayText,
-        buildReferenceHref(st.threadId, message.id),
-      );
+      const { edit, next, href } = completeMessage(st, message);
+      loaded.completeReference(local.blockStart + edit.from, local.blockStart + edit.to, st.displayText, href);
       setLocal((l) => ({ ...l, state: next }));
     }
   };
@@ -645,7 +642,10 @@ const CrepeEditor = ({
           const ref = a ? parseReferenceHref(a.getAttribute("href")) : null;
           if (!ref) return;
           e.preventDefault();
-          onReferenceClickRef.current?.(ref.threadId, ref.messageId);
+          onReferenceClickRef.current?.(
+            ref.threadId,
+            ref.messageId && messageRangeParam(ref.messageId, ref.toMessageId),
+          );
         }}
       />
       <ReferenceAutocompleteMenu

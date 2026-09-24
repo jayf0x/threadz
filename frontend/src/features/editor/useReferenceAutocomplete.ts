@@ -32,7 +32,7 @@ export const useReferenceAutocomplete = (state: ReferenceAutocompleteState) => {
     if (!snapshot || !open) return [];
     if (state.stage === "thread")
       return searchThreads(snapshot.threads, state.query).map((t) => ({ id: t.id, label: t.title }));
-    return searchMessages(snapshot.messages, state.threadId, state.query).map((m) => ({
+    return searchMessages(snapshot.messages, state.threadId, state.query, undefined, state.from).map((m) => ({
       id: m.id,
       label: messageSnippet(m.content) || "(empty)",
     }));

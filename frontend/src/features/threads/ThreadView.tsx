@@ -30,7 +30,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
 import { errorMessage } from "@/lib/errors";
-import { buildReferenceHref, messageSnippet } from "@/lib/references";
+import { buildReferenceHref, messageSnippet, resolveMessageRange } from "@/lib/references";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
@@ -97,7 +97,7 @@ export const ThreadView = ({
   const [copying, setCopying] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [pulsingId, setPulsingId] = useState<string | null>(null); // arrival-only animation, self-clears
+  const [pulsingIds, setPulsingIds] = useState<string[]>([]); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
@@ -108,6 +108,12 @@ export const ThreadView = ({
   // consumer that cares where a message sits on screen (the virtualizer, the render loop's index
   // lookup, jump-to-message) reads `orderedMessages` instead, so the flip can't desync one from another.
   const orderedMessages = useMemo(() => orderMessages(messages, reversed), [messages, reversed]);
+  // `selectedMessageId` (and `pulseMessageId`) may name a range (`from..to`, a reference link's
+  // `message=<from>..<to>`), not just one message — every row in it looks selected.
+  const selectedIds = useMemo(
+    () => new Set(resolveMessageRange(orderedMessages, selectedMessageId).map((m) => m.id)),
+    [orderedMessages, selectedMessageId],
+  );
 
   // Windowed rendering: a long-lived thread can reach hundreds of entries, each its own
   // MarkdownEditor (a lazy Milkdown/ProseMirror mount) — cheap to scroll past, not cheap to all
@@ -185,12 +191,16 @@ export const ThreadView = ({
   // selected; this effect only ever adds the one-shot arrival motion on top of it.
   useEffect(() => {
     if (!pulseMessageId || scrolledTo.current === pulseMessageId) return;
-    const index = orderedMessages.findIndex((m) => m.id === pulseMessageId);
-    if (index === -1) return;
+    const range = resolveMessageRange(orderedMessages, pulseMessageId); // display order: [0] is the topmost row
+    const first = range[0];
+    if (!first) return;
     scrolledTo.current = pulseMessageId;
-    rowVirtualizer.scrollToIndex(index, { align: "center" });
-    setPulsingId(pulseMessageId);
-    const t = setTimeout(() => setPulsingId(null), 1600);
+    rowVirtualizer.scrollToIndex(
+      orderedMessages.findIndex((m) => m.id === first.id),
+      { align: range.length > 1 ? "start" : "center" },
+    );
+    setPulsingIds(range.map((m) => m.id));
+    const t = setTimeout(() => setPulsingIds([]), 1600);
     return () => clearTimeout(t);
   }, [pulseMessageId, orderedMessages, rowVirtualizer]);
 
@@ -268,8 +278,8 @@ export const ThreadView = ({
                     pending={unsynced.has(m.id)}
                     busy={busy}
                     isNew={justAdded.has(m.id)}
-                    selected={selectedMessageId === m.id}
-                    pulsing={pulsingId === m.id}
+                    selected={selectedIds.has(m.id)}
+                    pulsing={pulsingIds.includes(m.id)}
                     onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
                     onEdit={(text) => editMessage(m.id, text)}
                     onCopyThread={() => copyThreadFrom(m.id)}

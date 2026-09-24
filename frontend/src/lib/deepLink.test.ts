@@ -19,6 +19,10 @@ test("deepLinkSearch carries the thread alone, or with its message", () => {
   expect(deepLinkSearch("t1", "m1")).toBe("thread=t1&msg=m1");
 });
 
+test("a message range (`from..to`) rides through ?msg= as the same opaque string", () => {
+  expect(parseDeepLink(`?${deepLinkSearch("t1", "m1..m2")}`)).toEqual({ threadId: "t1", messageId: "m1..m2" });
+});
+
 test("deepLinkSearch round-trips through parseDeepLink", () => {
   for (const [threadId, messageId] of [
     ["t1", "m1"],
