@@ -4,6 +4,7 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { ToastProvider } from "@/components/ui/toast";
 import { BackgroundLayer } from "@/features/appearance";
 import { ConnectionDialog } from "@/features/connection";
+import { CommandPalette } from "@/features/palette";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
 import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
@@ -140,6 +141,7 @@ export const App = () => {
           pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
         />
         <ConnectionDialog />
+        <CommandPalette onOpen={openThreadAt} />
       </LazyMotion>
     </ToastProvider>
   );
@@ -205,7 +207,7 @@ const Blank = () => (
   <div className="flex h-full flex-col items-center justify-center gap-4 bg-background/92 px-8 text-center">
     <p className="font-serif text-3xl italic text-muted-foreground">Pick a thread, or start one.</p>
     <Eyebrow>
-      <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send
+      <kbd>⌘k</kbd> jump · <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send
     </Eyebrow>
   </div>
 );
