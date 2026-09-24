@@ -498,6 +498,25 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
    idle-detection plumbing (none exists elsewhere in the codebase).
 6. **References: Copy link + final integration polish** — the "Copy link" ⋯-menu action (message and thread),
    plus closing out anything Phase 1's slice (G) left as a fast-follow (e.g. range support, if not done already).
+   **Done:** a "Copy link" item in `ThreadView.tsx`'s `EntryRow` message ⋯ menu writes
+   `[<snippet>](thread=<id>?message=<id>)` to the clipboard (`lib/references.ts`'s `messageSnippet` for the link
+   text, `buildReferenceHref` for the href — the same shape the autocomplete itself produces, ready to paste
+   straight into another note rather than a bare URL). `ThreadRow.tsx` gets the thread-level equivalent
+   (`[<title>](thread=<id>)`), but not as a seventh standalone icon button: the row was already at six
+   (Pin/Resolved/Rename/Regenerate/Export/Delete), and touch devices show every one of them unconditionally
+   (`[@media(hover:none)]:opacity-100`), so a seventh tipped it from fuller into genuinely crowded. Rename,
+   Export as Markdown, Copy link and Delete moved into a new `Menu` (⋯, the same `components/ui/menu.tsx`
+   primitive `EntryRow`'s own message menu already uses); Pin, Resolved and Regenerate title stay standalone —
+   the first two are glanceable toggle state, the third keeps its own `animate-pulse` busy indicator, which a
+   menu item can't show once Radix auto-closes the menu on select. Both Copy link actions fire a quiet
+   `toast({ title: "Link copied" })` (`components/ui/toast.tsx`, the same primitive Undo already uses) on
+   success, or a `"Copy failed"` toast with the error if `navigator.clipboard.writeText` rejects — no
+   clipboard-copy pattern existed anywhere else in the app to match, so this is the first. Range support
+   (`?message=<from>..<to>`, flagged as forward-compatible in `lib/references.ts`'s own comment) is the one
+   piece left from Phase 1 slice (G) — not picked up here: it needs its own autocomplete UX for picking a
+   range, not just a format change, so it isn't the "trivial" case this step was scoped to absorb. Verified:
+   `bun run check` (typecheck + Biome + token lint + 230 tests, all green) and `bun run --cwd frontend build`,
+   both clean.
 
 - **Pin a thread.** No folder hierarchy exists (by design) and sort is only Recent/Newest/A–Z
   (`frontend/src/features/threads/visibleThreads.ts`'s `SORTS`) — there is currently no way to keep a few live
@@ -665,9 +684,11 @@ groundwork and touched files), only starts once every Phase 1 slice above is mer
      stops the autocomplete entirely at whatever stage it's at — critically, Esc right after the thread-level
      completion must leave a thread-only reference behind, not force a message id onto it. An already-completed
      reference sitting in existing text must remain editable afterward, not a one-shot locked-in widget.
-  3. **Copy link.** A "Copy link" action on both a message and a thread (the existing ⋯ menus —
+  3. **Done: Copy link.** A "Copy link" action on both a message and a thread (the existing ⋯ menus —
      `ThreadView.tsx`'s `EntryRow` message menu, and a thread-row equivalent — are the natural home) that copies
-     the reference to the clipboard already formatted per (1), ready to paste straight into another note.
+     the reference to the clipboard already formatted per (1), ready to paste straight into another note. See
+     the execution plan's Phase 2 step 6 above for the full write-up (format, where each action lives, feedback,
+     and why range support stayed a deferred fast-follow).
   4. **Local/Live scope — resolved (Decisions #4):** local-copy-only, no fetch-on-demand. Groundwork: Phase 1
      slice (G) — parts 1 and 2 above, plus the required end-to-end test. Integration: Phase 2 step 6 — part 3
      (Copy link) plus any fast-follow (range support) left over from slice (G).
