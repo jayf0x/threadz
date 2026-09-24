@@ -1,4 +1,4 @@
-import { List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings } from "lucide-react";
+import { List, ListTodo, type LucideIcon, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusPill } from "@/features/connection";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
+import { TrashPanel } from "@/features/trash";
 import { cn } from "@/lib/cn";
 import { shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
@@ -156,6 +157,13 @@ export const ThreadList = ({
           <TodosPanel onOpenThread={onOpen} />
         </View>
 
+        <View shown={panel === "trash"} from="right">
+          {/* `onRestored` reopens the thread the same way a click on it would (App.tsx's
+              `openThreadAt`) — a restore is as much "landing back in the thread" as it is
+              undoing the delete. */}
+          <TrashPanel onRestored={onOpen} />
+        </View>
+
         <View shown={panel === "settings"} from="right">
           <SettingsPanel />
         </View>
@@ -183,11 +191,12 @@ export const ThreadList = ({
   );
 };
 
-type Panel = "index" | "settings" | "todos";
+type Panel = "index" | "settings" | "todos" | "trash";
 
 const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "index", label: "Threads", icon: List },
   { value: "todos", label: "Todos", icon: ListTodo },
+  { value: "trash", label: "Recently Deleted", icon: Trash2 },
   { value: "settings", label: "Settings", icon: Settings },
 ];
 

@@ -431,11 +431,11 @@ export const localApi: Api = {
   },
 };
 
-// --- trash: read-only query surface for Recently Deleted ----------------------
+// --- trash: query + restore surface for Recently Deleted / Undo ---------------
 
 export type TrashedThread = { id: string; title: string; deletedAt: number };
 
-// Backs a future Recently Deleted view: everything `deleteThread`/`applyRemoteDelete` keeps in
+// Backs the Recently Deleted view: everything `deleteThread`/`applyRemoteDelete` keeps in
 // `trash` right now, without the full thread/messages/annotations payload a restore doesn't need
 // until it's actually invoked. Newest deletion first.
 export const listTrash = async (): Promise<TrashedThread[]> => {
@@ -443,6 +443,25 @@ export const listTrash = async (): Promise<TrashedThread[]> => {
   return rows
     .map((t) => ({ id: t.id, title: t.thread.title, deletedAt: t.deletedAt }))
     .sort((a, b) => b.deletedAt - a.deletedAt);
+};
+
+// The exact inverse of `deleteThread` above: puts a trashed thread's own rows back, marked dirty
+// like any other local change so a future sync carries them out, and drops the trash row. Local
+// mode's own read is this device copy, so that's the whole story there; a live-mode caller (see
+// `handoff.ts`'s `restoreThread`) still has to push the result to main itself afterward — this
+// function only ever touches the device copy.
+export const restoreFromTrash = async (id: string): Promise<Thread> => {
+  const db = await getDB();
+  const tx = db.transaction(["threads", "messages", "annotations", "trash"], "readwrite");
+  const trashed = await tx.objectStore("trash").get(id);
+  if (!trashed) throw notFound();
+  const thread: LThread = { ...trashed.thread, dirty: 1 };
+  await tx.objectStore("threads").put(thread);
+  for (const m of trashed.messages) await tx.objectStore("messages").put({ ...m, dirty: 1 });
+  for (const a of trashed.annotations) await tx.objectStore("annotations").put({ ...a, dirty: 1 });
+  await tx.objectStore("trash").delete(id);
+  await tx.done;
+  return strip(thread);
 };
 
 // --- sync bookkeeping ---------------------------------------------------------

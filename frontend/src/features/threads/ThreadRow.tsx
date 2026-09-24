@@ -3,10 +3,11 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { PencilSparkles } from "@/components/ui/pencil-sparkles";
+import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
-import { getMode } from "@/lib/mode";
+import { restoreThread } from "@/lib/handoff";
 import { pullThreads } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
 import { noteText, titleFrom } from "./titles";
@@ -67,16 +68,28 @@ export const ThreadRow = ({
     }
   };
 
+  // Non-destructive underneath (`trash`, see AGENTS.md's Local mode note) — delete right away and
+  // offer a way back instead of a confirm() gate in front of it. `onClick` (this row's own "open
+  // it" callback) doubles as Undo's landing action: restoring the thread and reopening it is the
+  // same "open this thread" either way.
   const del = async () => {
-    const warn =
-      getMode() === "local"
-        ? "Delete this thread? It leaves this device now, and everywhere else on the next sync. A copy stays in your backups."
-        : "Delete this thread? This cannot be undone.";
-    if (!confirm(warn)) return;
+    setError(null);
     try {
       await api.deleteThread(thread.id);
       await pullThreads().catch(() => {}); // drop it from the index
       onDeleted(thread.id);
+      toast({
+        title: "Thread deleted",
+        description: thread.title,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            restoreThread(thread.id).then(onClick, (e) =>
+              toast({ title: "Restore failed", description: errorMessage(e) }),
+            );
+          },
+        },
+      });
     } catch (e) {
       setError(errorMessage(e));
     }

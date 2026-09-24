@@ -12,12 +12,13 @@ import {
   markDirty,
   mergeSnapshot,
   parseSnapshot,
+  restoreFromTrash,
   saveBackup,
   unsyncedBatch,
 } from "./local";
-import { replicaReady, setMode } from "./mode";
+import { getMode, replicaReady, setMode } from "./mode";
 import { addReports, emptyReport, fetchAndMerge, type PullReport, pullMain } from "./replica";
-import { emitChange } from "./sync";
+import { emitChange, pullThreads } from "./sync";
 
 // Moving between main and this device. Nothing here runs by itself: going live is a
 // button, and nothing in this file removes a local note.
@@ -151,6 +152,22 @@ export const goLive = (phase?: Phase) =>
     emitChange();
     return report;
   });
+
+// --- restore: Undo toast / Recently Deleted -------------------------------------
+
+// Puts a thread this device's own trash is still holding back into play (see `local.ts`'s
+// `restoreFromTrash`, the exact inverse of its `deleteThread`). Local mode's own read is that
+// device copy, so restoring it there is the whole story. Live reads main directly though, and
+// main keeps no trash of its own to undelete from (see AGENTS.md's Local mode note) — so a
+// live-mode restore has to reach main right now, through the same device<->main channel every
+// other move uses: `syncNow`. The restored rows land in `syncNow`'s ordinary push (not its
+// `deletes` list — they're no longer in trash), so main just sees them as new content.
+export const restoreThread = async (id: string): Promise<void> => {
+  await restoreFromTrash(id);
+  emitChange(); // local mode's own read reflects the restored thread immediately
+  if (getMode() === "live") await syncNow(); // main has no trash of its own — reach it now
+  await pullThreads().catch(() => {}); // refresh the fast mirror (+ device copy, live) so the index shows it again
+};
 
 // --- backups ------------------------------------------------------------------
 

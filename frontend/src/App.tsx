@@ -1,6 +1,7 @@
 import { domAnimation, LazyMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { ToastProvider } from "@/components/ui/toast";
 import { BackgroundLayer } from "@/features/appearance";
 import { ConnectionDialog } from "@/features/connection";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
@@ -122,23 +123,25 @@ export const App = () => {
   }, [selected, selectedMessageId]);
 
   return (
-    <LazyMotion features={domAnimation}>
-      <BackgroundLayer />
-      {mode === "local" && (
-        <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
-      )}
-      <Shell
-        key={mode}
-        selected={selected}
-        closeThread={closeThread}
-        autofocus={!!selected && selected === captureId}
-        openThreadAt={openThreadAt}
-        selectedMessageId={selectedMessageId}
-        onSelectMessage={onSelectMessage}
-        pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
-      />
-      <ConnectionDialog />
-    </LazyMotion>
+    <ToastProvider>
+      <LazyMotion features={domAnimation}>
+        <BackgroundLayer />
+        {mode === "local" && (
+          <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-40 h-0.5 bg-primary" />
+        )}
+        <Shell
+          key={mode}
+          selected={selected}
+          closeThread={closeThread}
+          autofocus={!!selected && selected === captureId}
+          openThreadAt={openThreadAt}
+          selectedMessageId={selectedMessageId}
+          onSelectMessage={onSelectMessage}
+          pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
+        />
+        <ConnectionDialog />
+      </LazyMotion>
+    </ToastProvider>
   );
 };
 
