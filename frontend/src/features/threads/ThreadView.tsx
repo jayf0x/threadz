@@ -7,6 +7,7 @@ import {
   Check,
   CloudOff,
   Copy,
+  Link,
   Mic,
   MoreHorizontal,
   Pencil,
@@ -21,11 +22,14 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Menu } from "@/components/ui/menu";
+import { toast } from "@/components/ui/toast";
 import { Composer } from "@/features/composer";
 import { ImageButton, MarkdownEditor, type MarkdownEditorHandle, useImageAttach } from "@/features/editor";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { getThreadLocal } from "@/lib/db";
+import { errorMessage } from "@/lib/errors";
+import { buildReferenceHref, messageSnippet } from "@/lib/references";
 import { useStatus } from "@/lib/status";
 import { onChange, pullThreads } from "@/lib/sync";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
@@ -408,6 +412,18 @@ export const EntryRow = ({
   const composingNote = noteEditing || !note; // nothing to view yet, or editing what's there
   const noteSaveDisabled = busy || !noteText.trim() || (!!note && noteText.trim() === note.content);
 
+  // Ready to paste straight into another note — same `[text](thread=…?message=…)` shape the
+  // autocomplete itself produces (lib/references.ts), not a bare URL.
+  const copyLink = async () => {
+    const linkText = messageSnippet(m.content) || "message";
+    try {
+      await navigator.clipboard.writeText(`[${linkText}](${buildReferenceHref(m.threadId, m.id)})`);
+      toast({ title: "Link copied" });
+    } catch (e) {
+      toast({ title: "Copy failed", description: errorMessage(e) });
+    }
+  };
+
   const save = async () => {
     const next = (editor.current?.getMarkdown() ?? text).trim(); // `text` lags typing by the debounce
     if (next && next !== m.content && (await onEdit(next))) setEditing(false);
@@ -689,6 +705,7 @@ export const EntryRow = ({
               items={[
                 { label: "Edit", icon: Pencil, onClick: startEdit },
                 { label: "Copy here", icon: Copy, onClick: onCopyThread },
+                { label: "Copy link", icon: Link, onClick: copyLink },
                 m.meta?.todo
                   ? { label: "Todo", icon: SquareCheck, onClick: () => onSetTodo(null) }
                   : { label: "Todo", icon: Square, onClick: () => onSetTodo(false) },

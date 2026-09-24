@@ -1,7 +1,8 @@
 import { format, isThisYear } from "date-fns";
-import { Check, Download, Pencil, Pin, Trash2 } from "lucide-react";
+import { Check, Download, Link, MoreHorizontal, Pencil, Pin, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Menu } from "@/components/ui/menu";
 import { PencilSparkles } from "@/components/ui/pencil-sparkles";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -9,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { exportThreadMarkdown } from "@/lib/exportMarkdown";
 import { download, restoreThread } from "@/lib/handoff";
+import { buildReferenceHref } from "@/lib/references";
 import { pullThreads } from "@/lib/sync";
 import { setThreadFlag, useThreadFlag } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
@@ -100,6 +102,17 @@ export const ThreadRow = ({
       setError(errorMessage(e));
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Ready to paste straight into another note — same `[text](thread=…)` shape the References
+  // autocomplete itself produces (lib/references.ts), not a bare URL.
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`[${thread.title}](${buildReferenceHref(thread.id)})`);
+      toast({ title: "Link copied" });
+    } catch (e) {
+      toast({ title: "Copy failed", description: errorMessage(e) });
     }
   };
 
@@ -212,20 +225,6 @@ export const ThreadRow = ({
             </button>
             <button
               type="button"
-              aria-label="Rename thread"
-              title="Rename"
-              className={act}
-              onClick={() => {
-                settled.current = false;
-                setTitle(thread.title);
-                setError(null);
-                setRenaming(true);
-              }}
-            >
-              <Pencil className="size-3.5" />
-            </button>
-            <button
-              type="button"
               aria-label="Regenerate title"
               title="Regenerate title from its notes"
               disabled={naming}
@@ -234,25 +233,29 @@ export const ThreadRow = ({
             >
               <PencilSparkles className={cn("size-3.5", naming && "animate-pulse")} />
             </button>
-            <button
-              type="button"
-              aria-label="Export as Markdown"
-              title="Export as Markdown"
-              disabled={exporting}
-              className={cn(act, exporting && "opacity-100")}
-              onClick={exportMarkdown}
-            >
-              <Download className={cn("size-3.5", exporting && "animate-pulse")} />
-            </button>
-            <button
-              type="button"
-              aria-label="Delete thread"
-              title="Delete"
-              className={cn(act, "hover:text-destructive")}
-              onClick={del}
-            >
-              <Trash2 className="size-3.5" />
-            </button>
+            <Menu
+              align="end"
+              trigger={
+                <button type="button" aria-label="Thread actions" title="Thread actions" className={act}>
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              }
+              items={[
+                {
+                  label: "Rename",
+                  icon: Pencil,
+                  onClick: () => {
+                    settled.current = false;
+                    setTitle(thread.title);
+                    setError(null);
+                    setRenaming(true);
+                  },
+                },
+                { label: "Export as Markdown", icon: Download, onClick: exportMarkdown },
+                { label: "Copy link", icon: Link, onClick: copyLink },
+                { label: "Delete", icon: Trash2, onClick: del, destructive: true },
+              ]}
+            />
           </div>
         </>
       )}
