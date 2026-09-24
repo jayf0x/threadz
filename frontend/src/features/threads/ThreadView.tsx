@@ -99,6 +99,7 @@ export const ThreadView = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pulsingIds, setPulsingIds] = useState<string[]>([]); // arrival-only animation, self-clears
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
+  const arrival = useRef<ReturnType<typeof setTimeout>[]>([]); // the arrival jump's follow-up timers
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
@@ -195,14 +196,20 @@ export const ThreadView = ({
     const first = range[0];
     if (!first) return;
     scrolledTo.current = pulseMessageId;
-    rowVirtualizer.scrollToIndex(
-      orderedMessages.findIndex((m) => m.id === first.id),
-      { align: range.length > 1 ? "start" : "center" },
-    );
+    const index = orderedMessages.findIndex((m) => m.id === first.id);
+    const align = range.length > 1 ? "start" : "center";
+    rowVirtualizer.scrollToIndex(index, { align });
     setPulsingIds(range.map((m) => m.id));
-    const t = setTimeout(() => setPulsingIds([]), 1600);
-    return () => clearTimeout(t);
+    // One-shot timers, cleared on unmount only (not on this effect's re-runs: the guard above means
+    // a re-run does nothing, and its cleanup would cancel the pulse's end). Rows are still growing as
+    // their lazy editors mount (a first paint is shorter than the settled row), so the offset
+    // computed now lands short: re-aim a few times.
+    arrival.current = [
+      setTimeout(() => setPulsingIds([]), 1600),
+      ...[300, 900, 1800].map((ms) => setTimeout(() => rowVirtualizer.scrollToIndex(index, { align }), ms)),
+    ];
   }, [pulseMessageId, orderedMessages, rowVirtualizer]);
+  useEffect(() => () => arrival.current.forEach(clearTimeout), []);
 
   if (missing) return <NotFound onBack={onBack} />;
 

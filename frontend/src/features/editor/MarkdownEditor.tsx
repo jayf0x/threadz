@@ -66,6 +66,7 @@ export type MarkdownEditorHandle = {
 type EditorTrLike = {
   doc: { resolve: (pos: number) => ResolvedPos };
   setSelection: (s: unknown) => unknown;
+  setStoredMarks: (marks: readonly unknown[]) => unknown;
   insertText: (t: string, from: number) => EditorTrLike;
   insert: (at: number, node: unknown) => EditorTrLike;
   replaceWith: (from: number, to: number, node: unknown) => EditorTrLike;
@@ -418,15 +419,29 @@ const CrepeEditor = ({
         thread.title,
         buildReferenceHref(thread.id),
       );
-      setLocal((l) => ({ ...l, state: next }));
+      continueAfterLink(next, thread.title);
     } else if (st.stage === "message") {
       const message = ac.findMessage(opt.id);
       if (!message) return;
       const { edit, next, href } = completeMessage(st, message);
       loaded.completeReference(local.blockStart + edit.from, local.blockStart + edit.to, st.displayText, href);
-      setLocal((l) => ({ ...l, state: next }));
+      continueAfterLink(next, st.displayText);
     }
   };
+
+  // The state machine's `linkEnd` counts the link's MARKDOWN (`[text](href)`), which is what a
+  // textarea holds; this view's block text holds only the display text (the href is a mark), and the
+  // caret offsets `nextAutocompleteState` compares against are measured in that — so re-anchor
+  // `linkEnd` to the rendered length, or the message stage closes on the very next update. The
+  // plugin's own report during `completeReference`'s dispatch already saw "no trigger left" and
+  // cleared state + rect; putting the continued state (and the rect it was anchored at) back is what
+  // keeps the popup open.
+  const continueAfterLink = (next: ReferenceAutocompleteState, shownText: string) =>
+    setLocal((l) => ({
+      ...l,
+      state: next.stage === "message" ? { ...next, linkEnd: next.anchor + shownText.length } : next,
+      rect: next.stage === "closed" ? null : local.rect,
+    }));
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -541,6 +556,8 @@ const CrepeEditor = ({
             const node = view.state.schema.text(text, [mark]);
             const tr = view.state.tr.replaceWith(from, to, node);
             tr.setSelection(state.Selection.near(tr.doc.resolve(from + text.length)));
+            // Whatever is typed next (the message query, or just carrying on) must not extend the link.
+            tr.setStoredMarks([]);
             view.dispatch(tr);
           }),
       };
