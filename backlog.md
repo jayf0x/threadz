@@ -407,15 +407,36 @@ likely to take longest, so it shouldn't be the thing everything else waits on st
 - (A) A generic per-thread, per-device boolean-flag store (same shape as `lib/threadOrder.ts`) — backs both **Pin**
   and **Resolved/unresolved status** below; build it once, generically (a flag *name* plus thread id), not as two
   separate one-off stores.
+  **Done:** `lib/threadFlags.ts` (`isThreadFlagSet`/`setThreadFlag`/`useThreadFlag`), generalizing `threadOrder.ts`'s
+  shape to a flag name plus thread id in one `localStorage` store. `threadFlags.test.ts` covers default-false,
+  set/unset, and independence both across threads and across flags on the same thread.
 - (B) `lib/local.ts`: a new export to *list* trashed threads (the `trash` store already exists; a query surface
   over it likely doesn't) — backs **Recently Deleted**.
+  **Done:** `local.ts`'s `listTrash()`, a read-only query over the existing `trash` store returning
+  `{ id, title, deletedAt }[]`, newest deletion first. Covered in `local.test.ts`.
 - (C) A reusable toast/snackbar primitive, `components/ui/toast.tsx` on `@radix-ui/react-toast` (new dependency;
   not yet installed) — backs **Undo toast**, and is generically reusable afterward.
+  **Done:** `components/ui/toast.tsx` — `toast({ title, description?, action?, duration? })` plus a `useToast()`
+  hook, backed by a module-level store (`useSyncExternalStore`, same shape as `lib/status.ts`) so it can be called
+  from anywhere without a context lookup. `ToastProvider` renders the queue via Radix's `Root`/`Viewport`, reuses
+  the existing `.rise` entrance keyframe. **Not yet mounted** — `ToastProvider` still needs wrapping around the app
+  root (`main.tsx`/`App.tsx`); left for the Phase 2 step that actually consumes it.
 - (D) `lib/search.ts`: typo-tolerant `matchScore` (small edit-distance or subsequence match, replacing the current
   exact-substring check) — backs **Typo-tolerant search** and, later, **Command palette**.
+  **Done:** `matchScore` is now tiered — an exact substring match still wins outright (unchanged formula), and
+  failing that a fuzzy fallback requires every needle word to match some haystack word either as a substring/prefix
+  or within a length-proportional edit-distance budget (a hand-written restricted Damerau-Levenshtein, so a
+  transposition typo like "hte"→"the" costs 1, not 2). Same signature, so `visibleThreads.ts` needed zero changes.
+  10 new cases in `search.test.ts` (typo, transposition, reordered words, partial word, exact-still-outranks-fuzzy).
 - (E) A pure thread → markdown-string assembly function — backs **Export one thread as markdown**.
+  **Done:** `lib/exportMarkdown.ts`'s `exportThreadMarkdown(thread, messages, annotations)` — one `##` heading per
+  message (role + human timestamp), `---`-separated, annotations inlined as a blockquote under their message,
+  image refs left as the literal `img:<hash>#WxH` markdown. Covered in `exportMarkdown.test.ts`.
 - (F) A pure weighted-pick function over existing timestamps (decision 3 above: no new field) — backs
   **Resurfacing**.
+  **Done:** `lib/resurfacing.ts`'s `pickResurfacingThread(threads, rand?, now?)` — weighted-random draw over
+  staleness since `updatedAt` (older/less-recent weighted higher, never strictly oldest-first). `rand`/`now` are
+  injectable so `resurfacing.test.ts`'s statistical trials are deterministic (seeded PRNG), not flaky.
 - (G) **References** core: the format (decision 1), the parser for detecting a completed reference in text, the
   trigger-driven two-stage autocomplete (thread titles, then that thread's messages, Tab/Enter to complete at each
   stage, Esc/outside-click to cancel at whatever stage without forcing the next one, editable afterward — full
@@ -425,6 +446,19 @@ likely to take longest, so it shouldn't be the thing everything else waits on st
   called out because everything else in this plan is small enough for a unit test to cover its logic, this one
   isn't. The "Copy link" ⋯-menu action is *not* part of this groundwork slice — it's cheap, and it depends on this
   slice existing, so it's a Phase 2 step instead.
+  **Done:** trigger is `[[` (not `@`, which `@/todo` already owns). Format landed on `thread=<id>` /
+  `thread=<id>?message=<id>` — verified against `@milkdown/preset-commonmark`'s actual `sanitizeLinkHref` (blanks
+  any `scheme:`-shaped href not on an allow-list, which would have silently broken the originally-floated
+  `link:{thread}/{message}` spelling), range-ready via a future `?message=<from>..<to>`. `lib/references.ts` is the
+  pure core (format, `findReferences` parser, the `nextAutocompleteState` two-stage state machine shared by both
+  editor adapters, local-only `searchThreads`/`searchMessages`); `features/editor/{referencePlugin,
+  useReferenceAutocomplete, ReferenceAutocompleteMenu, referenceKeyboard, caretCoordinates}.ts(x)` wire it into
+  both `RawEditor`'s textarea and `CrepeEditor`'s live ProseMirror view, plus click-to-navigate via `App.tsx`'s
+  `openThreadAt`, threaded through `ThreadView`/`Composer`/`MessageInput`. Required end-to-end test is
+  `references.e2e.test.tsx` (full two-stage flow + click-to-navigate, plus an Esc-mid-stage-two case) — needed
+  `bun test --isolate` (now the default in `package.json`'s `test`/`check` scripts) to stop parallel happy-dom test
+  files from clobbering each other's `window`/`indexedDB`. Copy link and message ranges remain Phase 2/fast-follow,
+  as scoped.
 
 **Phase 2 — sequential integration, ordered, one sub-agent per step (pairs share a step where they share both
 groundwork and touched files), only starts once every Phase 1 slice above is merged:**
