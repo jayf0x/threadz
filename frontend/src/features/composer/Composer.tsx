@@ -1,4 +1,4 @@
-import { GitBranchPlus, Loader2, Mic, MoreHorizontal, Plus, Send, Square } from "lucide-react";
+import { Check, GitBranchPlus, Loader2, Mic, MoreHorizontal, Plus, RotateCcw, Send, Square, X } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { VoiceMeter } from "./VoiceMeter";
 type Mode = "note" | "ask";
 const MODES: { value: Mode; label: string }[] = [
   { value: "note", label: "Note" },
-  { value: "ask", label: "Ask Claude" },
+  { value: "ask", label: "Ask" },
 ];
 
 // One quiet line under the box. Priority: what's wrong > what's blocking > what's being decoded > mic state.
@@ -37,7 +37,7 @@ const voiceStatus = (v: VoiceState): { text: string; tone: "error" | "ghost" | "
 };
 
 // The capture line. Wraps MessageInput with what's composer-specific: voice dictation, the
-// note/ask mode toggle and "keep exchange" checkbox. The parent only hears "add this" / "ask this".
+// note/ask mode toggle and the "keep exchange" chip. The parent only hears "add this" / "ask this".
 export const Composer = ({
   threadId,
   messages,
@@ -124,24 +124,33 @@ export const Composer = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6, transition: { duration: 0.15, ease: "easeIn" } }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex items-center justify-between gap-3 border-b border-primary bg-accent px-6 py-2 md:px-10"
+            className="mx-auto max-w-3xl px-3 pt-2 md:px-10 md:pt-3"
           >
-            <span className="text-sm">
-              Unfinished recording — {voice.recovery.lineCount} line{voice.recovery.lineCount === 1 ? "" : "s"}{" "}
-              recovered
-            </span>
-            <div className="flex gap-1.5">
+            <div className="surface-sheen flex items-center gap-1 rounded-2xl border border-border py-1 pr-1 pl-4 shadow-sm">
+              <span className="min-w-0 flex-1 truncate text-sm">Recover recording?</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{voice.recovery.lineCount}</span>
               <Button
-                size="sm"
+                variant="ghost"
+                size="icon"
+                aria-label="Recover recording"
+                title="Recover"
+                className="press-icon"
                 onClick={async () => {
                   const text = await voice.recover();
                   if (text) insert(text);
                 }}
               >
-                Recover
+                <RotateCcw className="size-5 md:size-4" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={voice.dismissRecovery}>
-                Discard
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Discard recording"
+                title="Discard"
+                className="press-icon"
+                onClick={voice.dismissRecovery}
+              >
+                <X className="size-5 md:size-4" />
               </Button>
             </div>
           </m.div>
@@ -153,7 +162,7 @@ export const Composer = ({
           handleRef={input}
           draftKey={threadId}
           busy={busy}
-          placeholder={mode === "note" ? "Add to this thread…" : "Ask Claude about this thread…"}
+          placeholder={mode === "note" ? "Note" : "Ask"}
           autofocus={autofocus}
           onReferenceClick={(threadId, messageId) => onNavigateReference(threadId, messageId ?? undefined)}
           onSubmit={onSubmit}
@@ -167,7 +176,7 @@ export const Composer = ({
               variant={active ? "danger" : "ghost"}
               aria-label={active ? "Stop dictation" : "Dictate"}
               aria-pressed={active}
-              className={cn("gap-2 transition-[width]", voice.operational && "w-[3.25rem]")}
+              className={cn("press-icon gap-2 transition-[width]", voice.operational && "w-[3.25rem]")}
               onClick={() => {
                 // Focus first, inside the tap: the editor is where the words will land (and stay
                 // editable while you talk), and only a user gesture raises the iOS keyboard.
@@ -183,24 +192,26 @@ export const Composer = ({
                   <Square className="size-3 fill-current" />
                 </>
               ) : preparing ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-5 animate-spin md:size-4" />
               ) : (
-                <Mic className="size-4" />
+                <Mic className="size-5 md:size-4" />
               )}
             </Button>
           }
           controls={
-            <>
-              {canAsk && (
-                <fieldset className="flex gap-px border border-border p-px">
+            canAsk && (
+              <>
+                <fieldset className="inline-flex rounded-full bg-muted p-0.5">
                   <legend className="sr-only">Entry type</legend>
                   {MODES.map(({ value, label }) => (
                     <label
                       key={value}
                       className={cn(
-                        "cursor-pointer px-3 py-1 text-xs font-medium transition-colors has-focus-visible:outline has-focus-visible:outline-ring",
+                        "relative inline-flex h-8 min-w-14 cursor-pointer items-center justify-center rounded-full px-3 text-[13px] font-medium",
+                        "transition-[background-color,color,box-shadow] duration-150 ease-out-strong has-focus-visible:ring-2 has-focus-visible:ring-ring",
+                        "before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']",
                         mode === value
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-card text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground",
                       )}
                     >
@@ -216,33 +227,38 @@ export const Composer = ({
                     </label>
                   ))}
                 </fieldset>
-              )}
 
-              {mode === "ask" && (
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="accent-primary"
-                    checked={commit}
-                    onChange={(e) => setCommit(e.target.checked)}
-                  />
-                  Keep exchange in thread
-                </label>
-              )}
-            </>
+                {mode === "ask" && (
+                  <button
+                    type="button"
+                    aria-pressed={commit}
+                    onClick={() => setCommit((c) => !c)}
+                    className={cn(
+                      "press relative inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium",
+                      "before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']",
+                      commit
+                        ? "border-transparent bg-accent text-accent-foreground"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {commit && <Check className="size-3.5" />}
+                    Keep exchange
+                  </button>
+                )}
+              </>
+            )
           }
-          submitButtonSize="icon"
           submitAriaLabel={busy ? "Working…" : mode === "note" ? "Add note" : "Ask Claude"}
           submitLabel={
             busy ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Loader2 className="size-5 animate-spin md:size-4" />
             ) : mode === "note" ? (
-              <Plus className="size-4" />
+              <Plus className="size-5 md:size-4" strokeWidth={2.25} />
             ) : (
-              <Send className="size-4" />
+              <Send className="size-5 md:size-4" />
             )
           }
-          trailingActions={
+          overflowActions={
             lastMessage && (
               <Menu
                 align="end"
@@ -253,9 +269,9 @@ export const Composer = ({
                     aria-label="More actions"
                     title="More actions"
                     disabled={copying}
-                    className="flex size-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring disabled:opacity-50 md:size-8"
+                    className="press-icon flex size-11 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 md:size-9"
                   >
-                    <MoreHorizontal className="size-4" />
+                    <MoreHorizontal className="size-5 md:size-4" />
                   </button>
                 }
               />

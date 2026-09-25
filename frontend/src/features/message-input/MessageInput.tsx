@@ -1,7 +1,7 @@
 import type { ReactNode, Ref } from "react";
 import { useImperativeHandle } from "react";
-import { Button, type ButtonProps } from "@/components/ui/button";
-import { ImageButton, MarkdownEditor } from "@/features/editor";
+import { Button } from "@/components/ui/button";
+import { ContentField, ImageButton } from "@/features/editor";
 import { cn } from "@/lib/cn";
 import { useMessageInput } from "./useMessageInput";
 
@@ -28,31 +28,29 @@ export type MessageInputProps = {
   onSubmit: (text: string) => Promise<boolean>;
   /** Called after a successful send with whatever text is left in the box. */
   onSubmitted?: (rest: string) => void;
+  /** The icon inside the send button. */
   submitLabel: ReactNode;
-  /** Accessible name for the submit button — needed when `submitLabel` is icon-only. */
+  /** Accessible name for the send button (it is icon-only). */
   submitAriaLabel?: string;
-  /** Defaults to the regular text-button size; pass `"icon"` when `submitLabel` is icon-only. */
-  submitButtonSize?: ButtonProps["size"];
-  /** Extra actions in the side rail under the image attach button (the composer's mic button). */
+  /** Actions after the attach button: the composer's mic. */
   leadingActions?: ReactNode;
-  /** Extra controls in a row under the editor (the composer's mode toggle / checkbox). */
+  /** The composer's ⋯ menu, last of the secondary actions. */
+  overflowActions?: ReactNode;
+  /** Controls above the field (the composer's Note/Ask toggle and "Keep exchange"). */
   controls?: ReactNode;
   /** A status line to show instead of the image-attach error (the composer's voice status). */
   statusOverride?: Status;
-  /** Overflow actions in the side rail (the composer's ⋯ menu). */
-  trailingActions?: ReactNode;
   /** A completed reference (`lib/references.ts`) was clicked in the editor. */
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
   className?: string;
-  editorClassName?: string;
   handleRef?: Ref<MessageInputHandle>;
   /** Focus the editor once it's ready (a `/capture` deep link landing straight in a fresh
    * thread). Mount-time only — see `MarkdownEditor`'s `autofocus`. */
   autofocus?: boolean;
 };
 
-// The composer's editor, draft, image attach and send — with nothing composer-specific (no voice,
-// no mode toggle). `Composer` wraps this and adds those; an annotation input can use it as-is.
+// The composer's field, draft, image attach and send — with nothing composer-specific (no voice,
+// no mode toggle). `Composer` wraps this and adds those.
 export const MessageInput = ({
   draftKey,
   placeholder,
@@ -61,14 +59,12 @@ export const MessageInput = ({
   onSubmitted,
   submitLabel,
   submitAriaLabel,
-  submitButtonSize,
   leadingActions,
+  overflowActions,
   controls,
   statusOverride,
-  trailingActions,
   onReferenceClick,
   className,
-  editorClassName,
   handleRef,
   autofocus,
 }: MessageInputProps) => {
@@ -94,60 +90,52 @@ export const MessageInput = ({
 
   return (
     <div className={className}>
-      <div className="flex items-stretch gap-2">
-        <MarkdownEditor
-          handleRef={editor}
-          value={draft}
-          onChange={setDraft}
-          readOnly={busy}
-          onImageFile={(f) => attach([f])}
-          placeholder={placeholder}
-          autofocus={autofocus}
-          onReferenceClick={onReferenceClick}
-          className={cn(
-            "min-w-0 flex-1 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring",
-            "composer-editor [--md-max-height:calc(var(--vv-h,100dvh)*0.45)] [--md-min-height:6rem] md:[--md-min-height:10rem] [--md-padding:12px_14px] [--md-img-max:12rem]",
-            editorClassName,
-          )}
-          onKeyDownCapture={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              e.stopPropagation();
-              send();
-            }
-          }}
-        />
-        {/* Side rail, top to bottom: secondary actions first, send always last (bottom). At most
-            three primary actions (attach, mic, send) — anything else goes in the `trailingActions`
-            ⋯ menu instead of its own button. */}
-        {/* On a phone the four buttons make a 2×2 (send bottom-right) instead of a 170px column — a
-            column that tall made the composer far taller than its text, worst with the keyboard up. */}
-        <div className="grid shrink-0 auto-cols-min grid-cols-2 content-end items-center justify-items-center gap-1 md:flex md:flex-col md:justify-between">
-          <div className="contents md:flex md:flex-col md:items-center md:gap-1">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 empty:hidden">{controls}</div>
+
+      {/* Phone: editor on top, [attach mic ⋯] left and send far right underneath. From `md`, the
+          same slots become a side rail (attach, mic, ⋯ on top; send last, at the bottom). At most
+          three primary actions besides send: anything else goes in the ⋯ menu. */}
+      <ContentField
+        variant="composer"
+        handleRef={editor}
+        value={draft}
+        onChange={setDraft}
+        readOnly={busy}
+        placeholder={placeholder}
+        autofocus={autofocus}
+        onImageFile={(f) => attach([f])}
+        onReferenceClick={onReferenceClick}
+        onSubmit={send}
+        leading={
+          <>
             <ImageButton onFiles={attach} disabled={busy} />
             {leadingActions}
-            {trailingActions}
-          </div>
+            {overflowActions}
+          </>
+        }
+        trailing={
           <Button
-            className="col-start-2 md:col-start-auto"
-            size={submitButtonSize}
+            size="icon"
             aria-label={submitAriaLabel}
             title={submitAriaLabel}
             disabled={busy || !draft.trim()}
             onClick={send}
+            // keep the caret where the user left it (and the keyboard up) through the tap
+            onPointerDown={(e) => e.preventDefault()}
+            className="size-11 rounded-full bg-primary-sheen text-primary-foreground shadow-md shadow-primary/30 press active:scale-[.94] disabled:opacity-40 md:size-9"
           >
             {submitLabel}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* No reserved height: a permanently empty line under the editor was dead space, worst with
+      {/* No reserved height: a permanently empty line under the field was dead space, worst with
           the keyboard up. It exists only while there's something to say. */}
       <div aria-live="polite">
         {status && (
           <p
             className={cn(
-              "mt-1 truncate font-mono text-[11px]",
+              "mt-1.5 truncate px-4 text-xs",
               status.tone === "error" && "text-destructive",
               status.tone === "ghost" && "italic text-foreground/70",
               status.tone === "quiet" && "text-muted-foreground",
@@ -157,8 +145,6 @@ export const MessageInput = ({
           </p>
         )}
       </div>
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-2 empty:hidden">{controls}</div>
     </div>
   );
 };

@@ -1,6 +1,6 @@
-// The shared WYSIWYG markdown editor (copied from wigl) — Milkdown's Crepe behind a
-// controlled React wrapper. Used for the composer AND for editing / showing messages
-// (`readOnly`). The libs are dynamic `import()`s inside the mount effect, so ProseMirror
+// The one WYSIWYG markdown editor — Milkdown's Crepe behind a controlled React wrapper. Every
+// editable surface renders it through `ContentField` (composer, message edit, note edit); the read
+// views render it `readOnly`. The libs are dynamic `import()`s inside the mount effect, so ProseMirror
 // stays in its own lazy chunk and never runs outside a browser (bun test, typecheck).
 //
 // CrepeBuilder, not the `Crepe` umbrella: the umbrella statically pulls every
@@ -25,10 +25,9 @@ import {
   nextAutocompleteState,
   parseReferenceHref,
   type ReferenceAutocompleteState,
-  TRIGGER,
 } from "@/lib/references";
 import { padForInsert } from "@/lib/voice/text";
-import { caretRect } from "./caretCoordinates";
+import { isDirty } from "./dirty";
 import { imageView } from "./imageView";
 import { ReferenceAutocompleteMenu } from "./ReferenceAutocompleteMenu";
 import { handleReferenceKeyDown } from "./referenceKeyboard";
@@ -37,16 +36,21 @@ import { todoDecorationPlugin } from "./todoDecoration";
 import { useReferenceAutocomplete } from "./useReferenceAutocomplete";
 import "./markdown-editor.css";
 
-/** Where the caret sits, in the SAME local-offset space `state` itself uses (an "anchor" into
- * whatever text this adapter is tracking) — used only to know where to measure a rect from; the
- * actual text edit always uses the offsets already carried on `state`/`completeThread`/
- * `completeMessage`'s return value, never this. */
-const caretOffsetOf = (s: ReferenceAutocompleteState): number | null => {
-  if (s.stage === "thread") return s.anchor + TRIGGER.length + s.query.length;
-  if (s.stage === "message") return s.linkEnd + s.query.length;
-  return null;
-};
-
+/** The handle contract, for callers that mount one `MarkdownEditor`/`ContentField` and flip it
+ * between reading and editing (a message row: same instance, no remount, so the keyboard comes up
+ * from the tap itself and nothing shifts).
+ *
+ *  - Tap on Edit -> call `enterEdit()` synchronously inside that handler (iOS raises the keyboard
+ *    only for a `focus()` that runs inside the user gesture), then set your own `editing` state and
+ *    pass `readOnly={!editing}`. `enterEdit` makes the view editable, focuses it with the caret at
+ *    the end and snapshots the baseline (see `isDirty`).
+ *  - `onDirtyChange(dirty)` reports (debounced ~200ms, and only on change) whether the text now
+ *    differs from that baseline; `isDirty()` answers immediately. Never compare `getMarkdown()`
+ *    against the stored message text yourself: Milkdown re-serialises (`* a` -> `- a`,
+ *    `snake_case` -> `snake\_case`), so an untouched old message would look edited.
+ *  - Save: `if (isDirty()) persist(getMarkdown())`, then `exitEdit()`. Cancel/Esc: `exitEdit(true)`
+ *    puts the last `value` prop back and leaves silently, without a history entry.
+ *  - `exitEdit` makes the view read-only again and blurs it (keyboard down). */
 export type MarkdownEditorHandle = {
   /** The markdown right now. `onChange` is debounced (~200ms), so a submit handler
    * that fires straight after typing must read this instead of its last value. */
@@ -64,6 +68,15 @@ export type MarkdownEditorHandle = {
   /** Focus the editor. If the user never put a caret in it, the caret goes to the end first, so a
    * dictation started from a cold editor appends to the draft instead of landing in front of it. */
   focus: () => void;
+  /** Start editing in place: editable now (synchronously), focused, baseline snapshotted. Call it
+   * inside the tap that starts the edit. A no-op until the editor has loaded; in that case the
+   * `readOnly={false}` prop you also set takes over on load. */
+  enterEdit: () => void;
+  /** Stop editing: read-only again, blurred, baseline dropped. `discard` first restores the
+   * current `value` prop (Cancel/Esc). */
+  exitEdit: (discard?: boolean) => void;
+  /** Has the text changed since editing began, judged by the editor's own normalisation. */
+  isDirty: () => boolean;
 };
 
 type EditorTrLike = {
@@ -92,6 +105,7 @@ type EditorViewLike = {
     // mark (unlike a node) has no equivalent "create one already-linked node" shortcut.
     schema: { text: (text: string, marks?: unknown[]) => unknown };
   };
+  dom: HTMLElement;
   dispatch: (tr: unknown) => void;
   focus: () => void;
 };
@@ -102,6 +116,8 @@ type Loaded = {
   insertAtCaret: (text: string, touched: boolean) => void;
   insertImage: (src: string, touched: boolean) => void;
   focus: (touched: boolean) => void;
+  blur: () => void;
+  setPlaceholder: (text: string) => void;
   /** Replace doc positions `[from, to)` with a single already-linked text node — how the reference
    * autocomplete (`lib/references.ts`'s `completeThread`/`completeMessage`) lands its result in the
    * live WYSIWYG view: `from`/`to` are absolute doc positions (the caller maps its own local,
@@ -109,18 +125,28 @@ type Loaded = {
   completeReference: (from: number, to: number, text: string, href: string) => void;
 };
 
+type CrepeLike = { setReadonly: (v: boolean) => unknown; getMarkdown: () => string };
+
 export const MarkdownEditor = ({
-  raw = false,
-  placeholder = "start writing…",
+  value,
+  onChange,
+  placeholder = "",
   readOnly = false,
+  handleRef,
+  onKeyDownCapture,
+  onImageFile,
   onTodoToggle,
   onReferenceClick,
-  ...rest
+  onDirtyChange,
+  className,
+  style,
+  autofocus,
 }: {
   value: string;
   onChange?: (markdown: string) => void;
+  /** Live: changing it updates the empty-field hint (the composer's Note/Ask). */
   placeholder?: string;
-  /** Display mode: same rendering, no caret. Toggles live. */
+  /** Display mode: same rendering, no caret. Toggles live, on the same mounted instance. */
   readOnly?: boolean;
   handleRef?: Ref<MarkdownEditorHandle>;
   /** Capture phase — runs before ProseMirror's own handlers, so a caller can
@@ -129,16 +155,16 @@ export const MarkdownEditor = ({
   /** Called with an image pasted or dropped into the editor (which then inserts nothing itself). */
   onImageFile?: (file: File) => void;
   /** A gutter checkbox (`/todo` line, or an item inside a `/todos` group) was clicked, naming the
-   * line's index into `value.split("\n")`. WYSIWYG mode only (`raw` renders a plain textarea, no
-   * decorations at all) — the caller re-derives the toggled content via `toggleTodoLine`
-   * (`lib/todos.ts`) and persists it the same way it persists any other edit. See
+   * line's index into `value.split("\n")` — the caller re-derives the toggled content via
+   * `toggleTodoLine` (`lib/todos.ts`) and persists it the same way it persists any other edit. See
    * `./todoDecoration.ts` and `ThreadView.tsx`'s `EntryRow`. */
   onTodoToggle?: (lineIndex: number) => void;
-  /** A rendered reference link (`[text](thread=…)`, see `lib/references.ts`) was clicked. WYSIWYG
-   * mode only — `raw` shows the literal markdown source, nothing there is a clickable link. The
+  /** A rendered reference link (`[text](thread=…)`, see `lib/references.ts`) was clicked. The
    * caller navigates in-app (`App.tsx`'s `openThreadAt`), never a page reload. `messageId` is `<id>`
    * or, for a range, `<from>..<to>` (`lib/references.ts`'s `resolveMessageRange` reads it). */
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
+  /** Editing only: the text now differs from (or is back to) what it was when editing began. */
+  onDirtyChange?: (dirty: boolean) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
    * `14px 18px 40px`) and `--md-max-height` (default none, else the editor
    * scrolls), `--md-min-height` (default 100%), `--md-img-max` (photo width, default 32rem). Set them from here, e.g. `[--md-padding:10px_12px]`. */
@@ -146,236 +172,10 @@ export const MarkdownEditor = ({
   /** For a var that has to be a computed runtime value (a measured height), not a static
    * Tailwind arbitrary class — e.g. `{ "--md-min-height": "220px" }`. */
   style?: CSSProperties;
-  /** Plain-text mode: a `<textarea>` showing the literal markdown source instead of WYSIWYG
-   * rendering, for surfaces where the point is to select and delete raw syntax characters
-   * (editing a message that already has `**bold**` etc. — there's no toolbar to undo it via
-   * rendering). No lazy Milkdown load, so it's cheap and synchronous. Same imperative handle,
-   * `onKeyDownCapture`, `placeholder`, `className` contract as the WYSIWYG surface, so any
-   * caller can flip this on without other changes. */
-  raw?: boolean;
   /** Focus once mounted, as soon as the editor is actually ready to receive it (Crepe loads
    * async — this waits for `crepe.create()`, it doesn't race it). A mount-time flag, not a
-   * live prop: re-focusing on every render would steal focus back mid-edit. */
-  autofocus?: boolean;
-}) =>
-  raw ? (
-    <RawEditor {...rest} placeholder={placeholder} readOnly={readOnly} />
-  ) : (
-    <CrepeEditor
-      {...rest}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      onTodoToggle={onTodoToggle}
-      onReferenceClick={onReferenceClick}
-    />
-  );
-
-// Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
-const takeImageFile = (
-  files: FileList | null | undefined,
-  onImageFile: ((file: File) => void) | undefined,
-  e: React.ClipboardEvent | React.DragEvent,
-) => {
-  const file = [...(files ?? [])].find((f) => f.type.startsWith("image/"));
-  if (!file || !onImageFile) return;
-  e.preventDefault();
-  e.stopPropagation();
-  onImageFile(file);
-};
-
-// Raw mode: literal markdown text in a plain textarea. No ProseMirror, no rich image embed —
-// `insertImage` just splices in the `![](src)` text, which is what "raw" means. Used for message
-// inline edit mode and the note popover editor (ThreadView.tsx's EntryRow) — both editable, so both
-// get the reference autocomplete (see `lib/references.ts`) wired straight onto the textarea itself:
-// no ProseMirror here, so it drives the shared state machine off the DOM textarea's own
-// value/selection instead of doc positions (CrepeEditor, below, is the other half).
-const RawEditor = ({
-  value,
-  onChange,
-  placeholder,
-  readOnly,
-  handleRef,
-  onKeyDownCapture,
-  onImageFile,
-  className,
-  style,
-  autofocus,
-}: {
-  value: string;
-  onChange?: (markdown: string) => void;
-  placeholder: string;
-  readOnly: boolean;
-  handleRef?: Ref<MarkdownEditorHandle>;
-  onKeyDownCapture?: (e: React.KeyboardEvent) => void;
-  onImageFile?: (file: File) => void;
-  className?: string;
-  style?: CSSProperties;
-  autofocus?: boolean;
-}) => {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  // Has the user ever put a caret in here? Until then a programmatic insert (e.g. the image
-  // button, which deliberately doesn't steal focus) goes to the end, matching the WYSIWYG surface.
-  const touchedRef = useRef(false);
-  const [refState, setRefState] = useState<ReferenceAutocompleteState>({ stage: "closed" });
-  const [rect, setRect] = useState<{ left: number; top: number; bottom: number } | null>(null);
-  const ac = useReferenceAutocomplete(refState);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-time only, `autofocus` is read once by design.
-  useEffect(() => {
-    if (autofocus) ref.current?.focus();
-  }, []);
-
-  // Re-measure the caret's on-screen position whenever the autocomplete state changes (opens,
-  // narrows, closes) — cheap (one hidden mirror-div layout, see `caretCoordinates.ts`), and only
-  // ever runs while `refState.stage !== "closed"` mattered anyway.
-  useEffect(() => {
-    const el = ref.current;
-    const at = caretOffsetOf(refState);
-    setRect(el && at != null ? caretRect(el, at) : null);
-  }, [refState]);
-
-  const recomputeRefState = () => {
-    const el = ref.current;
-    if (!el || readOnly) return;
-    const caret = el.selectionStart ?? el.value.length;
-    setRefState((prev) => nextAutocompleteState(prev, el.value, caret));
-  };
-
-  const applyEdit = (edit: { from: number; to: number; text: string }, next: ReferenceAutocompleteState) => {
-    const el = ref.current;
-    if (!el) return;
-    const nextValue = el.value.slice(0, edit.from) + edit.text + el.value.slice(edit.to);
-    const caret = edit.from + edit.text.length;
-    onChange?.(nextValue);
-    el.value = nextValue; // same "keep the DOM in sync now" reasoning as spliceAtCaret below
-    el.focus();
-    el.setSelectionRange(caret, caret);
-    setRefState(next);
-  };
-
-  const accept = (index: number) => {
-    const opt = ac.options[index];
-    if (!opt) return;
-    if (refState.stage === "thread") {
-      const thread = ac.findThread(opt.id);
-      if (thread) {
-        const { edit, next } = completeThread(refState, thread);
-        applyEdit(edit, next);
-      }
-    } else if (refState.stage === "message") {
-      const message = ac.findMessage(opt.id);
-      if (message) {
-        const { edit, next } = completeMessage(refState, message);
-        applyEdit(edit, next);
-      }
-    }
-  };
-
-  const spliceAtCaret = (text: string) => {
-    const el = ref.current;
-    if (!el) return false;
-    const len = el.value.length;
-    const from = touchedRef.current ? (el.selectionStart ?? len) : len;
-    const to = touchedRef.current ? (el.selectionEnd ?? len) : len;
-    const next = el.value.slice(0, from) + text + el.value.slice(to);
-    const caret = from + text.length;
-    onChange?.(next);
-    // Keep the DOM in sync now: a caller may read getMarkdown() or insert again before the
-    // controlled `value` prop round-trips back through a render.
-    el.value = next;
-    el.setSelectionRange(caret, caret);
-    return true;
-  };
-
-  useImperativeHandle(handleRef, () => ({
-    getMarkdown: () => ref.current?.value ?? value,
-    setMarkdown: (md) => {
-      onChange?.(md);
-      if (ref.current) ref.current.value = md;
-    },
-    insertAtCaret: (text) => spliceAtCaret(text),
-    insertImage: (src) => spliceAtCaret(`![](${src})`),
-    focus: () => {
-      const el = ref.current;
-      if (!el) return;
-      if (!touchedRef.current) el.setSelectionRange(el.value.length, el.value.length);
-      el.focus();
-    },
-  }));
-
-  return (
-    <>
-      <textarea
-        ref={ref}
-        className={cn("threadz-md-raw", className)}
-        style={style}
-        value={value}
-        readOnly={readOnly}
-        placeholder={placeholder}
-        spellCheck={false}
-        onChange={(e) => {
-          onChange?.(e.target.value);
-          recomputeRefState();
-        }}
-        onSelect={recomputeRefState}
-        onKeyDownCapture={(e) => {
-          const handled = handleReferenceKeyDown(
-            e,
-            refState.stage !== "closed",
-            ac.options.length,
-            ac.highlighted,
-            ac.setHighlighted,
-            accept,
-            () => setRefState({ stage: "closed" }),
-          );
-          if (!handled) onKeyDownCapture?.(e);
-        }}
-        onPasteCapture={(e) => takeImageFile(e.clipboardData.files, onImageFile, e)}
-        onDropCapture={(e) => takeImageFile(e.dataTransfer.files, onImageFile, e)}
-        onFocus={() => {
-          touchedRef.current = true;
-        }}
-        onBlur={() => setRefState({ stage: "closed" })}
-      />
-      <ReferenceAutocompleteMenu
-        rect={rect}
-        options={ac.options}
-        highlighted={ac.highlighted}
-        emptyText={refState.stage === "thread" ? "No matching threads" : "No matching messages"}
-        onPick={(id) => accept(ac.options.findIndex((o) => o.id === id))}
-        onOpenChange={(open) => {
-          if (!open) setRefState({ stage: "closed" });
-        }}
-      />
-    </>
-  );
-};
-
-const CrepeEditor = ({
-  value,
-  onChange,
-  placeholder,
-  readOnly,
-  handleRef,
-  onKeyDownCapture,
-  onImageFile,
-  onTodoToggle,
-  onReferenceClick,
-  className,
-  style,
-  autofocus,
-}: {
-  value: string;
-  onChange?: (markdown: string) => void;
-  placeholder: string;
-  readOnly: boolean;
-  handleRef?: Ref<MarkdownEditorHandle>;
-  onKeyDownCapture?: (e: React.KeyboardEvent) => void;
-  onImageFile?: (file: File) => void;
-  onTodoToggle?: (lineIndex: number) => void;
-  onReferenceClick?: (threadId: string, messageId: string | null) => void;
-  className?: string;
-  style?: CSSProperties;
+   * live prop: re-focusing on every render would steal focus back mid-edit. On iOS this lands a
+   * caret without the keyboard (no user gesture); for edit-in-place use the handle's `enterEdit`. */
   autofocus?: boolean;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -389,22 +189,28 @@ const CrepeEditor = ({
   onTodoToggleRef.current = onTodoToggle;
   const onReferenceClickRef = useRef(onReferenceClick);
   onReferenceClickRef.current = onReferenceClick;
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
   // Latest markdown Crepe emitted — lets the value-sync effect skip the echo
   // of the user's own typing.
   const lastEmittedRef = useRef(value);
   // Mount-time inputs, read inside the async effect without becoming deps.
   const initial = useRef({ value, placeholder, autofocus });
   // What the props say right now, so an update that lands while Crepe is still loading isn't lost.
-  const latest = useRef({ value, readOnly });
-  latest.current = { value, readOnly };
+  const latest = useRef({ value, readOnly, placeholder });
+  latest.current = { value, readOnly, placeholder };
   // Has the user ever put a caret in here? Until then a programmatic insert goes to the end
   // (ProseMirror's untouched selection sits at the very start, i.e. *before* a restored draft).
   const touchedRef = useRef(false);
-  const crepeRef = useRef<{ setReadonly: (v: boolean) => unknown; getMarkdown: () => string } | null>(null);
+  const crepeRef = useRef<CrepeLike | null>(null);
+  // The text as the editor itself serialises it when editing began (null while reading) — see
+  // `dirty.ts` and the handle contract above.
+  const baselineRef = useRef<string | null>(null);
+  const dirtyRef = useRef(false);
   // The reference autocomplete's live state, reported by `referencePlugin.ts`'s `onLocalUpdate` on
-  // every selection/doc change and advanced through the SAME `nextAutocompleteState` RawEditor
-  // drives from a plain textarea's value/selection instead — see that file's own comment for why
-  // "message" stage can't just be re-derived from arbitrary rendered text the way "thread" stage is.
+  // every selection/doc change and advanced through `nextAutocompleteState` (see that file's own
+  // comment for why "message" stage can't just be re-derived from arbitrary rendered text the way
+  // "thread" stage is).
   // `blockStart` is what turns `state`'s local (block-relative) offsets back into real doc positions
   // for `completeReference`; bundled with `state`/`rect` so all three always describe the same update.
   const [local, setLocal] = useState<{
@@ -413,6 +219,21 @@ const CrepeEditor = ({
     blockStart: number;
   }>({ state: { stage: "closed" }, rect: null, blockStart: 0 });
   const ac = useReferenceAutocomplete(local.state);
+
+  const setDirty = (dirty: boolean) => {
+    if (dirtyRef.current === dirty) return;
+    dirtyRef.current = dirty;
+    onDirtyChangeRef.current?.(dirty);
+  };
+
+  const beginEditing = () => {
+    const crepe = crepeRef.current;
+    if (!crepe) return;
+    baselineRef.current = crepe.getMarkdown();
+    setDirty(false);
+  };
+
+  const closeAutocomplete = () => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }));
 
   const acceptReference = (index: number) => {
     const opt = ac.options[index];
@@ -439,13 +260,12 @@ const CrepeEditor = ({
     }
   };
 
-  // The state machine's `linkEnd` counts the link's MARKDOWN (`[text](href)`), which is what a
-  // textarea holds; this view's block text holds only the display text (the href is a mark), and the
-  // caret offsets `nextAutocompleteState` compares against are measured in that — so re-anchor
-  // `linkEnd` to the rendered length, or the message stage closes on the very next update. The
-  // plugin's own report during `completeReference`'s dispatch already saw "no trigger left" and
-  // cleared state + rect; putting the continued state (and the rect it was anchored at) back is what
-  // keeps the popup open.
+  // The state machine's `linkEnd` counts the link's MARKDOWN (`[text](href)`); this view's block text
+  // holds only the display text (the href is a mark), and the caret offsets `nextAutocompleteState`
+  // compares against are measured in that — so re-anchor `linkEnd` to the rendered length, or the
+  // message stage closes on the very next update. The plugin's own report during
+  // `completeReference`'s dispatch already saw "no trigger left" and cleared state + rect; putting
+  // the continued state (and the rect it was anchored at) back is what keeps the popup open.
   const continueAfterLink = (next: ReferenceAutocompleteState, shownText: string) =>
     setLocal((l) => ({
       ...l,
@@ -453,6 +273,7 @@ const CrepeEditor = ({
       rect: next.stage === "closed" ? null : local.rect,
     }));
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-time only; everything read here is a ref or a stable setter.
   useEffect(() => {
     if (!containerRef.current) return;
     let destroyed = false;
@@ -463,7 +284,7 @@ const CrepeEditor = ({
       const [
         { CrepeBuilder },
         { listItem },
-        { placeholder: placeholderFeature },
+        { placeholder: placeholderFeature, placeholderConfig },
         commonmark,
         core,
         state,
@@ -483,7 +304,8 @@ const CrepeEditor = ({
 
       const { value: v, placeholder: text } = initial.current;
       const crepe = new CrepeBuilder({ root: containerRef.current, defaultValue: v })
-        .addFeature(listItem)
+        // Round task boxes (`- [ ]`) instead of Crepe's square ones; strokes take `currentColor`.
+        .addFeature(listItem, { checkBoxUncheckedIcon: TASK_OPEN, checkBoxCheckedIcon: TASK_DONE })
         // "doc": show the placeholder only when the whole field is empty —
         // "block" re-shows it on every empty line, which reads as "my text
         // disappeared".
@@ -507,8 +329,8 @@ const CrepeEditor = ({
       );
       // References (lib/references.ts): click-to-navigate always (Crepe already renders a
       // completed `[text](thread=…)` as a plain clickable link, no new node type), plus — while
-      // editable — reporting this text block's plain text/caret so React can drive the same
-      // trigger/two-stage-autocomplete state machine RawEditor's textarea wiring drives.
+      // editable — reporting this text block's plain text/caret so React can drive the
+      // trigger/two-stage-autocomplete state machine.
       crepe.editor.use(
         utils.$prose(() =>
           referencePlugin(state, {
@@ -531,6 +353,7 @@ const CrepeEditor = ({
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;
           onChangeRef.current?.(markdown);
+          if (baselineRef.current !== null) setDirty(isDirty(baselineRef.current, markdown));
         });
       });
 
@@ -565,6 +388,13 @@ const CrepeEditor = ({
             if (!touched) view.dispatch(view.state.tr.setSelection(state.Selection.atEnd(view.state.doc)));
             view.focus();
           }),
+        blur: () => crepe.editor.action((ctx: Ctx) => viewOf(ctx).dom.blur()),
+        setPlaceholder: (next) =>
+          crepe.editor.action((ctx: Ctx) => {
+            ctx.update(placeholderConfig.key, (prev) => ({ ...prev, text: next }));
+            const view = viewOf(ctx);
+            view.dispatch(view.state.tr); // re-run the decorations so the new hint shows now
+          }),
         completeReference: (from, to, text, href) =>
           crepe.editor.action((ctx: Ctx) => {
             const view = viewOf(ctx);
@@ -584,8 +414,16 @@ const CrepeEditor = ({
         lastEmittedRef.current = now.value;
         crepe.editor.action(utils.replaceAll(now.value));
       }
-      if (initial.current.autofocus) crepe.editor.action((ctx: Ctx) => viewOf(ctx).focus());
+      crepe.editor.action((ctx: Ctx) => {
+        // iOS reads these off the contenteditable: sentence caps, and spell-check for prose.
+        const dom = viewOf(ctx).dom;
+        dom.setAttribute("autocapitalize", "sentences");
+        dom.setAttribute("spellcheck", "true");
+      });
+      if (now.placeholder !== text) loadedRef.current?.setPlaceholder(now.placeholder);
       crepeRef.current = crepe;
+      if (!now.readOnly) beginEditing();
+      if (initial.current.autofocus) crepe.editor.action((ctx: Ctx) => viewOf(ctx).focus());
       destroy = () => crepe.destroy();
       if (destroyed) destroy();
     })();
@@ -598,9 +436,18 @@ const CrepeEditor = ({
     };
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `readOnly` is the only trigger; the helpers are per-render closures over refs.
   useEffect(() => {
     crepeRef.current?.setReadonly(readOnly);
+    if (readOnly) {
+      baselineRef.current = null;
+      setDirty(false);
+    } else if (baselineRef.current === null) beginEditing();
   }, [readOnly]);
+
+  useEffect(() => {
+    loadedRef.current?.setPlaceholder(placeholder);
+  }, [placeholder]);
 
   // One-way sync for programmatic changes (a chat composer clearing on send).
   // A no-op on every keystroke (value === last emitted).
@@ -645,6 +492,34 @@ const CrepeEditor = ({
         // editor still mounting — nothing to focus yet
       }
     },
+    enterEdit: () => {
+      const crepe = crepeRef.current;
+      const loaded = loadedRef.current;
+      if (!crepe || !loaded) return;
+      // Synchronous on purpose: iOS raises the keyboard only for a focus() inside the tap itself.
+      crepe.setReadonly(false);
+      beginEditing();
+      loaded.focus(false);
+    },
+    exitEdit: (discard) => {
+      const crepe = crepeRef.current;
+      const loaded = loadedRef.current;
+      if (!crepe || !loaded) return;
+      if (discard) {
+        const original = latest.current.value;
+        lastEmittedRef.current = original;
+        loaded.editor.action(loaded.replaceAll(original));
+      }
+      crepe.setReadonly(true);
+      loaded.blur();
+      baselineRef.current = null;
+      setDirty(false);
+      closeAutocomplete();
+    },
+    isDirty: () => {
+      const crepe = crepeRef.current;
+      return crepe && baselineRef.current !== null ? isDirty(baselineRef.current, crepe.getMarkdown()) : false;
+    },
     getMarkdown: () => crepeRef.current?.getMarkdown() ?? lastEmittedRef.current,
   }));
 
@@ -663,7 +538,7 @@ const CrepeEditor = ({
             ac.highlighted,
             ac.setHighlighted,
             acceptReference,
-            () => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null })),
+            closeAutocomplete,
           );
           if (!handled) onKeyDownCapture?.(e);
         }}
@@ -672,7 +547,7 @@ const CrepeEditor = ({
         onFocus={() => {
           touchedRef.current = true;
         }}
-        onBlur={() => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }))}
+        onBlur={closeAutocomplete}
         // Click-to-navigate for a completed reference: Crepe already renders `[text](thread=…)` as
         // a plain `<a>` (decision 1 — no new node type), so this is a plain click delegation, not a
         // ProseMirror `handleClickOn` (see referencePlugin.ts's comment for why that hook — which
@@ -692,12 +567,30 @@ const CrepeEditor = ({
         rect={local.rect}
         options={ac.options}
         highlighted={ac.highlighted}
-        emptyText={local.state.stage === "thread" ? "No matching threads" : "No matching messages"}
         onPick={(id) => acceptReference(ac.options.findIndex((o) => o.id === id))}
         onOpenChange={(open) => {
-          if (!open) setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }));
+          if (!open) closeAutocomplete();
         }}
       />
     </>
   );
 };
+
+// Pasting or dropping a photo: hand the file to the caller instead of letting the editor embed it.
+const takeImageFile = (
+  files: FileList | null | undefined,
+  onImageFile: ((file: File) => void) | undefined,
+  e: React.ClipboardEvent | React.DragEvent,
+) => {
+  const file = [...(files ?? [])].find((f) => f.type.startsWith("image/"));
+  if (!file || !onImageFile) return;
+  e.preventDefault();
+  e.stopPropagation();
+  onImageFile(file);
+};
+
+// Lucide `circle` / `circle-check`, stroke-only so `currentColor` (and the CSS) decide the colour.
+const taskSvg = (inner: string) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+const TASK_OPEN = taskSvg('<circle cx="12" cy="12" r="10"/>');
+const TASK_DONE = taskSvg('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>');

@@ -1,6 +1,7 @@
 import { ImagePlus } from "lucide-react";
 import { type RefObject, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { addImage } from "@/lib/imageSync";
 import type { MarkdownEditorHandle } from "./MarkdownEditor";
@@ -42,13 +43,13 @@ export const ImageButton = ({
         variant="ghost"
         aria-label="Add photo"
         title="Add photo"
-        className={className}
+        className={cn("press-icon", className)}
         disabled={disabled}
         onClick={() => picker.current?.click()}
         // keep the caret where the user left it: don't let the tap blur/refocus the editor
         onPointerDown={(e) => e.preventDefault()}
       >
-        <ImagePlus className="size-4" />
+        <ImagePlus className="size-5 md:size-4" />
       </Button>
       <input
         ref={picker}
