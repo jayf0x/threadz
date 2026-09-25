@@ -86,6 +86,9 @@ export const ThreadView = ({
   const scrolledTo = useRef<string | undefined>(undefined); // don't re-jump once this target's been reached
   const arrival = useRef<ReturnType<typeof setTimeout>[]>([]); // the arrival jump's follow-up timers
   const following = useRef(true); // scrolled to the newest end: keep it there while rows are still being measured
+  // Only the person's own scrolling may end "following": while rows are still being measured the virtualizer
+  // moves `scrollTop` itself, and reading those events as "the user left the bottom" stranded the list midway.
+  const userScrolled = useRef(false);
   // An empty mirror means "still loading", not "deleted": only the store's own 404 (`gone`), or a thread
   // we had displayed disappearing from a refreshed mirror, says the thread is really gone.
   const missing = gone || vanished;
@@ -169,6 +172,7 @@ export const ThreadView = ({
     if (!scratch && reversed && orderedMessages.length) rowVirtualizer.scrollToIndex(0, { align: "start" });
     else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     following.current = true;
+    userScrolled.current = false;
   }, [orderedMessages.length, scratch, pulseMessageId, reversed, rowVirtualizer]);
 
   // Rows are only measured once they render, so the list keeps growing (or briefly collapses) after the
@@ -209,6 +213,28 @@ export const ThreadView = ({
     ];
   }, [pulseMessageId, orderedMessages, rowVirtualizer]);
   useEffect(() => () => arrival.current.forEach(clearTimeout), []);
+
+  // Follow the newest end until the person scrolls away from it (see `userScrolled`). Native listeners: passive,
+  // and the scroller isn't there at all while the thread is missing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `missing` is the trigger — it decides whether the scroller exists
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const moved = () => {
+      userScrolled.current = true;
+    };
+    const onScroll = () => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX) following.current = true;
+      else if (userScrolled.current) following.current = false;
+    };
+    const gestures = ["wheel", "touchmove", "pointerdown", "keydown"] as const;
+    for (const g of gestures) el.addEventListener(g, moved, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      for (const g of gestures) el.removeEventListener(g, moved);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [missing]);
 
   // Clicks that land outside the thing they'd act on: anywhere but the composer lets go of it (iOS
   // doesn't close the keyboard for a tap on plain content, and while the composer is focused it stays
@@ -253,34 +279,29 @@ export const ThreadView = ({
           >
             {thread?.title ?? "…"}
           </h1>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="ml-auto shrink-0 aria-pressed:bg-accent aria-pressed:text-foreground"
-            aria-label={
-              reversed
-                ? "Showing newest first — switch to oldest first"
-                : "Showing oldest first — switch to newest first"
-            }
-            title={reversed ? "Newest first" : "Oldest first"}
-            aria-pressed={reversed}
-            onClick={() => setThreadReversed(threadId, !reversed)}
-          >
-            <ArrowDownUp className="size-5 md:size-4" />
-          </Button>
+          {messages.length > 1 && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="ml-auto shrink-0 aria-pressed:bg-accent aria-pressed:text-foreground"
+              aria-label={
+                reversed
+                  ? "Showing newest first — switch to oldest first"
+                  : "Showing oldest first — switch to newest first"
+              }
+              title={reversed ? "Newest first" : "Oldest first"}
+              aria-pressed={reversed}
+              onClick={() => setThreadReversed(threadId, !reversed)}
+            >
+              <ArrowDownUp className="size-5 md:size-4" />
+            </Button>
+          )}
         </div>
       </header>
 
       {error && <p className="border-b border-destructive px-7 py-2 text-xs text-destructive md:px-10">{error}</p>}
 
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto"
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          following.current = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK_PX;
-        }}
-      >
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-full flex-col">
           <div className="mx-auto w-full max-w-3xl flex-1 px-7 pb-6 md:px-10">
             <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}>

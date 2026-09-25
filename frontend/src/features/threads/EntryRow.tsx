@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { ResponsiveOverlay } from "@/components/ui/responsive-overlay";
@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
-import { toggleTodoLine } from "@/lib/todos";
+import { parseTodoGroups, parseTodos, toggleTodoLine } from "@/lib/todos";
 import type { Annotation, Message } from "@/lib/types";
 import { NoteSurface } from "./NoteSurface";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
@@ -81,11 +81,16 @@ export const EntryRow = ({
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const editor = useRef<MarkdownEditorHandle>(null);
-  const row = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
   const mine = m.role === "user";
   const todo = !!m.meta?.todo;
+  // A message with todo checkboxes draws them in the left gutter (`todoDecoration.ts`, x = -22px), so its wash
+  // reaches out to cover them instead of cutting through them.
+  const gutter = useMemo(
+    () => parseTodos(m.content).length > 0 || parseTodoGroups(m.content).groups.length > 0,
+    [m.content],
+  );
   const navigateReference = (threadId: string, messageId: string | null) =>
     onNavigateReference(threadId, messageId ?? undefined);
 
@@ -142,7 +147,7 @@ export const EntryRow = ({
     onOpenChange: setNoteOpen,
     anchor: noteAnchor,
     title: "Note",
-    virtualAnchor: row,
+    anchorTo: <span aria-hidden className="pointer-events-none absolute inset-x-3 bottom-0 h-0" />,
     align: "end" as const,
   };
 
@@ -163,11 +168,11 @@ export const EntryRow = ({
 
   return (
     <Motion.article
-      ref={row}
       className={cn(
-        "group relative -mx-3 rounded-2xl px-3 py-3.5 [overflow-wrap:anywhere]",
+        "group relative rounded-2xl py-3.5 [overflow-wrap:anywhere]",
+        gutter ? "-mx-6 px-6 after:inset-x-6" : "-mx-3 px-3 after:inset-x-3",
         // The hairline is its own element (a border would curve with the rounded wash) and goes while selected.
-        "after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-rule",
+        "after:absolute after:bottom-0 after:h-px after:bg-rule",
         selected || editing ? "after:opacity-0" : "press-row cursor-pointer hover:bg-accent/40",
         selected && !editing && "message-selected",
         pulsing && "message-pulse",

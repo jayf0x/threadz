@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/useMedia";
 import { Sheet } from "./sheet";
@@ -14,13 +14,11 @@ export type ResponsiveOverlayProps = {
   title: string;
   children: ReactNode;
   className?: string;
-  /** Popover only: measure from this element instead of the trigger, and open `align`ed to it — so a small
-   * trigger inside a row can open the popover past the whole row rather than on top of its siblings. */
-  virtualAnchor?: RefObject<Measurable | null>;
+  /** Popover only: an element to open against instead of the trigger (a zero-size positioned span, say), so a
+   * small trigger inside a row can open the popover past the whole row rather than on top of its siblings. */
+  anchorTo?: ReactElement;
   align?: "start" | "center" | "end";
 };
-
-type Measurable = { getBoundingClientRect(): DOMRect };
 
 // The one surface for "a small form or note tied to something on screen": a Radix Popover from 768px up,
 // a bottom Sheet on a phone (a popover next to a keyboard has nowhere to go). Same children either way.
@@ -31,7 +29,7 @@ export const ResponsiveOverlay = ({
   title,
   children,
   className,
-  virtualAnchor,
+  anchorTo,
   align,
 }: ResponsiveOverlayProps) => {
   const wide = useMedia("(min-width: 768px)");
@@ -45,8 +43,8 @@ export const ResponsiveOverlay = ({
 
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
-      {virtualAnchor && <Popover.Anchor virtualRef={virtualAnchor as RefObject<Measurable>} />}
       <Popover.Trigger asChild>{anchor}</Popover.Trigger>
+      {anchorTo && <Popover.Anchor asChild>{anchorTo}</Popover.Anchor>}
       <Popover.Portal>
         <Popover.Content
           aria-label={title}
