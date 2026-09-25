@@ -155,7 +155,7 @@ Request bodies are validated (`backend/schemas.ts`): invalid JSON, a wrong type 
 | DELETE | `/api/threads/:id` | delete thread + messages |
 | POST | `/api/threads/:id/copy` | "Clone from here": `{ newThreadId, uptoMessageId, appendNote? }` copies the thread up to that message (new ids), optionally appending the composer's text as the copy's next note; idempotent on `newThreadId` |
 | PATCH | `/api/threads/:id/messages/:mid` | edit `{ content }`; the old text is appended to `edits` |
-| PATCH | `/api/threads/:id/messages/:mid/meta` | merge `{ meta }` into the message's `meta` (the ⋯ menu's Todo flag); its own `metaEditedAt` clock, never a content edit |
+| PATCH | `/api/threads/:id/messages/:mid/meta` | merge `{ meta }` into the message's `meta` (the Todo button's flag); its own `metaEditedAt` clock, never a content edit |
 | POST | `/api/threads/:id/messages/:mid/annotations` | add a note to a message `{ id, content, createdAt? }` — idempotent on `id` |
 | PATCH | `/api/threads/:id/annotations/:aid` | edit a note `{ content }`; the old text is kept in its `edits` |
 | POST | `/api/threads/:id/messages` | idempotent append `{ id, content, role?, meta?, createdAt? }` |
@@ -252,7 +252,7 @@ in `styles.css` — not Motion, nothing enters or leaves the tree). A sidebar en
   with its own items underneath, each independently tickable. A plain `- item` with no checkbox parses as open;
   ticking it adds the checkbox rather than requiring one up front. Still text-is-truth: every toggle is the same
   `editMessage` rewrite, just targeting that item's own line.
-- **A flagged message.** The message's own ⋯ menu ("Todo", a toggle; the menu shows on the selected message)
+- **A flagged message.** The selected message's own Todo button (a toggle in its actions row, beside Edit / Add note / ⋯)
   flags the *whole message* as a todo without inserting any `/todo` text — a second, non-textual mechanism for the same sidebar
   outcome (see `inspiration.md`'s "Commands: a content primitive"). State lives in `meta.todo: { done: boolean }`
   on the message (`backend/schemas.ts`'s `MessageMeta`), its own small sync-safe route

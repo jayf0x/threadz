@@ -58,7 +58,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 
 - **One tab, one job.** Threadz, Todos, Bin and Settings each own their functionality; a control
   belongs to exactly one tab (e.g. the closed-todo filter is Todos-only, the Threadz index has no
-  resolved/todo filtering). A *message* can be a todo (a `/todo` line or the ⋯ menu's Todo toggle), but the index never
+  resolved/todo filtering). A *message* can be a todo (a `/todo` line or the actions row's Todo toggle), but the index never
   behaves as a todo list.
 - **Rarely-used UI is never shown up front.** Filters, sort and secondary actions live in a dropdown
   (`components/ui/select.tsx`) or an action menu (`components/ui/menu.tsx`), not as always-visible
@@ -79,8 +79,9 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 - **Mobile is the primary target.** Nav is a bottom tab bar, icon-only with a `title`. Touch targets are 44px
   below `md` (compact from `md` up — `Button`'s sizes, `size-11 md:size-9` icon buttons, `md:` variants; icons `size-5 md:size-4`). Keyboard hints ("press n", `( / )`)
   are gated on `isTouch()` (`lib/dom.ts`). Slash commands are a bare `/` (`/todo`, `/todos`); `@/` still
-  parses. Per-message metadata (date, sync/voice/edited, ⋯) shows only on the selected message. A message
-  shows a note icon only when it has a note; "Add note" is in its ⋯ menu.
+  parses. The selected message (and only it) gets one 44px actions row under it: date, sync/voice/edited on the left;
+  Edit, Add note (only with no note yet), Todo (`aria-pressed`) and ⋯ (Copy, Copy link, Clone from here) on the
+  right. A message shows a note *chip* (first line of the note) only when it has a note; it opens the note overlay.
 - **The keyboard and the viewport** (`lib/viewport.ts`, `App.tsx`'s `Shell`): iOS overlays the keyboard and
   pans the visual viewport instead of resizing the layout viewport, so the shell is `position: fixed`, sized
   and offset from `visualViewport` (`--vv-h`, `--vv-top`) — never `h-dvh`, and size anything meant to fit
@@ -93,7 +94,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   `@/` across folders, `./` within one. See README "Structure & conventions".
 - Semantic color tokens only in components — never a hardcoded color.
 - **Menus, popovers, dropdowns, dialogs: a real primitives library, never hand-rolled.** `components/ui/menu.tsx`
-  wraps `@radix-ui/react-dropdown-menu`; a message's note (`ThreadView.tsx`) is `@radix-ui/react-popover` directly —
+  wraps `@radix-ui/react-dropdown-menu`; a message's note (`NoteSurface.tsx`, opened from `EntryRow.tsx`) is a `ResponsiveOverlay` (Radix popover / dialog) —
   positioning (flip/shift to stay on screen, `--radix-popover-content-available-width` for a max-width that can
   never overflow), the portal, outside-click, Escape and focus management are Radix's, not ours. A hand-rolled
   popover (custom `getBoundingClientRect` flip math, manual outside-click/focus-trap listeners) lived here before
@@ -117,7 +118,8 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   Radix removes it); `chordBlocked` is the ⌘/Ctrl variant, which only stands down for a layer (⌘K works while the
   composer is focused). `.ProseMirror` overflow is visible by default (a gutter checkbox at `left:-20px` is clipped
   otherwise); only a height-capped field (`.threadz-md-scroll`, set by `ContentField`) scrolls. The thread list re-pins to the newest end while you're at the bottom
-  (`following` ref), since row heights settle after their lazy editors mount.
+  (`following` ref), since row heights settle after their lazy editors mount; only a user gesture (wheel, touch, key,
+  pointer: `userScrolled`) can end following — the virtualizer moves `scrollTop` itself while it measures.
 - **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into the editor): `MarkdownEditor`
   drives the `nextAutocompleteState` machine off `referencePlugin`. Its offsets are into the *rendered*
   block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`
@@ -150,7 +152,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   `Button` is a full-round pill (`bg-primary-sheen` primary), floating chrome is `surface-float`, cards
   `surface-sheen`. A one-off gradient uses `color-mix` on tokens, never a literal colour.
 - **Overlays**: `Menu` (anchored ⋯ actions, `side`, per-item `keepFocus`), `ResponsiveOverlay` (Radix Popover from
-  768px, bottom `Sheet` below — same children; its `anchor` is the trigger) and `Sheet` (Radix Dialog, sits on the
+  768px, bottom `Sheet` below — same children; its `anchor` is the trigger; `anchorTo` opens the popover against another element) and `Sheet` (Radix Dialog, sits on the
   visual viewport so it clears the iOS keyboard) live in `components/ui/`; `lib/useMedia.ts` is the media hook.
   Toasts drop from the top on a phone (bottom-right from `md`).
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.

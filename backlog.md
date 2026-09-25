@@ -44,7 +44,8 @@ none of it has run on iOS WebKit or a device.
   once (likely WebKit's memory ceiling with the whisper WASM heap + a fresh VAD session). If it recurs: keep one
   `MicVAD` and `pause()/start()` instead of `new`/`destroy` per session, or default to `whisper-tiny`.
 - **Popovers and the message menu on iOS:** positioning with the keyboard open, tap targets, dismissal, and that
-  "Add note" (menu → popover with an autofocused editor) keeps focus.
+  "Add note" (actions-row button → sheet/popover with an autofocused editor) keeps focus, and that Edit's
+  `enterEdit()` inside the tap raises the keyboard on an already-mounted editor.
 - **Deep-link straight into capture.** `?capture=1` / the PWA shortcut opens a focused composer everywhere it could be
   tested; WebKit may not raise the keyboard from a programmatic focus outside a direct tap.
 - **Images:** iOS HEIC picker, camera capture, canvas memory on old iPhones; a ~600px thumbnail tier if
