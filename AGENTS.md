@@ -68,8 +68,8 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   three primary actions; extras go in the ⋯ menu. It lives at the *end of the message scroller*: focused it
   pins to the bottom (`:focus-within` — never React state, a focused Send that turns `disabled` fires no blur),
   unfocused it scrolls away with the messages; from `md` it's always pinned.
-- **Mobile is the primary target.** Nav is a bottom tab bar, icon-only with a `title`. Touch targets are 40px
-  below `md` (compact from `md` up — `Button`'s sizes, `tap` in `ThreadView.tsx`, `md:` variants). Keyboard hints ("press n", `( / )`)
+- **Mobile is the primary target.** Nav is a bottom tab bar, icon-only with a `title`. Touch targets are 44px
+  below `md` (compact from `md` up — `Button`'s sizes, `size-11 md:size-9` icon buttons, `md:` variants; icons `size-5 md:size-4`). Keyboard hints ("press n", `( / )`)
   are gated on `isTouch()` (`lib/dom.ts`). Slash commands are a bare `/` (`/todo`, `/todos`); `@/` still
   parses. Per-message metadata (date, sync/voice/edited, ⋯) shows only on the selected message. A message
   shows a note icon only when it has a note; "Add note" is in its ⋯ menu.
@@ -134,8 +134,16 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   banner, the scratch-answer dismiss — see `ThreadView.tsx`/`Composer.tsx`). Reach for it only there; hover
   states, color/opacity and similar stay plain CSS transitions. Don't add a second animation library on top of
   it, and don't reach for it to animate a Radix primitive's open/close — that's a separate integration
-  (`forceMount` + `AnimatePresence`) with its own failure modes; the current menus ship with Radix's instant
-  default rather than take that on for a small action list.
+  (`forceMount` + `AnimatePresence`) with its own failure modes. Menus and popovers get an *enter*-only CSS
+  keyframe (`pop-in`, on the Radix content) and close instantly; sheets get enter and exit keyframes on
+  `data-state` (Radix Presence's documented path). Everything tappable uses the `press` family in `styles.css`
+  (`press` pills scale .97, `press-icon` .9, `press-row` tints and never scales; override with `[--press-scale:…]`),
+  `Button` is a full-round pill (`bg-primary-sheen` primary), floating chrome is `surface-float`, cards
+  `surface-sheen`. A one-off gradient uses `color-mix` on tokens, never a literal colour.
+- **Overlays**: `Menu` (anchored ⋯ actions, `side`, per-item `keepFocus`), `ResponsiveOverlay` (Radix Popover from
+  768px, bottom `Sheet` below — same children; its `anchor` is the trigger) and `Sheet` (Radix Dialog, sits on the
+  visual viewport so it clears the iOS keyboard) live in `components/ui/`; `lib/useMedia.ts` is the media hook.
+  Toasts drop from the top on a phone (bottom-right from `md`).
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty
@@ -162,7 +170,8 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   `solarized`, `catppuccin`, `nord` (default `gruvbox`); always-dark identities with no honest light variant
   (Dracula, Monokai…) were dropped rather than pretend, and old stored ids are migrated in `index.html`. Every
   palette defines the exact same token set (copy `gruvbox.css` for a new one) — components never know which is
-  active. The picker shows a bordered dot per family (no names), previewing the mode currently in effect.
+  active. The picker is a grid of six round swatches (no names; a 1px inset `--border` ring, selected = `outline`, a soft
+  oklab band, never a border or a scale), previewing the mode currently in effect.
   The **background** is one more device-local setting (`lib/settings.ts`'s `background`; image bytes in
   `lib/backgroundImage.ts`'s own IndexedDB, never in a snapshot/backup): the default is a faint token-built
   gradient (`gradients.ts`), or the user's image — picked and **Remove**d in Settings (removing returns to the
@@ -170,7 +179,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   shows is the panes' opacity, not the image's: panes use `surface-background/-secondary/-card`
   (`styles.css`) over `--pane-alpha`, which `lib/settings.ts` derives from the slider (92% without an image,
   falling as opacity rises; default 80%). Big persistent panes get that alpha only, no blur (cheap); small
-  floating chrome (popover, dropdown) additionally gets `backdrop-blur-md`.
+  floating chrome (popover, dropdown, toast, sheet) is `surface-float` (fixed 96% gradient + blur).
 - "Related threads" (`/api/threads/:id/related`) is a v2 endpoint and not in the UI; see `backlog.md`.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
 - Metadata generation is fire-and-forget after each append (no queue) — off by default; set `THREADZ_METADATA=1`

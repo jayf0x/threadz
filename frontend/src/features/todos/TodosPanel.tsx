@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Circle, CircleCheck, ListFilter, ListTodo } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconSelect } from "@/components/ui/select";
@@ -50,7 +50,7 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
         {visible?.length === 0 && <Empty icon={ListTodo}>{closedFilter === "never" ? "All done" : "No todos"}</Empty>}
         <ul>
           {visible?.map((t) => {
-            const meta = `${t.threadTitle} · ${format(t.createdAt, "d MMM")}`;
+            const meta = <Meta thread={t.threadTitle} at={t.createdAt} />;
             if (t.kind === "group")
               return (
                 <GroupCard
@@ -106,6 +106,14 @@ const ClosedFilterSwitcher = ({
   </IconSelect>
 );
 
+// "Thread · 25 Sep": the thread title gives way to the date when it is too long, never the other way round.
+const Meta = ({ thread, at }: { thread: string; at: number }) => (
+  <span className="mt-0.5 flex text-xs text-muted-foreground">
+    <span className="min-w-0 truncate">{thread}</span>
+    <span className="shrink-0 whitespace-pre tabular-nums"> · {format(at, "d MMM")}</span>
+  </span>
+);
+
 // A round tick with a 44px hit area. The glyph pops once when *you* close it, not for every done row
 // that happens to mount.
 const CheckButton = ({ done, onToggle, label }: { done: boolean; onToggle: () => void; label: string }) => {
@@ -140,7 +148,7 @@ const TodoRow = ({
   done: boolean;
   onToggle: () => void;
   onOpen: () => void;
-  meta: string;
+  meta: ReactNode;
 }) => (
   <li className="flex min-h-14 items-stretch border-b border-rule pl-2">
     <CheckButton done={done} onToggle={onToggle} label={done ? "Mark todo open" : "Mark todo done"} />
@@ -153,7 +161,7 @@ const TodoRow = ({
       >
         {text}
       </span>
-      <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">{meta}</span>
+      {meta}
     </button>
   </li>
 );
@@ -169,7 +177,7 @@ const GroupCard = ({
   onOpenThread,
 }: {
   title: string;
-  meta: string;
+  meta: ReactNode;
   items: ParsedTodoItem[];
   onToggleItem: (item: ParsedTodoItem) => void;
   onOpenThread: () => void;
@@ -177,7 +185,7 @@ const GroupCard = ({
   <li className="mx-3 my-2 overflow-hidden rounded-2xl border border-border surface-sheen">
     <button type="button" onClick={onOpenThread} className="press-row block w-full min-w-0 px-4 pb-1.5 pt-3 text-left">
       <span className="line-clamp-2 break-words text-[15px] font-medium leading-snug text-foreground">{title}</span>
-      <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">{meta}</span>
+      {meta}
     </button>
     <ul className="pb-1.5">
       {items.map((item) => (

@@ -220,7 +220,7 @@ placeholder, or exactly what it derived from the previous first note) and does n
 name. **Regenerate title** in the row's ⋯ menu does the same on demand from all of the thread's notes, and does replace a
 name you typed. That menu also has Rename, Export as Markdown (one thread's own content as a `.md` file, unlike
 the whole-vault JSON Export), Copy link (a `[title](thread=<id>)` reference, ready to paste into another note) and
-Delete; Pin (device-only) stays on the row.
+Delete; Pin (device-only) stays a visible button on the row at every width.
 
 **Capture deep link.** `?capture=1` opens the same way as **+ New**/`n` and focuses the composer — the installed PWA's
 long-press icon menu offers it as "New note" (`vite.config.ts`'s manifest `shortcuts`). Unverified on iOS: WebKit

@@ -188,7 +188,9 @@ const Shell = ({
       className="fixed left-0 top-0 z-10 grid w-full grid-cols-1 lg:grid-cols-[23rem_minmax(0,1fr)]"
       style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
     >
-      <aside className={cn("surface-sheen-pane min-h-0 min-w-0 border-r border-border", selected && "hidden lg:block")}>
+      <aside
+        className={cn("surface-sheen-pane min-h-0 min-w-0 lg:border-r lg:border-border", selected && "hidden lg:block")}
+      >
         <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
       </aside>
       {/* Keyed by thread so the phone entrance (`pane-in`; nothing animates out) replays on every open. The

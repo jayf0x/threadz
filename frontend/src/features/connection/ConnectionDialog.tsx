@@ -83,7 +83,7 @@ export const ConnectionDialog = () => {
       )}
     >
       <div aria-hidden className="mx-auto mt-2 h-1 w-9 rounded-full bg-border md:hidden" />
-      <div className="pb-safe flex flex-col gap-5 px-5 pb-5 pt-4 md:px-6 md:py-6">
+      <div className="flex flex-col gap-5 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 md:px-6 md:py-6">
         <header className="flex items-start justify-between gap-3">
           <div>
             <Eyebrow>{local ? "Local" : mainOk ? "Live" : "Offline"}</Eyebrow>
@@ -119,7 +119,7 @@ export const ConnectionDialog = () => {
         {local ? (
           <section className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">Notes save here until you sync.</p>
-            <p className="font-mono text-[11px] uppercase tracking-widest">
+            <p className="text-xs tabular-nums text-muted-foreground">
               {pending ? describeUnsynced(s.unsynced) : "Nothing waiting to sync"}
             </p>
             <div className="flex flex-wrap items-center gap-3">
