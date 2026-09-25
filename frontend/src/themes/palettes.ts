@@ -25,7 +25,7 @@ export const PALETTES: Palette[] = [
     id: "gruvbox",
     label: "Gruvbox",
     swatch: {
-      light: { background: "oklch(0.973 0.008 85)", primary: "oklch(0.66 0.14 68)" },
+      light: { background: "oklch(0.973 0.008 85)", primary: "oklch(0.55 0.14 68)" },
       dark: { background: "oklch(0.165 0.008 70)", primary: "oklch(0.74 0.13 72)" },
     },
   },
@@ -41,7 +41,7 @@ export const PALETTES: Palette[] = [
     id: "everforest",
     label: "Everforest",
     swatch: {
-      light: { background: "oklch(0.972 0.012 140)", primary: "oklch(0.55 0.1 145)" },
+      light: { background: "oklch(0.972 0.012 140)", primary: "oklch(0.53 0.1 145)" },
       dark: { background: "oklch(0.155 0.014 145)", primary: "oklch(0.68 0.1 148)" },
     },
   },
@@ -49,8 +49,8 @@ export const PALETTES: Palette[] = [
     id: "solarized",
     label: "Solarized",
     swatch: {
-      light: { background: "oklch(0.974 0.026 90)", primary: "oklch(0.644 0.102 187)" },
-      dark: { background: "oklch(0.267 0.049 220)", primary: "oklch(0.644 0.102 187)" },
+      light: { background: "oklch(0.974 0.026 90)", primary: "oklch(0.529 0.102 187)" },
+      dark: { background: "oklch(0.267 0.049 220)", primary: "oklch(0.674 0.102 187)" },
     },
   },
   {
@@ -65,7 +65,7 @@ export const PALETTES: Palette[] = [
     id: "nord",
     label: "Nord",
     swatch: {
-      light: { background: "oklch(0.951 0.007 261)", primary: "oklch(0.594 0.077 254)" },
+      light: { background: "oklch(0.951 0.007 261)", primary: "oklch(0.524 0.077 254)" },
       dark: { background: "oklch(0.324 0.023 264)", primary: "oklch(0.775 0.062 218)" },
     },
   },

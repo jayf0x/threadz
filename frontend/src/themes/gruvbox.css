@@ -17,12 +17,12 @@
   --secondary-foreground: oklch(0.235 0.014 60);
   --muted: oklch(0.945 0.011 82);
   --muted-foreground: oklch(0.46 0.012 62);
-  --accent: color-mix(in oklab, oklch(0.66 0.14 68) 12%, transparent);
+  --accent: color-mix(in oklab, oklch(0.55 0.14 68) 12%, transparent);
   --accent-foreground: oklch(0.235 0.014 60);
   --border: color-mix(in oklab, oklch(0.235 0.014 60) 14%, transparent);
   --input: oklch(0.995 0.004 85);
-  --ring: oklch(0.66 0.14 68);
-  --primary: oklch(0.66 0.14 68);
+  --ring: oklch(0.55 0.14 68);
+  --primary: oklch(0.55 0.14 68);
   --primary-foreground: oklch(0.995 0.004 85);
   --destructive: oklch(0.56 0.17 27);
   --destructive-foreground: oklch(0.995 0.004 85);

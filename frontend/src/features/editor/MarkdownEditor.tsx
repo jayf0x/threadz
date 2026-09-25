@@ -17,6 +17,7 @@ import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
 import { type CSSProperties, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { housekeeping } from "@/lib/images";
+import { holdKeyboard, releaseKeyboard } from "@/lib/keyboard";
 import {
   buildReferenceHref,
   completeMessage,
@@ -428,7 +429,10 @@ export const MarkdownEditor = ({
       if (now.placeholder !== text) loadedRef.current?.setPlaceholder(now.placeholder);
       crepeRef.current = crepe;
       if (!now.readOnly) beginEditing();
-      if (initial.current.autofocus) crepe.editor.action((ctx: Ctx) => viewOf(ctx).focus());
+      if (initial.current.autofocus) {
+        crepe.editor.action((ctx: Ctx) => viewOf(ctx).focus());
+        releaseKeyboard(); // a tap that opened this field may be holding the keyboard for it (lib/keyboard.ts)
+      }
       destroy = () => crepe.destroy();
       if (destroyed) destroy();
     })();
@@ -502,9 +506,11 @@ export const MarkdownEditor = ({
       const loaded = loadedRef.current;
       if (!crepe || !loaded) return;
       // Synchronous on purpose: iOS raises the keyboard only for a focus() inside the tap itself.
+      holdKeyboard(); // belt and braces: the proxy input keeps the keyboard up if the real focus lands a tick late
       crepe.setReadonly(false);
       beginEditing();
       loaded.focus(false);
+      releaseKeyboard();
     },
     exitEdit: (discard) => {
       const crepe = crepeRef.current;

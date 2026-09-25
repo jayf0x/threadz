@@ -116,10 +116,13 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 - **Shortcuts and layers.** An open Radix layer (menu, popover, dialog) blocks bare-key shortcuts
   (`lib/dom.ts`'s `shortcutBlocked`; Esc-closes-thread listens in the capture phase so it sees the layer before
   Radix removes it); `chordBlocked` is the ⌘/Ctrl variant, which only stands down for a layer (⌘K works while the
-  composer is focused). `.ProseMirror` overflow is visible by default (a gutter checkbox at `left:-20px` is clipped
-  otherwise); only a height-capped field (`.threadz-md-scroll`, set by `ContentField`) scrolls. The thread list re-pins to the newest end while you're at the bottom
+  composer is focused). `.ProseMirror` overflow is visible by default; todo checkboxes live *inside* their row (`p.threadz-todo-line` /
+  `/todos` items reserve left padding and a 44px hit box), never in the message gutter; only a height-capped field (`.threadz-md-scroll`, set by `ContentField`) scrolls. The thread list re-pins to the newest end while you're at the bottom
   (`following` ref), since row heights settle after their lazy editors mount; only a user gesture (wheel, touch, key,
-  pointer: `userScrolled`) can end following — the virtualizer moves `scrollTop` itself while it measures.
+  pointer: `userScrolled`) can end following — the virtualizer moves `scrollTop` itself while it measures. iOS raises
+  the keyboard only for a focus() inside the tap: `lib/keyboard.ts`'s `holdKeyboard()` (a throwaway focused input) bridges
+  taps whose real field mounts a beat later (note editor in a sheet); `enterEdit()` uses it too. Editing a row scrolls
+  it into view with `revealInScroller` (`scrollTop`, never `scrollIntoView`).
 - **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into the editor): `MarkdownEditor`
   drives the `nextAutocompleteState` machine off `referencePlugin`. Its offsets are into the *rendered*
   block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`

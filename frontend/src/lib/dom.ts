@@ -15,3 +15,14 @@ export const chordBlocked = (): boolean => layerOpen();
 /** A touch-first device (finger, no hover/keyboard shortcuts). Gates hints like "press n" that only
  * make sense with a keyboard, and defaults like Lock zoom. */
 export const isTouch = (): boolean => window.matchMedia?.("(pointer: coarse)").matches ?? false;
+
+/** Nudge the nearest `.overflow-y-auto` ancestor so `el` is fully visible. Sets `scrollTop` directly — never
+ * `scrollIntoView`, which also scrolls iOS's visual viewport and shoves the whole layout. */
+export const revealInScroller = (el: HTMLElement) => {
+  const scroller = el.closest<HTMLElement>(".overflow-y-auto");
+  if (!scroller) return;
+  const s = scroller.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.bottom > s.bottom - 8) scroller.scrollTop += r.bottom - s.bottom + 8;
+  if (r.top < s.top + 8) scroller.scrollTop -= s.top - r.top + 8;
+};

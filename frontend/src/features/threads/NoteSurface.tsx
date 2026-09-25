@@ -9,6 +9,7 @@ import {
   type MarkdownEditorHandle,
   useImageAttach,
 } from "@/features/editor";
+import { holdKeyboard } from "@/lib/keyboard";
 import type { Annotation } from "@/lib/types";
 
 // The inside of a message's note overlay (`ResponsiveOverlay`: a sheet on a phone, a popover from md).
@@ -135,7 +136,10 @@ export const NoteSurface = ({
                 variant="ghost"
                 aria-label="Edit note"
                 title="Edit note"
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  holdKeyboard(); // the editor mounts a tick after this tap; keep the iOS keyboard up for it
+                  setEditing(true);
+                }}
               >
                 <Pencil className="size-5 md:size-4" />
               </Button>

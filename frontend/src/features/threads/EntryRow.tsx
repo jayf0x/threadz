@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { ResponsiveOverlay } from "@/components/ui/responsive-overlay";
@@ -27,9 +27,11 @@ import {
   useImageAttach,
 } from "@/features/editor";
 import { cn } from "@/lib/cn";
+import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
+import { holdKeyboard } from "@/lib/keyboard";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
-import { parseTodoGroups, parseTodos, toggleTodoLine } from "@/lib/todos";
+import { toggleTodoLine } from "@/lib/todos";
 import type { Annotation, Message } from "@/lib/types";
 import { NoteSurface } from "./NoteSurface";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
@@ -81,16 +83,11 @@ export const EntryRow = ({
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const editor = useRef<MarkdownEditorHandle>(null);
+  const article = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
   const mine = m.role === "user";
   const todo = !!m.meta?.todo;
-  // A message with todo checkboxes draws them in the left gutter (`todoDecoration.ts`, x = -22px), so its wash
-  // reaches out to cover them instead of cutting through them.
-  const gutter = useMemo(
-    () => parseTodos(m.content).length > 0 || parseTodoGroups(m.content).groups.length > 0,
-    [m.content],
-  );
   const navigateReference = (threadId: string, messageId: string | null) =>
     onNavigateReference(threadId, messageId ?? undefined);
 
@@ -106,6 +103,21 @@ export const EntryRow = ({
     setHistory(false);
     setEditing(true);
   };
+  // The keyboard rises (and the visible area shrinks) a beat after the Edit tap: keep the row being edited on
+  // screen through that, by scrolling the list itself. Bounded — a few nudges, never a permanent listener.
+  useEffect(() => {
+    if (!editing) return;
+    const reveal = () => article.current && revealInScroller(article.current);
+    const timers = [0, 250, 600].map((ms) => setTimeout(reveal, ms));
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", reveal);
+    const stop = setTimeout(() => vv?.removeEventListener("resize", reveal), 1500);
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      clearTimeout(stop);
+      vv?.removeEventListener("resize", reveal);
+    };
+  }, [editing]);
   const cancelEdit = () => {
     editor.current?.exitEdit(true);
     setEditing(false);
@@ -136,7 +148,7 @@ export const EntryRow = ({
       </span>
     </button>
   ) : (
-    <Button size="icon" variant="ghost" aria-label="Add note" title="Add note">
+    <Button size="icon" variant="ghost" aria-label="Add note" title="Add note" onClick={holdKeyboard}>
       <StickyNote className="size-5 md:size-4" />
     </Button>
   );
@@ -168,9 +180,10 @@ export const EntryRow = ({
 
   return (
     <Motion.article
+      ref={article}
       className={cn(
         "group relative rounded-2xl py-3.5 [overflow-wrap:anywhere]",
-        gutter ? "-mx-6 px-6 after:inset-x-6" : "-mx-3 px-3 after:inset-x-3",
+        "-mx-3 px-3 after:inset-x-3",
         // The hairline is its own element (a border would curve with the rounded wash) and goes while selected.
         "after:absolute after:bottom-0 after:h-px after:bg-rule",
         selected || editing ? "after:opacity-0" : "press-row cursor-pointer hover:bg-accent/40",

@@ -238,8 +238,13 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
   background: var(--accent);
   border-left: 3px solid var(--primary);
   border-radius: 8px;
-  padding: 2px 8px 2px 10px;
+  /* The checkbox lives INSIDE the line (left padding), not in the message gutter: a 44px hit box fits
+   * there without running off the screen edge, and the line is a chunky 44px row like a list item. */
+  padding: 10px 8px 10px 42px;
 }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] p.threadz-todo-line { padding: 2px 8px 2px 10px; }
+/* a `/todos` title line has no checkbox of its own, so no room reserved for one */
+.threadz-md .milkdown .ProseMirror p.threadz-todo-line:not(:has(> .threadz-todo-checkbox)) { padding-left: 10px; }
 .threadz-md .milkdown .ProseMirror p.threadz-todo-line--done {
   background: transparent;
   border-left-color: var(--border);
@@ -263,15 +268,18 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
 .threadz-md .milkdown .milkdown-list-item-block li {
   position: relative;
 }
+/* `/todos` items: same box, same inside-the-row placement, same 44px row. */
+.threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li { padding: 10px 0 10px 34px; min-height: 44px; }
+.threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li > .threadz-todo-checkbox,
+.threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li .threadz-todo-checkbox { left: 8px; }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .milkdown-list-item-block.threadz-todo-item li { padding: 0; min-height: 0; }
 
 /* The gutter checkbox itself (a `Decoration.widget`, ./todoDecoration.ts) — a round box, the same
- * shape as the Todos tab's. `left: -22px` is the one literal shared with `ThreadView.tsx`'s
- * relocated note trigger; change one, change the other, or the two rails stop lining up. Sits in
- * the app's own outer side padding, never inside the message's own box, so it can't trigger a
- * horizontal scrollbar on that region. */
+ * shape as the Todos tab's. Sits inside its own row (see `p.threadz-todo-line`), so nothing pokes into the message gutter
+ * and there is no horizontal-overflow risk. */
 .threadz-todo-checkbox {
   position: absolute;
-  left: -22px;
+  left: 13px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -290,7 +298,7 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
 .threadz-todo-checkbox::before {
   content: "";
   position: absolute;
-  inset: -9px -3px -9px -14px;
+  inset: -13px -9px -13px -13px; /* 40x44 around the 18px box; stops short of the text */
 }
 .threadz-todo-checkbox:active { transform: translateY(-50%) scale(0.9); }
 .threadz-todo-checkbox:hover,
