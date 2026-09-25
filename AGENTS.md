@@ -63,9 +63,17 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 - **Rarely-used UI is never shown up front.** Filters, sort and secondary actions live in a dropdown
   (`components/ui/select.tsx`) or an action menu (`components/ui/menu.tsx`), not as always-visible
   segmented controls.
-- **Composer**: editor on the left, an action rail on the right (attach, mic, ⋯ overflow on top; send always
-  last, at the bottom — a 2×2 on phones so the composer isn't taller than its text, a column from `md`). Max
-  three primary actions; extras go in the ⋯ menu. It lives at the *end of the message scroller*: focused it
+- **One editor, one field.** Every place text is written (composer and its Ask mode, message edit, note edit)
+  is `ContentField` (`features/editor/`): the one Crepe WYSIWYG editor inside one `rounded-3xl` gradient field with
+  `leading` / `trailing` action slots; there is no raw-markdown textarea. Read views are `MarkdownEditor readOnly`,
+  and a message can be read and edited on the same mounted instance (`MarkdownEditorHandle.enterEdit()` /
+  `exitEdit()` / `isDirty()`, contract in `MarkdownEditor.tsx`): call `enterEdit()` inside the tap, since iOS only
+  raises the keyboard for a focus inside the gesture. Dirty is judged against the editor's own re-serialised
+  baseline (`dirty.ts`), never the stored text.
+- **Composer**: editor on top, an action row under it (attach, mic, ⋯ on the left; send, a 44px round `Plus`, far
+  right); from `md` the same slots are a vertical rail on the right (attach, mic, ⋯ on top; send last, at the
+  bottom). Max three primary actions; extras go in the ⋯ menu. The Note/Ask toggle and "Keep exchange" chip sit
+  above the field, only when Ask is offered. It lives at the *end of the message scroller*: focused it
   pins to the bottom (`:focus-within` — never React state, a focused Send that turns `disabled` fires no blur),
   unfocused it scrolls away with the messages; from `md` it's always pinned.
 - **Mobile is the primary target.** Nav is a bottom tab bar, icon-only with a `title`. Touch targets are 40px
@@ -108,10 +116,10 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   (`lib/dom.ts`'s `shortcutBlocked`; Esc-closes-thread listens in the capture phase so it sees the layer before
   Radix removes it); `chordBlocked` is the ⌘/Ctrl variant, which only stands down for a layer (⌘K works while the
   composer is focused). `.ProseMirror` overflow is visible by default (a gutter checkbox at `left:-20px` is clipped
-  otherwise); only `.composer-editor` scrolls. The thread list re-pins to the newest end while you're at the bottom
+  otherwise); only a height-capped field (`.threadz-md-scroll`, set by `ContentField`) scrolls. The thread list re-pins to the newest end while you're at the bottom
   (`following` ref), since row heights settle after their lazy editors mount.
-- **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into both editors): both adapters
-  drive the one `nextAutocompleteState` machine. In the Crepe (WYSIWYG) editor its offsets are into the *rendered*
+- **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into the editor): `MarkdownEditor`
+  drives the `nextAutocompleteState` machine off `referencePlugin`. Its offsets are into the *rendered*
   block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`
   rather than trusting `linkEnd`, and clear stored marks so typing after a link doesn't extend it. A ranged link's
   `from..to` travels as one opaque string through `?msg=`/`openThreadAt`; `resolveMessageRange` resolves it against
@@ -124,7 +132,8 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   construct (`![]()` images) is `imageView.ts` — a plain function returning `{ dom, destroy }`, registered with
   `utils.$view(schema.node, () => view)`. Decorating something that *isn't* real markdown (`/todo` lines —
   they're a plain-text convention, not an AST node) is `todoDecoration.ts` — a `prosemirror-state` `Plugin`
-  returning widget/node `Decoration`s, registered with `utils.$prose(() => plugin(...))`. Either way, only
+  returning widget/node `Decoration`s, registered with `utils.$prose(() => plugin(...))` (it also tags `/todos` items
+  `threadz-todo-item`, which hides Crepe's own bullet/box read-only so each item has exactly one box). Either way, only
   type-only imports (`import type … from "@milkdown/kit/prose/*"`) belong at a helper file's top level; the
   real `Plugin`/`PluginKey`/`Decoration`/`DecorationSet`/etc. classes are handed in as arguments from
   `MarkdownEditor.tsx`'s already-dynamically-loaded modules, not imported fresh in the helper.

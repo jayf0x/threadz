@@ -84,6 +84,11 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
   --md-min-height: 2.75rem;
 }
 
+/* Milkdown keeps an empty paragraph after a trailing list/code/rule so there's somewhere to click
+ * and keep typing. Read-only it is just a blank line under every message that ends in a list. */
+.threadz-md .milkdown .ProseMirror[contenteditable="false"] > p:last-child:has(> .ProseMirror-trailingBreak:only-child) {
+  display: none;
+}
 .threadz-md .milkdown .ProseMirror > :first-child { margin-top: 0; }
 .threadz-md .milkdown .ProseMirror > :last-child { margin-bottom: 0; }
 
@@ -131,7 +136,7 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
 }
 .threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .checked { color: var(--primary); }
 .threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .readonly { cursor: default; }
-.threadz-md .milkdown .milkdown-list-item-block li:has(> .label-wrapper .checked) > .children > p {
+.threadz-md .milkdown .milkdown-list-item-block li:has(> .label-wrapper .checked) > .children > .content-dom > p {
   color: var(--muted-foreground);
   text-decoration: line-through;
 }
@@ -141,6 +146,11 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
  * list item by ./todoDecoration.ts. */
 .threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li > .label-wrapper { display: none; }
 .threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li { gap: 0; }
+/* While editing, the reverse: the markdown itself (`- [ ]`, its bullet) is what you edit, so Crepe's
+ * own marker comes back and the read-only gutter widget goes (it would sit on the field's border). */
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-item li > .label-wrapper { display: flex; }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-item li { gap: 6px; }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-checkbox { display: none; }
 
 .threadz-md .milkdown .ProseMirror blockquote {
   margin: 0.25em 0;

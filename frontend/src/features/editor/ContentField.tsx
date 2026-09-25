@@ -17,9 +17,10 @@ export type ContentFieldVariant = "composer" | "edit" | "note";
 // stack in a column on the right, `leading` on top and `trailing` at the bottom.
 //
 // `variant="edit"` + `readOnly` is the *read view of a message*: the same mounted instance, with the
-// surface, border and action row switched off and negative margins that cancel its padding, so the
-// text sits exactly where the plain read view puts it. Flip `readOnly` (after `handle.enterEdit()`
-// inside the tap) and the surface fades in around the text without anything moving; see
+// surface, border and action row switched off. The edit variant carries negative margins that cancel
+// its own padding and border (17px sideways, 13px vertically), so the text sits exactly where the plain
+// read view puts it. Flip `readOnly` (after `handle.enterEdit()` inside the tap) and the surface fades
+// in around the text, growing outward, without the text moving; give the row that much room. See
 // `MarkdownEditorHandle` for the whole enter/save/cancel contract. Only `edit` goes bare: the
 // composer's `readOnly` (busy) keeps its surface.
 export const ContentField = ({
@@ -75,9 +76,10 @@ export const ContentField = ({
       data-variant={variant}
       className={cn(
         "content-field relative grid rounded-3xl border transition-[border-color,box-shadow] duration-150 ease-out-strong",
-        bare
-          ? "-mx-[17px] -my-[13px] border-transparent"
-          : "surface-sheen border-input focus-within:ring-2 focus-within:ring-ring",
+        // The edit variant always cancels its own padding + border (17px / 13px), reading or editing,
+        // so the text stays put and the surface grows outward around it.
+        variant === "edit" && "-mx-[17px] -my-[13px]",
+        bare ? "border-transparent" : "surface-sheen border-input focus-within:ring-2 focus-within:ring-ring",
         rail && "md:grid-cols-[minmax(0,1fr)_auto]",
         className,
       )}

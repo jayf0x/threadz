@@ -61,7 +61,7 @@ export const ReferenceAutocompleteMenu = ({
           className={cn(
             "pop-in z-50 w-72 max-w-[min(20rem,var(--radix-popover-content-available-width))] overflow-y-auto rounded-2xl p-1.5",
             "max-h-[min(16.5rem,var(--radix-popover-content-available-height))]",
-            "border border-border bg-card/95 shadow-lg ring-1 ring-border outline-none backdrop-blur-xl",
+            "bg-card/95 shadow-lg ring-1 ring-border outline-none backdrop-blur-xl",
           )}
         >
           {options.length === 0 ? (

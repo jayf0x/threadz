@@ -116,7 +116,7 @@ export const Composer = ({
   };
 
   return (
-    <div className="surface-card border-t border-border">
+    <div className="surface-secondary border-t border-border">
       <AnimatePresence>
         {voice.recovery && (
           <m.div
@@ -127,8 +127,12 @@ export const Composer = ({
             className="mx-auto max-w-3xl px-3 pt-2 md:px-10 md:pt-3"
           >
             <div className="surface-sheen flex items-center gap-1 rounded-2xl border border-border py-1 pr-1 pl-4 shadow-sm">
-              <span className="min-w-0 flex-1 truncate text-sm">Recover recording?</span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{voice.recovery.lineCount}</span>
+              <span
+                className="min-w-0 flex-1 truncate text-sm"
+                title={`${voice.recovery.lineCount} line${voice.recovery.lineCount === 1 ? "" : "s"}`}
+              >
+                Recover recording?
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
@@ -201,7 +205,7 @@ export const Composer = ({
           controls={
             canAsk && (
               <>
-                <fieldset className="inline-flex rounded-full bg-muted p-0.5">
+                <fieldset className="inline-flex rounded-full border border-border bg-muted p-0.5">
                   <legend className="sr-only">Entry type</legend>
                   {MODES.map(({ value, label }) => (
                     <label
