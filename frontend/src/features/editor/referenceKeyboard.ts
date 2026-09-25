@@ -1,5 +1,4 @@
-// Shared keydown handling for the reference autocomplete popover, used by both adapters (RawEditor's
-// textarea wiring and CrepeEditor's ProseMirror wiring in `MarkdownEditor.tsx`) so the actual key
+// Keydown handling for the reference autocomplete popover (used by `MarkdownEditor.tsx`): the key
 // contract (Tab/Enter accepts, Esc cancels, arrows move the highlight) is defined once. Framework/DOM
 // agnostic beyond a plain `{ key, preventDefault, stopPropagation }` shape both a React
 // `KeyboardEvent` and a native one satisfy.

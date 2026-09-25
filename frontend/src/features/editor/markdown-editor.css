@@ -63,20 +63,37 @@
   max-height: var(--md-max-height, none);
   flex: 1;
   outline: none;
-  caret-color: var(--foreground);
+  caret-color: var(--primary);
+}
+.threadz-md .milkdown .ProseMirror[contenteditable="false"] {
+  cursor: default;
 }
 
-/* Only an editor with a height cap scrolls. Anywhere else `overflow` stays visible: `overflow-y: auto`
- * also turns overflow-x into `auto`, which clipped the gutter checkbox (`left: -20px`) and made every
- * `/todo` line's checkbox invisible in the message view. */
-.composer-editor .milkdown .ProseMirror {
+/* Only an editable field with a height cap scrolls (`ContentField` adds the class). Anywhere else
+ * `overflow` stays visible: `overflow-y: auto` also turns overflow-x into `auto`, which clipped the
+ * gutter checkbox (`left: -20px`) and made every `/todo` line's checkbox invisible in the message
+ * view. `contain` keeps a flick at the end of a long note from escalating to the page (iOS). */
+.threadz-md-scroll .milkdown .ProseMirror {
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
+/* One field, one height rule: with the keyboard up (`data-keyboard`, lib/viewport.ts) 60% of the
+ * screen is already keyboard, so the composer collapses to one line and grows as you type. */
+html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
+  --md-min-height: 2.75rem;
+}
+
+/* Milkdown keeps an empty paragraph after a trailing list/code/rule so there's somewhere to click
+ * and keep typing. Read-only it is just a blank line under every message that ends in a list. */
+.threadz-md .milkdown .ProseMirror[contenteditable="false"] > p:last-child:has(> .ProseMirror-trailingBreak:only-child) {
+  display: none;
+}
 .threadz-md .milkdown .ProseMirror > :first-child { margin-top: 0; }
+.threadz-md .milkdown .ProseMirror > :last-child { margin-bottom: 0; }
 
 /* Rhythm follows Crepe's own guide (reset.css: line-height 1.5, small
- * vertical padding on blocks) scaled to our 15px base. Its defaults were
+ * vertical padding on blocks) scaled to our base. Its defaults were
  * tuned for a 16px full-page editor: 32px list rows and 24–32px heading
  * margins read as double-spaced in a widget. */
 .threadz-md .milkdown .ProseMirror p { margin: 0; padding: 2px 0; line-height: 1.5; }
@@ -93,87 +110,115 @@
 .threadz-md .milkdown .ProseMirror h3 { font-size: 1.1em; }
 .threadz-md .milkdown .ProseMirror :is(h4, h5, h6) { font-size: 1em; color: var(--muted-foreground); }
 
-/* Crepe fixes list label rows at 32px; match the paragraph row instead. */
+/* Lists. Crepe fixes label rows at 32px; match the paragraph row instead. */
 .threadz-md .milkdown .milkdown-list-item-block li { gap: 6px; }
 .threadz-md .milkdown .milkdown-list-item-block li .label-wrapper,
 .threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .label {
   height: calc(1.5em + 4px);
 }
 .threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .label { padding: 2px 0; }
+/* Markers ship at ≈ --border — too faint; lift to the text colour. */
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper {
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+}
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .label.bullet svg {
+  fill: currentColor;
+}
+
+/* Task lists (`- [ ]`): round boxes (the icons are handed to Crepe in MarkdownEditor.tsx), drawn in
+ * strokes so `currentColor` rules. Done items strike through. In a read-only view the box is inert:
+ * a default cursor, not Crepe's `not-allowed`. */
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper :is(.unchecked, .checked) svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+}
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .checked { color: var(--primary); }
+.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper .readonly { cursor: default; }
+.threadz-md .milkdown .milkdown-list-item-block li:has(> .label-wrapper .checked) > .children > .content-dom > p {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* `/todos` group items get their gutter checkbox (below), so Crepe's own bullet/box is dropped:
+ * one box per item, and the same one a bare `/todo` line has. The decoration class is put on the
+ * list item by ./todoDecoration.ts. */
+.threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li > .label-wrapper { display: none; }
+.threadz-md .milkdown .milkdown-list-item-block.threadz-todo-item li { gap: 0; }
+/* While editing, the reverse: the markdown itself (`- [ ]`, its bullet) is what you edit, so Crepe's
+ * own marker comes back and the read-only gutter widget goes (it would sit on the field's border). */
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-item li > .label-wrapper { display: flex; }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-item li { gap: 6px; }
+.threadz-md .milkdown .ProseMirror[contenteditable="true"] .threadz-todo-checkbox { display: none; }
 
 .threadz-md .milkdown .ProseMirror blockquote {
   margin: 0.25em 0;
-  padding-left: 0.85em;
-  border-left: 2px solid var(--border);
+  padding: 0 0 0 14px;
+  border-left: 3px solid color-mix(in oklab, var(--primary) 35%, var(--border));
+  border-radius: 2px;
   color: var(--muted-foreground);
+}
+/* Crepe paints its own bar there (`::before`, in the selection colour): on top of our border it
+ * showed as a stray chip beside the grey bar. One bar only. */
+.threadz-md .milkdown .ProseMirror blockquote::before { content: none; }
+
+/* Code: chips (`code`) and blocks (`pre`), rounded-lg, on the accent surface. Inline chips stay
+ * `inline` (Crepe's `inline-block` refuses to wrap a long identifier). */
+.threadz-md .milkdown .ProseMirror code {
+  display: inline;
+  padding: 0.1em 0.4em;
+  border-radius: 8px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
 }
 .threadz-md .milkdown .ProseMirror pre {
   font-family: var(--crepe-font-code);
   font-size: 0.9em;
   background: var(--accent);
   color: var(--accent-foreground);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   margin: 0.5em 0;
   white-space: pre-wrap;
 }
+.threadz-md .milkdown .ProseMirror pre code { padding: 0; font-size: 1em; }
 .threadz-md .milkdown .ProseMirror hr {
   border: 0;
   border-top: 1px solid var(--border);
   margin: 1em 0;
+  padding: 0;
+  height: 0;
+  background: none;
 }
+
+/* Links stay the text colour (`--primary` on a light surface is 2.7–3.2:1, under AA for body-size
+ * text) and are told apart by a primary underline instead. A reference link is a real link, so
+ * this is what `[[thread]]` looks like once completed. */
 .threadz-md .milkdown .ProseMirror a {
-  color: var(--primary);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--primary) 30%, transparent);
-  text-underline-offset: 2px;
-}
-
-/* List markers ship at ≈ --border — too faint; lift to the text color. */
-.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper,
-.threadz-md .milkdown .milkdown-list-item-block li .label-wrapper svg {
-  color: color-mix(in oklab, var(--foreground) 80%, transparent);
-  fill: color-mix(in oklab, var(--foreground) 80%, transparent);
-}
-
-/* Raw mode (`raw` prop on <MarkdownEditor>): a plain textarea showing literal markdown source.
- * Governed by the same --md-* layout vars as the WYSIWYG surface above so it drops into the
- * same slots (e.g. the edit surface's padding-right for the image button overlay). */
-.threadz-md-raw {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: var(--md-min-height, 100%);
-  max-height: var(--md-max-height, none);
-  padding: var(--md-padding, 14px 18px 40px);
-  overflow-y: auto;
-  resize: none;
-  border: none;
-  outline: none;
-  background: transparent;
   color: var(--foreground);
-  caret-color: var(--foreground);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 14px;
-  line-height: 1.5;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--primary) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms var(--ease-out-strong);
 }
-/* Same iOS focus-zoom rule as --crepe-base-font-size above; this textarea (the note popover's
-   editor, autofocused) missed that fix and stayed at 14px. */
-@media (max-width: 767px) {
-  .threadz-md-raw { font-size: 16px; }
-}
-.threadz-md-raw::placeholder { color: var(--muted-foreground); }
+.threadz-md .milkdown .ProseMirror a:hover { text-decoration-color: var(--primary); }
 
 /* Photos (`img:` refs, see imageView.ts): a grey box of the right aspect ratio until the bytes arrive. */
 .threadz-md .threadz-img {
   display: inline-block;
   vertical-align: bottom;
   max-width: min(100%, var(--md-img-max, 32rem)); /* the composer shrinks it */
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--muted);
 }
 .threadz-md .threadz-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.threadz-md .milkdown .ProseMirror img { border-radius: 8px; }
 .threadz-md .ProseMirror-selectednode.threadz-img { outline: 2px solid var(--ring); }
 
 /* `/todo`/`/todos <title>` command lines (lib/todos.ts, ./todoDecoration.ts; `@/` still parses): a highlight plus a
@@ -192,7 +237,7 @@
   position: relative; /* anchors this paragraph's own checkbox, see .threadz-todo-checkbox below */
   background: var(--accent);
   border-left: 3px solid var(--primary);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 2px 8px 2px 10px;
 }
 .threadz-md .milkdown .ProseMirror p.threadz-todo-line--done {
@@ -200,7 +245,7 @@
   border-left-color: var(--border);
 }
 .threadz-todo-token {
-  color: var(--primary);
+  color: var(--foreground);
   font-weight: 600;
 }
 .threadz-todo-line--done .threadz-todo-token { color: inherit; font-weight: 500; }
@@ -219,32 +264,35 @@
   position: relative;
 }
 
-/* The gutter checkbox itself (a `Decoration.widget`, ./todoDecoration.ts) — `left: -20px` is the
- * one literal shared with `ThreadView.tsx`'s relocated note trigger (`left-[-20px]` there); change
- * one, change the other, or the two rails stop lining up. Sits in the app's own outer side padding
- * (`px-6`/`md:px-10` on `ThreadView`'s scroll container — 24px/40px, comfortably more than 20px),
- * never inside the message's own box, so it can't trigger a horizontal scrollbar on that region. */
+/* The gutter checkbox itself (a `Decoration.widget`, ./todoDecoration.ts) — a round box, the same
+ * shape as the Todos tab's. `left: -22px` is the one literal shared with `ThreadView.tsx`'s
+ * relocated note trigger; change one, change the other, or the two rails stop lining up. Sits in
+ * the app's own outer side padding, never inside the message's own box, so it can't trigger a
+ * horizontal scrollbar on that region. */
 .threadz-todo-checkbox {
   position: absolute;
-  left: -20px;
+  left: -22px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   background: none;
   color: var(--muted-foreground);
   cursor: pointer;
+  transition: color 150ms var(--ease-out-strong), transform 140ms var(--ease-out-strong);
 }
-/* A 14px glyph is a hard tap on a phone: the hit area grows sideways and to the row's own height,
- * not further up/down, so neighbouring `/todos` items (one line apart) never share a tap. */
+.threadz-todo-checkbox[aria-pressed="true"] { color: var(--primary); }
+/* An 18px glyph is a hard tap on a phone: the hit area grows outward into the gutter and to the
+ * row's own height, and stops short of the text so tapping the first word never toggles. */
 .threadz-todo-checkbox::before {
   content: "";
   position: absolute;
-  inset: -6px -8px;
+  inset: -9px -3px -9px -14px;
 }
+.threadz-todo-checkbox:active { transform: translateY(-50%) scale(0.9); }
 .threadz-todo-checkbox:hover,
 .threadz-todo-checkbox:focus-visible {
   color: var(--foreground);
@@ -252,4 +300,7 @@
 .threadz-todo-checkbox svg {
   width: 100%;
   height: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .threadz-todo-checkbox:active { transform: translateY(-50%); }
 }

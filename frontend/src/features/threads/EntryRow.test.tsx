@@ -27,6 +27,7 @@ import { ROW_SELECT_IGNORE } from "./rowSelect";
 
 mock.module("@/features/editor", () => ({
   MarkdownEditor: ({ value }: { value: string }) => <div data-testid="md-content">{value}</div>,
+  ContentField: ({ value }: { value: string }) => <div data-testid="md-content">{value}</div>,
   ImageButton: () => <button type="button">image</button>,
   useImageAttach: () => ({ attach: async () => {}, error: null }),
 }));

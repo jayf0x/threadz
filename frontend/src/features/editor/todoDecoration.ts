@@ -43,11 +43,11 @@ const tokenLength = (trimmed: string) => TOKEN.exec(trimmed)?.[0].length ?? 0;
 const isDone = (node: ProseNode) =>
   node.childCount > 0 && node.child(0).marks.some((m) => m.type.name === "strike_through");
 
-// Lucide's `square` / `square-check` glyphs, hand-drawn here rather than importing `lucide-react`:
+// Lucide's `circle` / `circle-check` glyphs, hand-drawn here rather than importing `lucide-react`:
 // a widget's DOM is built with `document.createElement`, not JSX, so there's no React tree for a
-// `lucide-react` component to render into. Same 24×24/stroke-2 shape as `TodosPanel.tsx`'s icons.
-const SQUARE = '<rect width="18" height="18" x="3" y="3" rx="2"/>';
-const SQUARE_CHECK = '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>';
+// `lucide-react` component to render into. Same 24×24/stroke-2 shape as the Todos tab's icons.
+const CIRCLE = '<circle cx="12" cy="12" r="10"/>';
+const CIRCLE_CHECK = '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>';
 
 // `data-row-select-ignore` mirrors `features/threads/rowSelect.ts`'s `ROW_SELECT_IGNORE` constant
 // verbatim, kept as a literal rather than imported: `rowSelect.ts` isn't re-exported from
@@ -63,7 +63,7 @@ const checkboxDom = (done: boolean, onToggle: () => void) => {
   button.setAttribute("aria-pressed", String(done));
   button.setAttribute("aria-label", done ? "Mark todo open" : "Mark todo done");
   button.setAttribute(ROW_SELECT_IGNORE_ATTR, "");
-  button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${done ? SQUARE_CHECK : SQUARE}</svg>`;
+  button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${done ? CIRCLE_CHECK : CIRCLE}</svg>`;
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -164,6 +164,12 @@ export const todoDecorationPlugin = (prose: ProseStateModule, view: ProseViewMod
                 // start) + 1 again enters the paragraph's own content — same "+1" the flat-todo
                 // case uses above, just one level deeper.
                 pushCheckbox(itemPos + 2, item.done, item.lineIndex);
+                // Crepe's own bullet/box on this item is hidden by CSS (the gutter checkbox is the
+                // item's one box) — only when there is a checkbox to stand in for it.
+                if (opts.hasToggle())
+                  decorations.push(
+                    view.Decoration.node(itemPos, itemPos + listItem.nodeSize, { class: "threadz-todo-item" }),
+                  );
               }
               itemPos += listItem.nodeSize;
             });

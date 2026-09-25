@@ -133,7 +133,7 @@ test("typing a newline or a bracket after the link ends the message stage", () =
 });
 
 test("esc/outside-click (the caller just resets to closed) leaves a thread-only reference behind untouched", () => {
-  // Nothing in this module deletes text on cancel — the caller (both adapters) only ever sets
+  // Nothing in this module deletes text on cancel — the caller only ever sets
   // { stage: "closed" }, and completeThread already inserted a complete, valid link, so "leave a
   // thread-only reference behind" falls out for free: there is no further edit to make or undo.
   const state = nextAutocompleteState(

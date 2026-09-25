@@ -1,12 +1,16 @@
-// Real end-to-end coverage for References : type the `[[` trigger, let
-// the live autocomplete complete a thread and then a message inside it, and click the resulting
-// rendered link to navigate — the one item in this groundwork slice explicitly called out as
-// needing more than a unit test. Real render, real typing, real Crepe mount for the click half (not
-// mocked, unlike EntryRow.test.tsx — this file's whole job is verifying the actual wiring), and a
-// real `threadz-local` IndexedDB (`fake-indexeddb`, same convention as `lib/local.test.ts`) so the
-// autocomplete has real local-only data to search (decision 4). Same happy-dom registration
-// boilerplate as `todoDecoration.test.tsx`/`EntryRow.test.tsx` — duplicated rather than shared, see
-// their own comments for why there's no test-setup helper yet.
+// End-to-end coverage for References: type the `[[` trigger, let the live autocomplete complete a
+// thread and then a message inside it, and click the resulting rendered link to navigate.
+//
+// ProseMirror can't take typing under happy-dom (no layout, no real selection), so the editable half
+// is driven through a plain-textarea stand-in for `MarkdownEditor` that wires up the very same
+// pieces the editor wires: `nextAutocompleteState` + `completeThread`/`completeMessage`
+// (lib/references.ts), `useReferenceAutocomplete` (real local search over a real `threadz-local`
+// IndexedDB, `fake-indexeddb`), `ReferenceAutocompleteMenu` (real Radix popover) and
+// `handleReferenceKeyDown`. What it doesn't cover is only how the live editor turns a pick into a
+// ProseMirror transaction (`completeReference`), which is a browser check. The click half is real: a
+// saved message renders through the actual read-only Crepe view, as in the app. Same happy-dom
+// registration boilerplate as `todoDecoration.test.tsx`/`EntryRow.test.tsx` — duplicated rather than
+// shared, see their own comments for why there's no test-setup helper yet.
 //
 // Needs `bun test --isolate` (already the `test`/`check` scripts' default — see package.json):
 // without it, this file's `window`/`document` and `fake-indexeddb`'s globals share one process-wide
@@ -25,27 +29,97 @@ for (const key of Object.getOwnPropertyNames(win)) {
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterEach, expect, test } from "bun:test";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { localApi } from "@/lib/local";
+import type { ReferenceAutocompleteState } from "@/lib/references";
 
 const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { MarkdownEditor } = await import("./MarkdownEditor");
+const { ReferenceAutocompleteMenu } = await import("./ReferenceAutocompleteMenu");
+const { handleReferenceKeyDown } = await import("./referenceKeyboard");
+const { useReferenceAutocomplete } = await import("./useReferenceAutocomplete");
+const { completeMessage, completeThread, nextAutocompleteState } = await import("@/lib/references");
 
 afterEach(cleanup);
 
-afterEach(cleanup);
+// The textarea stand-in for the editor (see the header): its text and caret go through the shared
+// state machine on every change, and picks are applied with the shared completion functions.
+const FieldStandIn = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [state, setState] = useState<ReferenceAutocompleteState>({ stage: "closed" });
+  const ac = useReferenceAutocomplete(state);
 
-// A minimal stand-in for how the app actually uses this: type in a raw-mode editor (message inline
-// edit / note popover's own surface — see MarkdownEditor.tsx's RawEditor), same as the composer/edit
-// surfaces the autocomplete is wired into, then show the result the way a saved message actually
-// renders (readOnly — always the live Crepe view, per AGENTS.md's "Custom rendering inside the
-// Milkdown view").
+  const apply = (edit: { from: number; to: number; text: string }, next: ReferenceAutocompleteState) => {
+    const el = ref.current;
+    if (!el) return;
+    const nextValue = value.slice(0, edit.from) + edit.text + value.slice(edit.to);
+    const caret = edit.from + edit.text.length;
+    onChange(nextValue);
+    el.value = nextValue;
+    el.setSelectionRange(caret, caret);
+    setState(next);
+  };
+
+  const accept = (index: number) => {
+    const opt = ac.options[index];
+    if (!opt) return;
+    if (state.stage === "thread") {
+      const thread = ac.findThread(opt.id);
+      if (thread) {
+        const { edit, next } = completeThread(state, thread);
+        apply(edit, next);
+      }
+    } else if (state.stage === "message") {
+      const message = ac.findMessage(opt.id);
+      if (message) {
+        const { edit, next } = completeMessage(state, message);
+        apply(edit, next);
+      }
+    }
+  };
+
+  return (
+    <>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setState((prev) => nextAutocompleteState(prev, e.target.value, e.target.selectionStart ?? 0));
+        }}
+        onKeyDownCapture={(e) =>
+          handleReferenceKeyDown(
+            e,
+            state.stage !== "closed",
+            ac.options.length,
+            ac.highlighted,
+            ac.setHighlighted,
+            accept,
+            () => setState({ stage: "closed" }),
+          )
+        }
+      />
+      <ReferenceAutocompleteMenu
+        rect={state.stage === "closed" ? null : { left: 10, top: 10, bottom: 24 }}
+        options={ac.options}
+        highlighted={ac.highlighted}
+        onPick={(id) => accept(ac.options.findIndex((o) => o.id === id))}
+        onOpenChange={(open) => {
+          if (!open) setState({ stage: "closed" });
+        }}
+      />
+    </>
+  );
+};
+
+// How the app uses it: write in the field, then show the result the way a saved message actually
+// renders (readOnly, the live Crepe view).
 const Harness = ({ onNavigate }: { onNavigate: (threadId: string, messageId: string | null) => void }) => {
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   return (
     <>
-      <MarkdownEditor raw value={draft} onChange={setDraft} />
+      <FieldStandIn value={draft} onChange={setDraft} />
       <button type="button" onClick={() => setSaved(draft)}>
         save
       </button>
@@ -56,9 +130,10 @@ const Harness = ({ onNavigate }: { onNavigate: (threadId: string, messageId: str
 
 // Types `text` by replacing the textarea's whole value (append-only, matching how these tests only
 // ever type forward) and explicitly parking the caret at the end — `fireEvent.change` alone doesn't
-// reliably leave `selectionStart` where a real keystroke would under happy-dom, and RawEditor's
-// autocomplete wiring reads the caret from the DOM element itself, not from the value.
+// reliably leave `selectionStart` where a real keystroke would under happy-dom, and the stand-in
+// reads the caret from the DOM element itself, not from the value.
 const type = (textarea: HTMLTextAreaElement, text: string) => {
+  textarea.setSelectionRange(text.length, text.length);
   fireEvent.change(textarea, { target: { value: text } });
   textarea.setSelectionRange(text.length, text.length);
 };
@@ -78,10 +153,11 @@ test("type a reference, autocomplete it through both stages, click it, land on t
   // Stage 1: the trigger opens a live thread search.
   type(textarea, "see [[Groc");
   const threadOption = await screen.findByText("Groceries");
+  expect(screen.queryByText("Unrelated thread")).toBeNull();
   fireEvent.mouseDown(threadOption); // ReferenceAutocompleteMenu accepts on mousedown (keeps focus in the field)
 
-  // Tab/Enter's job (completeThread) already ran: a real, already-closed markdown link — no forced
-  // message id yet, so Esc/outside-click right here would already leave a valid thread-only reference.
+  // completeThread already ran: a real, already-closed markdown link — no forced message id yet, so
+  // Esc/outside-click right here would already leave a valid thread-only reference.
   await waitFor(() => expect(textarea.value).toBe(`see [Groceries](thread=${thread.id})`));
 
   // Stage 2: continues straight into that thread's own messages.
@@ -102,6 +178,13 @@ test("type a reference, autocomplete it through both stages, click it, land on t
   expect(navigated).toEqual([{ threadId: thread.id, messageId: message.id }]);
 });
 
+test("a query with no hit says 'No match'", async () => {
+  await localApi.createThread({ title: "Something" });
+  const { container } = render(<Harness onNavigate={() => {}} />);
+  type(container.querySelector("textarea") as HTMLTextAreaElement, "[[zzzzqq");
+  await screen.findByText("No match");
+});
+
 test("Esc right after completing the thread stage cancels the autocomplete but leaves the thread-only reference behind", async () => {
   // A distinct title from the other test's threads — this file's tests share one fake-indexeddb
   // instance (module-level, like `lib/local.test.ts`), so a duplicate "Groceries" would make the
@@ -119,7 +202,7 @@ test("Esc right after completing the thread stage cancels the autocomplete but l
 
   // Now mid-stage-two: typing a query for a message, then bailing out with Esc.
   type(textarea, `${textarea.value} oat`);
-  await screen.findByText(/No matching messages|buy/); // the message-stage popup is open
+  await screen.findByText(/No match|buy/); // the message-stage popup is open
 
   fireEvent.keyDown(textarea, { key: "Escape" });
 
@@ -127,7 +210,7 @@ test("Esc right after completing the thread stage cancels the autocomplete but l
   // thread-only link is untouched. The " oat" the user typed while searching is left exactly as
   // typed too (Esc never deletes text, see lib/references.ts's nextAutocompleteState comment).
   expect(textarea.value).toBe(`${completedThreadOnly} oat`);
-  expect(screen.queryByText(/No matching messages|buy oat/)).toBeNull();
+  expect(screen.queryByText(/No match|buy oat/)).toBeNull();
 });
 
 test("after a first message pick the same popup offers a range end; picking it writes a from..to link that navigates as one string", async () => {
