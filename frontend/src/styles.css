@@ -122,12 +122,6 @@ html[data-keyboard] .pb-safe {
 html[data-keyboard] .composer-pad {
   padding-bottom: 0.5rem;
 }
-/* With the keyboard up 60% of the screen is already keyboard: the editor shrinks to a couple of lines
-   and grows as you type (its max height is a share of the *visible* area, MessageInput.tsx). */
-html[data-keyboard] .composer-editor {
-  --md-min-height: 3.5rem;
-}
-
 /* Settings' "Lock zoom": blocks pinch and double-tap zoom, keeps scrolling on both axes. */
 html[data-lock-zoom] {
   touch-action: pan-x pan-y;
