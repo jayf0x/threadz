@@ -6,9 +6,8 @@ import type { EditorView } from "@milkdown/kit/prose/view";
 
 type ProseStateModule = { Plugin: typeof Plugin; PluginKey: typeof PluginKey };
 
-// What the plugin reports up to React (CrepeEditor) on every selection/doc change, so the
-// autocomplete state machine (`lib/references.ts`'s `nextAutocompleteState` — the SAME function
-// RawEditor's plain-textarea wiring drives) can run identically here: `text`/`caret` are just the
+// What the plugin reports up to React (`MarkdownEditor`) on every selection/doc change, so the
+// autocomplete state machine (`lib/references.ts`'s `nextAutocompleteState`) can run off it: `text`/`caret` are just the
 // current text block's plain content and the caret's offset into it (never the whole document —
 // see the comment below on why), and `blockStart` is what a completion action needs to turn those
 // local offsets back into real ProseMirror doc positions for its transaction.
@@ -16,9 +15,7 @@ export type ReferenceLocalUpdate = {
   text: string;
   caret: number;
   blockStart: number;
-  /** Viewport-relative, from `view.coordsAtPos` — same coordinate space `caretCoordinates.ts`
-   * hands the raw-textarea adapter, so `ReferenceAutocompleteMenu` doesn't need to care which
-   * adapter it's anchored to. */
+  /** Viewport-relative, from `view.coordsAtPos`: what `ReferenceAutocompleteMenu` anchors to. */
   rect: { left: number; top: number; bottom: number };
 } | null; // null: selection isn't a collapsed caret inside a single text block — nothing to offer
 

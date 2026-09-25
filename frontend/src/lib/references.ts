@@ -1,9 +1,8 @@
 // References: linking a thread or a specific message, inline. Decision 1 is "the
 // hybrid" — a trigger drives a live autocomplete while typing, but what's actually stored is a
 // real markdown link (`[text](href)`), never the trigger itself. Everything here is pure (no DOM,
-// no React, no IndexedDB) so it's independently testable — the two feature/editor files that use it
-// (RawEditor's textarea wiring, CrepeEditor's ProseMirror wiring) are the only places this touches
-// the outside world.
+// no React, no IndexedDB) so it's independently testable — `features/editor/MarkdownEditor.tsx`
+// (ProseMirror wiring) is the only place this touches the outside world.
 import { matchScore } from "./search";
 import type { Message, Thread } from "./types";
 
@@ -123,10 +122,9 @@ export type ReferenceAutocompleteState =
     };
 
 /** One step of the state machine: given what was true a moment ago and the field's current text +
- * caret, what should be true now. Stateless and pure — the caller (RawEditor's textarea wiring,
- * CrepeEditor's ProseMirror wiring) owns the actual `state`, calling this on every keystroke/caret
- * move, the same way both adapters differ only in how they get `text`/`caret` and how they apply an
- * edit, not in this logic.
+ * caret, what should be true now. Stateless and pure — the caller (`MarkdownEditor`'s ProseMirror
+ * wiring) owns the actual `state`, calling this on every keystroke/caret move; how it gets
+ * `text`/`caret` and applies an edit is the caller's business, not this logic's.
  *
  * "thread" is re-derived from scratch every time (so clicking back into an unfinished `[[foo` picks
  * the session back up); "message" is NOT re-derived from arbitrary text — it only exists because

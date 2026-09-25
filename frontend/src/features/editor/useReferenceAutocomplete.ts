@@ -6,9 +6,8 @@ import type { ReferenceOption } from "./ReferenceAutocompleteMenu";
 
 /** The reference autocomplete's data side: local-only (decision 4) search results for whatever
  * `state` (from `lib/references.ts`'s `nextAutocompleteState`) currently asks for, plus which
- * option is highlighted. Framework-agnostic beyond React itself — both adapters (RawEditor's
- * textarea wiring, CrepeEditor's ProseMirror wiring) share this; only how they get `state` in the
- * first place, and how they turn a pick into a text/doc edit, differs between them. */
+ * option is highlighted. `MarkdownEditor` gets `state` from `referencePlugin` and turns a pick into a
+ * doc edit; the e2e test drives the same hook from a plain textarea. */
 export const useReferenceAutocomplete = (state: ReferenceAutocompleteState) => {
   const open = state.stage !== "closed";
   const [snapshot, setSnapshot] = useState<{ threads: Thread[]; messages: Message[] } | null>(null);

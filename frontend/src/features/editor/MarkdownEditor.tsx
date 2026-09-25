@@ -50,7 +50,10 @@ import "./markdown-editor.css";
  *    `snake_case` -> `snake\_case`), so an untouched old message would look edited.
  *  - Save: `if (isDirty()) persist(getMarkdown())`, then `exitEdit()`. Cancel/Esc: `exitEdit(true)`
  *    puts the last `value` prop back and leaves silently, without a history entry.
- *  - `exitEdit` makes the view read-only again and blurs it (keyboard down). */
+ *  - `exitEdit` makes the view read-only again and blurs it (keyboard down).
+ *  - If the tap comes from a Radix menu item, `preventDefault` the menu's `onCloseAutoFocus`, or Radix
+ *    hands focus back to its trigger and the keyboard drops. Not yet verified on a real iPhone; the
+ *    fallback is to focus a visually hidden `<input>` in the tap and move focus here when loaded. */
 export type MarkdownEditorHandle = {
   /** The markdown right now. `onChange` is debounced (~200ms), so a submit handler
    * that fires straight after typing must read this instead of its last value. */
@@ -393,6 +396,7 @@ export const MarkdownEditor = ({
           crepe.editor.action((ctx: Ctx) => {
             ctx.update(placeholderConfig.key, (prev) => ({ ...prev, text: next }));
             const view = viewOf(ctx);
+            if (next) view.dom.setAttribute("aria-label", next);
             view.dispatch(view.state.tr); // re-run the decorations so the new hint shows now
           }),
         completeReference: (from, to, text, href) =>
@@ -419,6 +423,7 @@ export const MarkdownEditor = ({
         const dom = viewOf(ctx).dom;
         dom.setAttribute("autocapitalize", "sentences");
         dom.setAttribute("spellcheck", "true");
+        if (now.placeholder) dom.setAttribute("aria-label", now.placeholder);
       });
       if (now.placeholder !== text) loadedRef.current?.setPlaceholder(now.placeholder);
       crepeRef.current = crepe;
