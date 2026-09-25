@@ -48,6 +48,11 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+
+  /* Motion: one strong ease-out for everything, and the iOS drawer curve for sheets only. Never
+     ease-in; never ease-in-out on UI. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* In a layer, so `border-primary` / `border-transparent` and friends can override it. */
@@ -226,5 +231,133 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .vu > i {
     transition: none;
+  }
+}
+
+/* ── Snappy, touch-first foundation (see AGENTS.md "Mobile is the primary target") ─────────────────
+   Press feedback lands in <100ms: scale down fast (60ms), back slower (140ms). Buttons, icon buttons
+   and pills scale; full-bleed rows never scale, they tint. `hover:` in Tailwind v4 is already wrapped in
+   (hover: hover), so never write a raw :hover. */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* no 300ms double-tap wait on controls; coexists with Lock zoom's pan-x pan-y on <html> */
+  button,
+  [role="button"],
+  a,
+  label,
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    touch-action: manipulation;
+  }
+  @media (pointer: coarse) {
+    button,
+    [role="button"] {
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+  }
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+}
+
+@utility press {
+  transition:
+    transform 140ms var(--ease-out-strong),
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    box-shadow 150ms var(--ease-out-strong),
+    opacity 150ms;
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+    transition-duration: 60ms;
+  }
+}
+@utility press-icon {
+  transition:
+    transform 140ms var(--ease-out-strong),
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    opacity 150ms;
+  &:active:not(:disabled) {
+    transform: scale(0.9);
+    background-color: var(--accent);
+    transition-duration: 60ms;
+  }
+}
+@utility press-row {
+  transition: background-color 200ms var(--ease-out-strong);
+  &:active {
+    background-color: var(--accent);
+    transition-duration: 0ms;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .press:active,
+  .press-icon:active {
+    transform: none !important;
+  }
+}
+
+/* Gradients — semantic tokens only (color-mix on var(--*)), so palettes repaint them and they inherit
+   the wallpaper's --pane-alpha. Text contrast on them stays >= the flat surface's. */
+@utility surface-sheen {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--card) var(--pane-alpha), transparent),
+    color-mix(in oklab, var(--secondary) var(--pane-alpha), transparent)
+  );
+}
+@utility surface-sheen-pane {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--secondary) var(--pane-alpha), transparent),
+    color-mix(in oklab, color-mix(in oklab, var(--secondary) 94%, var(--primary)) var(--pane-alpha), transparent)
+  );
+}
+/* Primary pills: the bottom mixes toward --foreground (always opposite luminance to
+   --primary-foreground), so it can only raise the label's contrast. Semibold, 15px+ only. */
+@utility bg-primary-sheen {
+  background-image: linear-gradient(180deg, var(--primary), color-mix(in oklab, var(--primary) 80%, var(--foreground)));
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--primary-foreground) 18%, transparent);
+}
+
+/* Entrances (plain CSS, enter-only: Radix content mounts on open, and close stays instant). */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@utility pop-in {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, center));
+  animation: pop-in 140ms var(--ease-out-strong);
+}
+@utility sheet-in {
+  animation: sheet-in 300ms var(--ease-sheet);
+}
+@utility pane-in {
+  animation: pane-in 200ms var(--ease-out-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in,
+  .sheet-in,
+  .pane-in {
+    animation: none;
   }
 }
