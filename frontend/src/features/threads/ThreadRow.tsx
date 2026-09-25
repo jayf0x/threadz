@@ -142,10 +142,14 @@ export const ThreadRow = ({
     }
   };
 
-  // 40px hit areas on a phone (where these are always visible), the compact desktop size from `md`.
-  const act =
-    "p-2.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 md:p-1.5 [@media(hover:none)]:opacity-100";
-  const icon = "size-4 md:size-3.5";
+  // 44px round hit areas on a phone (where these are always visible), the compact desktop size from `md`,
+  // where they appear on hover/focus only.
+  const act = cn(
+    "press-icon grid size-11 place-items-center rounded-full text-muted-foreground outline-none md:size-9",
+    "hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
+    "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100",
+  );
+  const icon = "size-5 md:size-4";
 
   return (
     <div
@@ -157,7 +161,7 @@ export const ThreadRow = ({
       {active && <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" />}
       {renaming ? (
         <form
-          className="px-5 py-3.5"
+          className="flex min-h-16 items-center px-5 py-2"
           onSubmit={(e) => {
             e.preventDefault();
             rename();
@@ -166,6 +170,7 @@ export const ThreadRow = ({
           <Input
             autoFocus
             aria-label="Thread title"
+            placeholder="Title"
             value={title}
             maxLength={200}
             onChange={(e) => setTitle(e.target.value)}
@@ -185,29 +190,34 @@ export const ThreadRow = ({
             type="button"
             onClick={onClick}
             aria-current={active}
-            className="grid w-full grid-cols-[2.75rem_1fr] gap-x-3 px-5 py-3.5 text-left"
+            className="press-row grid min-h-16 w-full grid-cols-[3rem_1fr] items-center gap-x-3 px-5 py-2.5 text-left"
           >
             <span className="font-mono text-[11px] uppercase leading-tight text-muted-foreground">
-              <span className="block font-serif text-xl normal-case leading-none text-foreground">
+              <span className="block font-serif text-xl normal-case leading-none text-foreground tabular-nums">
                 {format(thread.updatedAt, "d")}
               </span>
-              {format(thread.updatedAt, "MMM")}
-              {!isThisYear(thread.updatedAt) && <span className="block">{format(thread.updatedAt, "yyyy")}</span>}
+              {format(thread.updatedAt, isThisYear(thread.updatedAt) ? "MMM" : "MMM ’yy")}
             </span>
-            <span className="min-w-0 pr-24 md:pr-16">
-              <span className={cn("block truncate font-serif text-lg leading-snug", naming && "animate-pulse")}>
+            <span className="min-w-0 pr-24 md:pr-[4.75rem]">
+              <span
+                className={cn(
+                  "line-clamp-2 break-words font-serif text-[18px] leading-snug md:line-clamp-1",
+                  naming && "animate-pulse",
+                )}
+              >
                 {thread.title}
               </span>
-              {note && <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{note}</span>}
-              {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
+              {note && <span className="mt-1 block text-xs text-muted-foreground">{note}</span>}
+              {error && <span className="mt-1 block text-xs text-destructive">{error}</span>}
             </span>
           </button>
-          <div className="absolute right-1 top-1.5 flex md:right-2 md:top-2.5">
+          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 md:right-2">
             <button
               type="button"
               aria-label={pinned ? "Unpin thread" : "Pin thread"}
+              aria-pressed={pinned}
               title={pinned ? "Unpin" : "Pin"}
-              className={cn(act, pinned && "opacity-100 text-primary")}
+              className={cn(act, pinned && "text-primary opacity-100")}
               onClick={() => setThreadFlag("pinned", thread.id, !pinned)}
             >
               <Pin className={cn(icon, pinned && "fill-current")} />

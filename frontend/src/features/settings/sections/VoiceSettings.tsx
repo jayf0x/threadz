@@ -29,7 +29,7 @@ export const VoiceSettings = () => {
             <label
               key={m.id}
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 text-sm transition-colors md:py-1.5",
+                "press-row flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm md:min-h-9",
                 "hover:bg-accent has-focus-visible:outline has-focus-visible:outline-ring",
                 selected && "bg-accent",
               )}
@@ -37,7 +37,7 @@ export const VoiceSettings = () => {
               <input
                 type="radio"
                 name="voice-model"
-                className="accent-primary"
+                className="size-5 shrink-0 accent-primary md:size-4"
                 checked={selected}
                 onChange={() => setModel(m.id)}
                 onClick={() => selected && s.model.status === "error" && setModel(m.id)}
@@ -46,7 +46,7 @@ export const VoiceSettings = () => {
               <span className="truncate text-xs text-muted-foreground">{m.note}</span>
               <span
                 className={cn(
-                  "ml-auto shrink-0 font-mono text-[11px] text-muted-foreground",
+                  "ml-auto shrink-0 text-xs tabular-nums text-muted-foreground",
                   selected && s.model.status === "error" && "text-destructive",
                 )}
               >
@@ -59,9 +59,9 @@ export const VoiceSettings = () => {
 
       {active.multilingual && (
         // biome-ignore lint/a11y/noLabelWithoutControl: wraps the native <select> inside our Select component
-        <label className="mt-2.5 flex items-center gap-3 text-sm">
+        <label className="mt-3 flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">Language</span>
-          <Select className="text-xs md:h-8" value={s.prefs.language} onChange={(e) => setLanguage(e.target.value)}>
+          <Select value={s.prefs.language} onChange={(e) => setLanguage(e.target.value)}>
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>
                 {l.label}

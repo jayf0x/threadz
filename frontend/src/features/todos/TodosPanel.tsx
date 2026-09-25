@@ -1,8 +1,9 @@
 import { format } from "date-fns";
-import { Square, SquareCheck } from "lucide-react";
+import { Circle, CircleCheck, ListFilter, ListTodo } from "lucide-react";
 import { useState } from "react";
+import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
-import { Select } from "@/components/ui/select";
+import { IconSelect } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { type ClosedFilter, isTodoVisible, type ParsedTodoItem, stripTodoMarker, type Todo } from "@/lib/todos";
 import { useTodos } from "./useTodos";
@@ -37,20 +38,16 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
 
   return (
     <>
-      <header className="px-5 pb-4 pt-6">
-        <h1 className="font-serif text-4xl leading-none tracking-tight">Todos</h1>
+      <header className="px-5 pb-3 pt-6">
+        <h1 className="font-serif text-[32px] leading-none tracking-tight">Todos</h1>
         <div className="mt-2 flex items-center justify-between gap-3">
           <Eyebrow>{todos === null ? "Reading…" : `${openCount} open · ${closedCount} closed`}</Eyebrow>
           <ClosedFilterSwitcher filter={closedFilter} setFilter={setClosedFilter} />
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
-        {visible?.length === 0 && (
-          <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
-            {closedFilter === "never" ? "Nothing open." : "No todos yet."}
-          </p>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-6">
+        {visible?.length === 0 && <Empty icon={ListTodo}>{closedFilter === "never" ? "All done" : "No todos"}</Empty>}
         <ul>
           {visible?.map((t) => {
             const meta = `${t.threadTitle} · ${format(t.createdAt, "d MMM")}`;
@@ -83,6 +80,7 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
   );
 };
 
+// The filter lives on the header's right edge as an icon (a rarely-used control), the picker is the platform's.
 const ClosedFilterSwitcher = ({
   filter,
   setFilter,
@@ -90,8 +88,10 @@ const ClosedFilterSwitcher = ({
   filter: ClosedFilter;
   setFilter: (f: ClosedFilter) => void;
 }) => (
-  <Select
+  <IconSelect
+    icon={ListFilter}
     aria-label="Closed todos"
+    title="Closed todos"
     value={filter}
     onChange={(e) => {
       const v = CLOSED_FILTER_OPTIONS.find((o) => o.value === e.target.value);
@@ -103,8 +103,31 @@ const ClosedFilterSwitcher = ({
         {o.label}
       </option>
     ))}
-  </Select>
+  </IconSelect>
 );
+
+// A round tick with a 44px hit area. The glyph pops once when *you* close it, not for every done row
+// that happens to mount.
+const CheckButton = ({ done, onToggle, label }: { done: boolean; onToggle: () => void; label: string }) => {
+  const [popped, setPopped] = useState(false);
+  const Icon = done ? CircleCheck : Circle;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setPopped(true);
+        onToggle();
+      }}
+      aria-label={label}
+      className="press-icon grid size-11 shrink-0 place-items-center self-start rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Icon
+        aria-hidden
+        className={cn("size-6 transition-colors duration-200", done && "text-primary", done && popped && "check-pop")}
+      />
+    </button>
+  );
+};
 
 const TodoRow = ({
   text,
@@ -119,25 +142,18 @@ const TodoRow = ({
   onOpen: () => void;
   meta: string;
 }) => (
-  <li className="grid grid-cols-[1.25rem_1fr] items-start gap-x-3 border-b border-rule px-5 py-3.5">
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={done ? "Mark todo open" : "Mark todo done"}
-      className="relative mt-0.5 shrink-0 text-muted-foreground transition-colors before:absolute before:-inset-3 before:content-[''] hover:text-foreground"
-    >
-      {done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
-    </button>
-    <button type="button" onClick={onOpen} className="min-w-0 text-left transition-colors hover:text-foreground">
+  <li className="flex min-h-14 items-stretch border-b border-rule pl-2">
+    <CheckButton done={done} onToggle={onToggle} label={done ? "Mark todo open" : "Mark todo done"} />
+    <button type="button" onClick={onOpen} className="press-row min-w-0 flex-1 py-2.5 pl-1 pr-5 text-left">
       <span
         className={cn(
-          "line-clamp-2 break-words text-sm",
+          "line-clamp-2 break-words text-[15px] leading-snug transition-colors duration-200",
           done ? "text-muted-foreground line-through" : "text-foreground",
         )}
       >
         {text}
       </span>
-      <span className="mt-1 block font-mono text-[11px] uppercase text-muted-foreground">{meta}</span>
+      <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">{meta}</span>
     </button>
   </li>
 );
@@ -158,28 +174,24 @@ const GroupCard = ({
   onToggleItem: (item: ParsedTodoItem) => void;
   onOpenThread: () => void;
 }) => (
-  <li className="border-b border-rule px-5 py-3.5">
-    <button
-      type="button"
-      onClick={onOpenThread}
-      className="mb-2 block min-w-0 text-left transition-colors hover:text-foreground"
-    >
-      <span className="line-clamp-2 break-words text-sm font-medium text-foreground">{title}</span>
-      <span className="mt-1 block font-mono text-[11px] uppercase text-muted-foreground">{meta}</span>
+  <li className="mx-3 my-2 overflow-hidden rounded-2xl border border-border surface-sheen">
+    <button type="button" onClick={onOpenThread} className="press-row block w-full min-w-0 px-4 pb-1.5 pt-3 text-left">
+      <span className="line-clamp-2 break-words text-[15px] font-medium leading-snug text-foreground">{title}</span>
+      <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">{meta}</span>
     </button>
-    <ul className="space-y-2">
+    <ul className="pb-1.5">
       {items.map((item) => (
-        <li key={item.lineIndex} className="grid grid-cols-[1.25rem_1fr] items-start gap-x-2 pl-1">
-          <button
-            type="button"
-            onClick={() => onToggleItem(item)}
-            aria-label={item.done ? "Mark item open" : "Mark item done"}
-            className="relative mt-0.5 shrink-0 text-muted-foreground transition-colors before:absolute before:-inset-3 before:content-[''] hover:text-foreground"
-          >
-            {item.done ? <SquareCheck aria-hidden className="size-3.5" /> : <Square aria-hidden className="size-3.5" />}
-          </button>
+        <li key={item.lineIndex} className="flex items-stretch pl-2 pr-4">
+          <CheckButton
+            done={item.done}
+            onToggle={() => onToggleItem(item)}
+            label={item.done ? "Mark item open" : "Mark item done"}
+          />
           <span
-            className={cn("break-words text-sm", item.done ? "text-muted-foreground line-through" : "text-foreground")}
+            className={cn(
+              "min-w-0 flex-1 break-words py-2.5 pl-1 text-[15px] leading-snug transition-colors duration-200",
+              item.done ? "text-muted-foreground line-through" : "text-foreground",
+            )}
           >
             {item.text}
           </span>

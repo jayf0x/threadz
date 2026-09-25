@@ -5,24 +5,24 @@ type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 type Size = "sm" | "md" | "icon";
 
 const base =
-  "inline-flex select-none items-center justify-center gap-1.5 rounded-md font-medium " +
-  "transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+  "press inline-flex select-none items-center justify-center gap-1.5 rounded-full text-[15px] font-medium md:text-sm " +
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring " +
   "focus-visible:ring-offset-1 focus-visible:ring-offset-background " +
   "disabled:pointer-events-none disabled:opacity-45";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
-  secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+  primary: "bg-primary-sheen font-semibold text-primary-foreground shadow-md hover:brightness-105",
+  secondary: "bg-secondary text-secondary-foreground ring-1 ring-inset ring-border hover:bg-accent",
   outline: "border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground",
   ghost: "bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground",
   danger: "border border-destructive/40 bg-transparent text-destructive hover:bg-destructive/10",
 };
 
+// 44px hit areas on a phone (HIG), the compact desktop sizes from `md`.
 const sizes: Record<Size, string> = {
-  // Phone-sized hit areas below `md` (40px icons, 36px small buttons), the compact desktop sizes from `md`.
-  sm: "h-9 px-3 text-xs md:h-7 md:px-2.5",
-  md: "h-10 px-4 text-sm md:h-9 md:px-3.5",
-  icon: "h-10 w-10 p-0 text-sm md:h-8 md:w-8",
+  sm: "h-10 px-4 md:h-8",
+  md: "h-11 px-5 md:h-9",
+  icon: "size-11 p-0 md:size-9",
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

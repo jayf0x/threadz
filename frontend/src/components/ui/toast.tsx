@@ -1,7 +1,9 @@
 import * as RadixToast from "@radix-ui/react-toast";
 import { X } from "lucide-react";
 import { type ReactNode, useSyncExternalStore } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { useMedia } from "@/lib/useMedia";
 
 export type ToastAction = {
   label: string;
@@ -51,11 +53,16 @@ export const useToast = () => ({ toast });
 
 /** Radix's toast context + viewport, once per app — wrap the tree with this near the root
  * (see `App.tsx`'s other once-per-app wrappers) and call `toast()` from anywhere underneath. */
+/** Radix's toast context + viewport, once per app — wrap the tree with this near the root
+ * (see `App.tsx`'s other once-per-app wrappers) and call `toast()` from anywhere underneath. On a phone
+ * they drop from the top (the bottom is the New pill, the tab bar and the composer); from `md` up they
+ * sit bottom-right. */
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const queued = useSyncExternalStore(subscribe, getItems);
+  const wide = useMedia("(min-width: 768px)");
 
   return (
-    <RadixToast.Provider swipeDirection="right">
+    <RadixToast.Provider swipeDirection={wide ? "right" : "up"}>
       {children}
       {queued.map((item) => (
         <RadixToast.Root
@@ -65,40 +72,43 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
             if (!open) dismiss(item.id);
           }}
           className={cn(
-            "rise flex items-start gap-3 rounded-md border border-border bg-card p-3 pr-2 shadow-lg",
-            "data-[swipe=cancel]:translate-x-0 data-[swipe=cancel]:transition-transform",
-            "data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)]",
+            "toast-in surface-float flex items-center gap-2 rounded-2xl py-2 pl-4 pr-2 shadow-lg ring-1 ring-border",
+            "data-[swipe=cancel]:translate-x-0 data-[swipe=cancel]:translate-y-0 data-[swipe=cancel]:transition-transform",
+            "data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:translate-y-[var(--radix-toast-swipe-move-y)]",
             "data-[swipe=end]:opacity-0 data-[swipe=end]:transition-opacity",
           )}
         >
-          <div className="min-w-0 flex-1">
-            <RadixToast.Title className="text-sm font-medium text-foreground">{item.title}</RadixToast.Title>
+          <div className="min-w-0 flex-1 py-1">
+            <RadixToast.Title className="truncate text-[15px] font-medium text-foreground md:text-sm">
+              {item.title}
+            </RadixToast.Title>
             {item.description && (
-              <RadixToast.Description className="mt-0.5 text-xs text-muted-foreground">
+              <RadixToast.Description className="line-clamp-2 text-xs text-muted-foreground">
                 {item.description}
               </RadixToast.Description>
             )}
           </div>
           {item.action && (
             <RadixToast.Action altText={item.action.label} asChild>
-              <button
-                type="button"
-                onClick={item.action.onClick}
-                className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-primary outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              >
+              <Button variant="secondary" size="sm" onClick={item.action.onClick} className="shrink-0">
                 {item.action.label}
-              </button>
+              </Button>
             </RadixToast.Action>
           )}
           <RadixToast.Close
             aria-label="Dismiss"
-            className="shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="press-icon grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:size-8"
           >
-            <X className="size-3.5" />
+            <X className="size-5 md:size-4" />
           </RadixToast.Close>
         </RadixToast.Root>
       ))}
-      <RadixToast.Viewport className="fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
+      <RadixToast.Viewport
+        className={cn(
+          "fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] flex flex-col gap-2 outline-none",
+          "md:inset-x-auto md:bottom-4 md:right-4 md:top-auto md:w-96",
+        )}
+      />
     </RadixToast.Provider>
   );
 };

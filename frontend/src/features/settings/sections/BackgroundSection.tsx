@@ -37,18 +37,18 @@ export const BackgroundSection = () => {
     <Section title="Background">
       {previewUrl && (
         <div
-          className="mb-3 h-28 w-full rounded-md border border-border bg-cover bg-center"
+          className="mb-3 h-28 w-full rounded-2xl border border-border bg-cover bg-center"
           style={{ backgroundImage: `url(${previewUrl})` }}
         />
       )}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => fileInput.current?.click()}>
-          <ImagePlus className="size-4" />
+          <ImagePlus className="size-5 md:size-4" />
           {previewUrl ? "Replace" : "Choose image"}
         </Button>
         {previewUrl && (
           <Button variant="ghost" onClick={remove}>
-            <Trash2 className="size-4" />
+            <Trash2 className="size-5 md:size-4" />
             Remove
           </Button>
         )}
@@ -63,7 +63,7 @@ export const BackgroundSection = () => {
       {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
 
       {previewUrl && (
-        <label className="mt-4 flex items-center gap-3 text-sm">
+        <label className="mt-3 flex min-h-11 items-center gap-3 text-sm">
           <span className="text-muted-foreground">Opacity</span>
           <input
             type="range"
@@ -71,9 +71,9 @@ export const BackgroundSection = () => {
             max={100}
             value={background.opacity}
             onChange={(e) => setSetting("background", { ...background, opacity: Number(e.target.value) })}
-            className="h-8 flex-1 accent-primary"
+            className="h-11 flex-1 accent-primary"
           />
-          <span className="w-9 text-right font-mono text-xs text-muted-foreground">{background.opacity}%</span>
+          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{background.opacity}%</span>
         </label>
       )}
     </Section>

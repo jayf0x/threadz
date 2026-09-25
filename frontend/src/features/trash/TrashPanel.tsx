@@ -1,6 +1,7 @@
 import { format } from "date-fns";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/cn";
 import { errorMessage } from "@/lib/errors";
@@ -19,17 +20,15 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
 
   return (
     <>
-      <header className="px-5 pb-4 pt-6">
-        <h1 className="font-serif text-4xl leading-none tracking-tight">Bin</h1>
+      <header className="px-5 pb-3 pt-6">
+        <h1 className="font-serif text-[32px] leading-none tracking-tight">Bin</h1>
         <Eyebrow className="mt-2">
           {trash === null ? "Reading…" : `${trash.length} thread${trash.length === 1 ? "" : "s"}`}
         </Eyebrow>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
-        {trash?.length === 0 && (
-          <p className="px-5 py-12 font-serif text-lg italic text-muted-foreground">The bin is empty.</p>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-6">
+        {trash?.length === 0 && <Empty icon={Trash2}>Empty</Empty>}
         <ul>
           {trash?.map((t) => (
             <TrashRow key={t.id} thread={t} onRestore={() => restore(t.id).then(() => onRestored(t.id))} />
@@ -58,13 +57,13 @@ const TrashRow = ({ thread, onRestore }: { thread: TrashedThread; onRestore: () 
   };
 
   return (
-    <li className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-b border-rule px-5 py-3.5">
+    <li className="grid min-h-16 grid-cols-[1fr_auto] items-center gap-x-2 border-b border-rule py-2 pl-5 pr-2">
       <span className="min-w-0">
-        <span className="block truncate font-serif text-lg leading-snug">{thread.title}</span>
-        <span className="mt-1 block font-mono text-[11px] uppercase text-muted-foreground">
-          Deleted {format(thread.deletedAt, "d MMM, HH:mm")}
+        <span className="line-clamp-2 break-words font-serif text-lg leading-snug">{thread.title}</span>
+        <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+          {format(thread.deletedAt, "d MMM")}
         </span>
-        {error && <span className="mt-1 block font-mono text-[11px] text-destructive">{error}</span>}
+        {error && <span className="mt-0.5 block text-xs text-destructive">{error}</span>}
       </span>
       <button
         type="button"
@@ -72,12 +71,12 @@ const TrashRow = ({ thread, onRestore }: { thread: TrashedThread; onRestore: () 
         title="Restore"
         disabled={busy}
         className={cn(
-          "-mr-2.5 shrink-0 p-2.5 text-muted-foreground transition-colors hover:text-foreground md:mr-0 md:p-1.5",
-          "disabled:opacity-60",
+          "press-icon grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground outline-none md:size-9",
+          "hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
         )}
         onClick={restore}
       >
-        <RotateCcw className={cn("size-4 md:size-3.5", busy && "animate-spin")} />
+        <RotateCcw aria-hidden className={cn("size-5 md:size-4", busy && "animate-spin")} />
       </button>
     </li>
   );

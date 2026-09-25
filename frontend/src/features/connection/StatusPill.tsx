@@ -25,23 +25,25 @@ export const StatusPill = () => {
       type="button"
       onClick={openPanel}
       title={hint}
-      className="group -my-3 flex items-center gap-2 py-3 font-mono text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+      className={cn(
+        "press flex h-11 items-center gap-2.5 rounded-full bg-muted px-4 text-sm font-medium text-foreground md:h-9",
+        "shadow-[inset_0_0_0_1px_var(--border)] outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+      )}
     >
-      <span className="relative flex size-2 items-center justify-center">
-        <span
-          className={cn(
-            "relative size-2 border",
-            local
-              ? "border-foreground bg-foreground"
-              : up
-                ? "rounded-full border-primary bg-primary"
-                : "rounded-full border-muted-foreground",
-          )}
-        />
-      </span>
+      <span
+        aria-hidden
+        className={cn(
+          "size-2.5 shrink-0 border",
+          local
+            ? "border-foreground bg-foreground"
+            : up
+              ? "rounded-full border-primary bg-primary"
+              : "rounded-full border-muted-foreground",
+        )}
+      />
       {label}
       {pending > 0 && (
-        <span className="text-primary">
+        <span className="tabular-nums text-muted-foreground">
           {pending}↑<span className="sr-only"> changes not yet synced</span>
         </span>
       )}

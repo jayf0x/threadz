@@ -1,3 +1,4 @@
+import { NotebookPen } from "lucide-react";
 import { domAnimation, LazyMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
@@ -187,10 +188,15 @@ const Shell = ({
       className="fixed left-0 top-0 z-10 grid w-full grid-cols-1 lg:grid-cols-[23rem_minmax(0,1fr)]"
       style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
     >
-      <aside className={cn("surface-secondary min-h-0 min-w-0 border-r border-border", selected && "hidden lg:block")}>
+      <aside className={cn("surface-sheen-pane min-h-0 min-w-0 border-r border-border", selected && "hidden lg:block")}>
         <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
       </aside>
-      <main className={cn("min-h-0 min-w-0", !selected && "hidden lg:block")}>
+      {/* Keyed by thread so the phone entrance (`pane-in`; nothing animates out) replays on every open. The
+          wide layout already has both panes on screen and doesn't slide. */}
+      <main
+        key={selected ?? "none"}
+        className={cn("min-h-0 min-w-0", selected ? "pane-in lg:animate-none" : "hidden lg:block")}
+      >
         {selected ? (
           <ThreadView
             key={selected}
@@ -212,8 +218,8 @@ const Shell = ({
 };
 
 const Blank = () => (
-  <div className="surface-background flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-    <p className="font-serif text-3xl italic text-muted-foreground">Pick a thread, or start one.</p>
+  <div className="surface-background flex h-full flex-col items-center justify-center gap-4 px-8 text-center text-muted-foreground">
+    <NotebookPen aria-hidden className="size-10 stroke-[1.25]" />
     <Eyebrow>
       <kbd>⌘k</kbd> jump · <kbd>/</kbd> search · <kbd>n</kbd> new · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> send
     </Eyebrow>

@@ -12,11 +12,11 @@ import { SyncSection } from "./sections/SyncSection";
 // (was the sidebar footer), then day-to-day settings, then import/export last (low usage).
 export const SettingsPanel = () => (
   <>
-    <header className="px-5 pb-4 pt-6">
-      <h1 className="font-serif text-4xl leading-none tracking-tight">Settings</h1>
+    <header className="px-5 pb-3 pt-6">
+      <h1 className="font-serif text-[32px] leading-none tracking-tight">Settings</h1>
     </header>
 
-    <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule">
+    <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-8">
       <SyncSection />
       <NamingSection />
       <LockZoomSection />

@@ -22,52 +22,60 @@ const OPTIONS: { value: Theme; label: string; path: string }[] = [
   },
 ];
 
-/** Three-way light / system / dark toggle. */
+/** Three-way light / system / dark toggle: a pill track with a thumb that slides to the choice. */
 export const ThemeToggle = ({ className }: { className?: string }) => {
   const [theme, setTheme] = useState<Theme>(read);
+  const index = OPTIONS.findIndex((o) => o.value === theme);
 
   return (
-    <fieldset className={cn("flex w-fit gap-px border border-border p-px", className)}>
+    <fieldset
+      className={cn(
+        "relative grid w-fit grid-cols-3 rounded-full bg-muted p-1 shadow-[inset_0_0_0_1px_var(--border)]",
+        className,
+      )}
+    >
       <legend className="sr-only">Colour scheme</legend>
-      {OPTIONS.map(({ value, label, path }) => {
-        const active = theme === value;
-        return (
-          <label
-            key={value}
-            title={label}
-            className={cn(
-              "flex cursor-pointer items-center p-3 transition-colors has-focus-visible:outline md:p-1.5",
-              "has-focus-visible:outline-ring",
-              active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
+      <span
+        aria-hidden
+        className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-full bg-card shadow-sm transition-transform duration-200 ease-out-strong motion-reduce:transition-none"
+        style={{ transform: `translateX(${index * 100}%)` }}
+      />
+      {OPTIONS.map(({ value, label, path }) => (
+        <label
+          key={value}
+          title={label}
+          className={cn(
+            "press relative grid h-11 w-16 cursor-pointer place-items-center rounded-full text-foreground md:h-9 md:w-12",
+            "has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-ring",
+            theme !== value && "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <input
+            type="radio"
+            name="theme"
+            value={value}
+            checked={theme === value}
+            onChange={() => {
+              window._setTheme(value);
+              setTheme(value);
+            }}
+            className="sr-only"
+          />
+          <svg
+            className="size-5 md:size-4"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            role="img"
+            aria-label={label}
           >
-            <input
-              type="radio"
-              name="theme"
-              value={value}
-              checked={active}
-              onChange={() => {
-                window._setTheme(value);
-                setTheme(value);
-              }}
-              className="sr-only"
-            />
-            <svg
-              className="size-4 md:size-3.5"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              role="img"
-              aria-label={label}
-            >
-              <path d={path} />
-            </svg>
-            <span className="sr-only">{label}</span>
-          </label>
-        );
-      })}
+            <path d={path} />
+          </svg>
+          <span className="sr-only">{label}</span>
+        </label>
+      ))}
     </fieldset>
   );
 };

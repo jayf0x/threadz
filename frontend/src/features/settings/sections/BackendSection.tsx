@@ -35,6 +35,7 @@ const BackendUrlField = ({ value }: { value: string | null }) => {
   return (
     <Field
       label="Backend URL"
+      hideLabel
       hint="Override if the app can't reach it automatically."
       placeholder={DEFAULT_BACKEND_URL}
       value={draft}

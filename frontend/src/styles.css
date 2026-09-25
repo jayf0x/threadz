@@ -169,18 +169,21 @@ body {
    animation, stays until deselected. A click that changes selection while already looking at the
    thread doesn't animate on top of this; it's already visible, nothing needs drawing the eye to it. */
 .message-selected {
-  background-color: color-mix(in oklab, var(--primary) 10%, transparent);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--primary) 12%, transparent),
+    color-mix(in oklab, var(--primary) 5%, transparent)
+  );
 }
 
 @keyframes message-pulse {
   from {
-    background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+    background-color: color-mix(in oklab, var(--primary) 28%, transparent);
   }
   to {
-    /* Settles at `.message-selected`'s own steady value — pulsing only ever happens on a row
-       that's also selected, so the animation's end state and the persistent one underneath it
-       must match, or the background visibly steps down the instant the animation finishes. */
-    background-color: color-mix(in oklab, var(--primary) 10%, transparent);
+    /* Fades to nothing: the steady wash is a gradient *image* on the same row, so the pulse (a
+       colour underneath it) simply dissolves and the end state already matches. */
+    background-color: transparent;
   }
 }
 
@@ -273,7 +276,7 @@ body {
     box-shadow 150ms var(--ease-out-strong),
     opacity 150ms;
   &:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(var(--press-scale, 0.97));
     transition-duration: 60ms;
   }
 }
@@ -284,7 +287,7 @@ body {
     color 150ms var(--ease-out-strong),
     opacity 150ms;
   &:active:not(:disabled) {
-    transform: scale(0.9);
+    transform: scale(var(--press-scale, 0.9));
     background-color: var(--accent);
     transition-duration: 60ms;
   }
@@ -319,6 +322,16 @@ body {
     color-mix(in oklab, color-mix(in oklab, var(--secondary) 94%, var(--primary)) var(--pane-alpha), transparent)
   );
 }
+/* Floating chrome (menu, popover, toast, sheet, palette): the same top-lit gradient at a fixed 96% —
+   these sit over text, so they ignore the wallpaper's --pane-alpha and blur what's behind. */
+@utility surface-float {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--card) 96%, transparent),
+    color-mix(in oklab, var(--secondary) 96%, transparent)
+  );
+  backdrop-filter: blur(24px);
+}
 /* Primary pills: the bottom mixes toward --foreground (always opposite luminance to
    --primary-foreground), so it can only raise the label's contrast. Semibold, 15px+ only. */
 @utility bg-primary-sheen {
@@ -344,6 +357,38 @@ body {
     transform: translateX(16px);
   }
 }
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@keyframes toast-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes pop-check {
+  50% {
+    transform: scale(1.18);
+  }
+}
 @utility pop-in {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, center));
   animation: pop-in 140ms var(--ease-out-strong);
@@ -354,10 +399,33 @@ body {
 @utility pane-in {
   animation: pane-in 200ms var(--ease-out-strong);
 }
+@utility sheet-out {
+  animation: sheet-out 200ms var(--ease-sheet) forwards;
+}
+@utility scrim-in {
+  animation: fade-in 200ms var(--ease-out-strong);
+}
+@utility scrim-out {
+  animation: fade-out 200ms var(--ease-out-strong) forwards;
+}
+@utility toast-in {
+  animation: toast-in 220ms var(--ease-out-strong);
+  @media (min-width: 768px) {
+    animation-name: toast-in-up;
+  }
+}
+@utility check-pop {
+  animation: pop-check 200ms var(--ease-out-strong);
+}
 @media (prefers-reduced-motion: reduce) {
   .pop-in,
   .sheet-in,
-  .pane-in {
+  .sheet-out,
+  .pane-in,
+  .toast-in,
+  .check-pop,
+  .scrim-in,
+  .scrim-out {
     animation: none;
   }
 }

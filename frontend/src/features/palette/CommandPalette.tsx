@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/cn";
@@ -68,11 +68,12 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-foreground/40" />
-        <Dialog.Content className="fixed left-1/2 top-[20vh] z-50 w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 border border-border bg-card/90 shadow-xl outline-none backdrop-blur-md">
+        {/* Opened by a keyboard chord, so no enter animation. `top` follows the visual viewport (iOS pans it). */}
+        <Dialog.Content className="surface-float fixed left-1/2 top-[calc(var(--vv-top,0px)+0.75rem)] z-50 flex max-h-[calc(var(--vv-h,100dvh)-1.5rem)] w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-xl outline-none ring-1 ring-border md:top-[20vh] md:max-h-[60vh]">
           <Dialog.Title className="sr-only">Jump to thread</Dialog.Title>
           <Dialog.Description className="sr-only">Type to fuzzy-match a thread by title.</Dialog.Description>
-          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-            <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+            <Search className="size-5 shrink-0 text-muted-foreground md:size-4" aria-hidden />
             <input
               ref={inputRef}
               value={query}
@@ -93,16 +94,19 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
                   if (t) pick(t);
                 }
               }}
-              placeholder="Jump to a thread…"
+              placeholder="Search"
               aria-label="Jump to a thread"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="h-9 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground md:h-6 md:text-sm"
             />
-            <Eyebrow className="shrink-0">esc</Eyebrow>
+            <Eyebrow className="shrink-0 pointer-coarse:hidden">esc</Eyebrow>
           </div>
-          <ul className="max-h-80 overflow-y-auto py-1">
+          <ul className="min-h-0 overflow-y-auto p-1.5">
             {results.length === 0 && (
-              <li className="px-4 py-6 text-center font-serif text-sm italic text-muted-foreground">
-                Nothing matches.
+              <li className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                <SearchX aria-hidden className="size-5 md:size-4" /> No match
               </li>
             )}
             {results.map((t, i) => (
@@ -112,8 +116,8 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
                   onMouseEnter={() => setHighlighted(i)}
                   onClick={() => pick(t)}
                   className={cn(
-                    "block w-full truncate px-4 py-2 text-left text-sm outline-none",
-                    i === highlighted ? "bg-accent" : "hover:bg-accent/60",
+                    "press-row block h-12 w-full truncate rounded-xl px-3 text-left text-base outline-none md:h-9 md:text-sm",
+                    i === highlighted && "bg-accent",
                   )}
                 >
                   {t.title}

@@ -32,7 +32,6 @@ export const DataSection = () => {
     <Section title="Import / export">
       <div className="flex flex-wrap gap-2">
         <Button
-          size="sm"
           variant="outline"
           disabled={busy}
           onClick={() =>
@@ -42,10 +41,10 @@ export const DataSection = () => {
             })
           }
         >
-          <Download className="size-3.5" /> Export
+          <Download className="size-5 md:size-4" /> Export
         </Button>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => file.current?.click()}>
-          <Upload className="size-3.5" /> Import
+        <Button variant="outline" disabled={busy} onClick={() => file.current?.click()}>
+          <Upload className="size-5 md:size-4" /> Import
         </Button>
         <input
           ref={file}
@@ -63,10 +62,10 @@ export const DataSection = () => {
           }}
         />
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-3 text-xs text-muted-foreground">
         Photos aren't included — an export holds notes and their photo references, not the pictures.
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 text-xs tabular-nums text-muted-foreground">
         {note ?? `Last export: ${exportedAt ? `${formatDistanceToNow(exportedAt)} ago` : "never"}.`}
       </p>
     </Section>

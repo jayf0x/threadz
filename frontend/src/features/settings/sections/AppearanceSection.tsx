@@ -42,14 +42,14 @@ export const AppearanceSection = () => {
 
   return (
     <Section title="Appearance">
-      <ThemeToggle className="mb-4" />
-      <fieldset className="flex flex-wrap gap-3">
+      <ThemeToggle className="mx-auto mb-5" />
+      <fieldset className="grid grid-cols-6 gap-2">
         <legend className="sr-only">Palette</legend>
         {PALETTES.map((p) => {
           const active = palette === p.id;
           const { background, primary } = dark ? p.swatch.dark : p.swatch.light;
           return (
-            <label key={p.id} title={p.label} className="cursor-pointer">
+            <label key={p.id} title={p.label} className="block aspect-square cursor-pointer">
               <input
                 type="radio"
                 name="palette"
@@ -62,15 +62,20 @@ export const AppearanceSection = () => {
                 className="peer sr-only"
               />
               <span className="sr-only">{p.label}</span>
-              {/* Always bordered — muted when idle, primary when picked — so a light swatch on a light
-                  page (or dark on dark) never loses its edge. */}
+              {/* No border and no scale: a 1px inset `--border` ring (the same for every swatch, so a light
+                  swatch on a light card never loses its edge), the pick is an `outline` that follows the
+                  radius, and a soft 16% band interpolated in oklab replaces the hard 50/50 stop, whose
+                  diagonal was jagged. */}
               <span
                 aria-hidden
                 className={cn(
-                  "block size-11 rounded-full border-2 transition-transform peer-focus-visible:outline peer-focus-visible:outline-ring",
-                  active ? "scale-110 border-primary" : "border-muted-foreground/40 hover:scale-105",
+                  "block size-full rounded-full shadow-[inset_0_0_0_1px_var(--border)]",
+                  "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring",
+                  active ? "outline outline-2 outline-offset-[3px] outline-primary" : "press",
                 )}
-                style={{ background: `linear-gradient(135deg, ${background} 50%, ${primary} 50%)` }}
+                style={{
+                  backgroundImage: `linear-gradient(135deg in oklab, ${background} 0 42%, ${primary} 58% 100%)`,
+                }}
               />
             </label>
           );

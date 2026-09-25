@@ -1,9 +1,23 @@
-import { History, List, ListTodo, type LucideIcon, Plus, Settings, Trash2 } from "lucide-react";
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowDownUp,
+  History,
+  List,
+  ListTodo,
+  LoaderCircle,
+  type LucideIcon,
+  Plus,
+  Search,
+  SearchX,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
+import { type CSSProperties, type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { IconSelect } from "@/components/ui/select";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
 import { TrashPanel } from "@/features/trash";
@@ -92,29 +106,23 @@ export const ThreadList = ({
     <div className="flex h-full flex-col">
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <View shown={panel === "index"} from="left">
-          <header className="px-5 pb-4 pt-6">
-            <h1 className="font-serif text-4xl leading-none tracking-tight">Threadz</h1>
+          <header className="px-5 pb-3 pt-6">
+            <h1 className="font-serif text-[32px] leading-none tracking-tight">Threadz</h1>
             <Eyebrow className="mt-2">
               Index · {threads.length} thread{threads.length === 1 ? "" : "s"}
             </Eyebrow>
 
             <div className="mt-4 flex gap-2">
-              <Input
+              <SearchField
                 ref={search}
-                className="min-w-0 flex-1"
-                type="search"
-                aria-label="Search threads"
-                placeholder={touch ? "Search" : "Search  ( / )"}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Escape") return;
-                  setQuery("");
-                  e.currentTarget.blur();
-                }}
+                onChange={setQuery}
+                placeholder={touch ? "Search" : "Search  ( / )"}
               />
-              <Select
+              <IconSelect
+                icon={ArrowDownUp}
                 aria-label="Sort threads"
+                title="Sort"
                 value={sort}
                 onChange={(e) => {
                   if (isSort(e.target.value)) setSort(e.target.value);
@@ -125,55 +133,48 @@ export const ThreadList = ({
                     {s.label}
                   </option>
                 ))}
-              </Select>
+              </IconSelect>
             </div>
           </header>
 
-          {failure && (
-            <p className="border-y border-destructive px-5 py-2 font-mono text-[11px] text-destructive">{failure}</p>
-          )}
+          {failure && <p className="border-y border-destructive px-5 py-2 text-xs text-destructive">{failure}</p>}
 
-          {/* `pb-20`: room for the floating New button so it never hides the last row. */}
-          <ul className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-20">
+          {/* `pb-24`: room for the floating New pill so it never hides the last row. */}
+          <ul className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-24">
             {threads.map((t, i) => (
               <li key={t.id} className="rise" style={{ "--i": Math.min(i, 14) } as CSSProperties}>
                 <ThreadRow thread={t} active={t.id === selectedId} onClick={() => onOpen(t.id)} onDeleted={onDeleted} />
               </li>
             ))}
             {threads.length === 0 && !syncing && (
-              <li className="px-5 py-12 font-serif text-lg italic text-muted-foreground">
-                {query
-                  ? "Nothing matches."
-                  : touch
-                    ? "Empty index. Tap New to start a thread."
-                    : "Empty index. Press n to start a thread."}
-              </li>
+              <li>{query ? <Empty icon={SearchX}>No match</Empty> : <Empty icon={List}>No threads</Empty>}</li>
             )}
             {!query && resurfaced && resurfaced.id !== selectedId && (
               <li className="border-t border-rule">
                 <button
                   type="button"
                   onClick={() => onOpen(resurfaced.id)}
-                  className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-accent/50"
+                  className="press-row flex min-h-14 w-full items-center gap-3 px-5 py-3 text-left"
                 >
-                  <History aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0">
-                    <Eyebrow>You wrote this a while back</Eyebrow>
-                    <span className="mt-1 block truncate font-serif text-lg leading-snug">{resurfaced.title}</span>
-                  </span>
+                  <History aria-hidden className="size-5 shrink-0 text-muted-foreground md:size-4" />
+                  <span className="sr-only">You wrote this a while back:</span>
+                  <span className="min-w-0 truncate font-serif text-lg leading-snug">{resurfaced.title}</span>
                 </button>
               </li>
             )}
           </ul>
-          {/* Labelled, not a bare "+": beside the tab bar a plus reads as "more", not "new thread". */}
           <Button
             aria-label="New thread"
+            aria-busy={creating}
             title={touch ? undefined : "New thread (n)"}
-            disabled={creating}
-            className="absolute bottom-4 right-4 h-11 gap-1.5 rounded-full px-5 shadow-md transition-transform duration-200 ease-out active:scale-95 disabled:opacity-60"
+            className="absolute bottom-4 right-4 h-12 gap-1.5 pl-4 pr-5 shadow-primary/30 [--press-scale:0.94]"
             onClick={create}
           >
-            <Plus strokeWidth={2.25} className="size-5" />
+            {creating ? (
+              <LoaderCircle aria-hidden className="size-5 animate-spin" />
+            ) : (
+              <Plus aria-hidden strokeWidth={2.25} className="size-5" />
+            )}
             New
           </Button>
         </View>
@@ -207,6 +208,54 @@ export const ThreadList = ({
   );
 };
 
+// A pill search field: leading icon, and a 44px clear button once there is something to clear.
+const SearchField = ({
+  ref,
+  value,
+  onChange,
+  placeholder,
+}: {
+  ref: Ref<HTMLInputElement>;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) => (
+  <div className="relative min-w-0 flex-1">
+    <Search
+      aria-hidden
+      className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground md:size-4"
+    />
+    <Input
+      ref={ref}
+      className="pl-11 pr-11 [&::-webkit-search-cancel-button]:appearance-none"
+      type="search"
+      aria-label="Search threads"
+      placeholder={placeholder}
+      autoCapitalize="off"
+      autoCorrect="off"
+      spellCheck={false}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        onChange("");
+        e.currentTarget.blur();
+      }}
+    />
+    {value && (
+      <button
+        type="button"
+        aria-label="Clear search"
+        title="Clear"
+        onClick={() => onChange("")}
+        className="press-icon absolute right-0 top-0 grid size-11 place-items-center rounded-full text-muted-foreground md:size-9"
+      >
+        <X aria-hidden className="size-5 md:size-4" />
+      </button>
+    )}
+  </div>
+);
+
 type Panel = "index" | "settings" | "todos" | "trash";
 
 const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
@@ -216,9 +265,9 @@ const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "settings", label: "Settings", icon: Settings },
 ];
 
-// The sidebar's own nav — a full-width bottom bar (mobile and desktop alike, now that the sidebar
-// footer that used to hold sync/theme is gone) rather than a small centered icon pill. Each item
-// gets equal width; icon only, the label is the `title` (and sr-only text).
+// The sidebar's own nav — a full-width bottom bar (mobile and desktop alike) rather than a small centered
+// icon pill. Each item gets equal width; icon only (the label is the `title` and sr-only text), the active
+// one on a soft primary pill (M3-style) so the glyph stays high-contrast ink.
 const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Panel) => void }) => (
   <fieldset className="flex">
     <legend className="sr-only">Sidebar view</legend>
@@ -228,11 +277,7 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
         <label
           key={value}
           title={label}
-          className={cn(
-            "flex flex-1 cursor-pointer items-center justify-center py-3.5 transition-colors md:py-2.5",
-            "has-focus-visible:outline has-focus-visible:outline-ring",
-            active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
+          className="group flex h-14 flex-1 cursor-pointer items-center justify-center md:h-12"
         >
           <input
             type="radio"
@@ -240,9 +285,17 @@ const SidebarSwitcher = ({ panel, setPanel }: { panel: Panel; setPanel: (p: Pane
             value={value}
             checked={active}
             onChange={() => setPanel(value)}
-            className="sr-only"
+            className="peer sr-only"
           />
-          <Icon className="size-5 md:size-4" aria-hidden />
+          <span
+            className={cn(
+              "press-icon grid h-8 w-14 place-items-center rounded-full [--press-scale:0.9] md:h-7 md:w-12",
+              "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring",
+              active ? "bg-primary/18 text-foreground" : "text-muted-foreground group-hover:text-foreground",
+            )}
+          >
+            <Icon className="size-5 md:size-4" aria-hidden />
+          </span>
           <span className="sr-only">{label}</span>
         </label>
       );
@@ -256,10 +309,10 @@ const View = ({ shown, from, children }: { shown: boolean; from: "left" | "right
   <div
     inert={!shown}
     className={cn(
-      "absolute inset-0 flex flex-col transition-all duration-300 ease-in-out motion-reduce:transition-none",
+      "absolute inset-0 flex flex-col transition-[opacity,translate,visibility] duration-[180ms] ease-out-strong motion-reduce:transition-none",
       shown
         ? "translate-x-0 opacity-100"
-        : cn("pointer-events-none invisible opacity-0", from === "left" ? "-translate-x-3" : "translate-x-3"),
+        : cn("pointer-events-none invisible opacity-0", from === "left" ? "-translate-x-2" : "translate-x-2"),
     )}
   >
     {children}
