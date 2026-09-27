@@ -169,8 +169,9 @@ const server = Bun.serve({
   },
 });
 
-// Orphan photos: once at start, then daily.
-collectOrphanImages();
+// Orphan photos: once at start (after schema init -- a fresh threadz.sqlite has no tables yet),
+// then daily.
+ensureSchema().then(collectOrphanImages);
 setInterval(collectOrphanImages, 24 * 3600 * 1000).unref();
 
 console.log(`[threadz] backend on http://0.0.0.0:${server.port}  (LAN: http://<mac-ip>:${server.port})`);
