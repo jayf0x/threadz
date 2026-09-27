@@ -17,6 +17,9 @@
         "zod": "^4.6.5",
       },
     },
+    "core": {
+      "name": "@threadz/core",
+    },
     "frontend": {
       "name": "@threadz/frontend",
       "dependencies": {
@@ -752,6 +755,8 @@
     "@testing-library/react": ["@testing-library/react@16.3.3", "", { "dependencies": { "@babel/runtime": "^7.12.5" }, "peerDependencies": { "@testing-library/dom": "^10.0.0", "@types/react": "^18.0.0 || ^19.0.0", "@types/react-dom": "^18.0.0 || ^19.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-Uo193NgQbPMz6lrrhtRQQFcMC6Re/ELLFbbuVL30WDlZxlpZf9/lMHTAVxPRLw1q1iu9OJmR1c2BLiENRstdBg=="],
 
     "@threadz/backend": ["@threadz/backend@workspace:backend"],
+
+    "@threadz/core": ["@threadz/core@workspace:core"],
 
     "@threadz/frontend": ["@threadz/frontend@workspace:frontend"],
 

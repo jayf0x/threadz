@@ -1,0 +1,8 @@
+{
+  "name": "@threadz/core",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,791 @@
+<title>Lines Through the Pool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#fbf1c7; --bg2:#f2e5bc; --card:#f9f5d7; --fg:#3c3836; --fg2:#504945; --muted:#7c6f64; --rule:#d5c4a1;
+  --red:#cc241d; --blue:#458588; --green:#98971a; --yellow:#b57614; --orange:#d65d0e; --purple:#b16286; --aqua:#689d6a;
+  --station:#fbf1c7; --shadow:0 1px 0 rgba(60,56,54,.08);
+  --display:"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --body:"Literata", Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#282828; --bg2:#32302f; --card:#3c3836; --fg:#ebdbb2; --fg2:#d5c4a1; --muted:#a89984; --rule:#504945;
+    --red:#fb4934; --blue:#83a598; --green:#b8bb26; --yellow:#fabd2f; --orange:#fe8019; --purple:#d3869b; --aqua:#8ec07c;
+    --station:#282828; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#282828; --bg2:#32302f; --card:#3c3836; --fg:#ebdbb2; --fg2:#d5c4a1; --muted:#a89984; --rule:#504945;
+  --red:#fb4934; --blue:#83a598; --green:#b8bb26; --yellow:#fabd2f; --orange:#fe8019; --purple:#d3869b; --aqua:#8ec07c;
+  --station:#282828; --shadow:none;
+}
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--fg); font-family:var(--body); font-size:17px; line-height:1.62; padding-inline:20px; padding-block:0 80px}
+.wrap{max-width:760px; margin:0 auto}
+.wide{max-width:1040px; margin:0 auto}
+h1,h2,h3,h4{font-family:var(--display); text-wrap:balance; line-height:1.12; color:var(--fg)}
+h1{font-size:clamp(2.4rem,7vw,4.4rem); font-weight:800; letter-spacing:-.02em; margin:0}
+h2{font-size:clamp(1.6rem,4vw,2.2rem); font-weight:800; letter-spacing:-.01em; margin:0 0 .6em}
+h3{font-size:1.28rem; font-weight:600; margin:1.8em 0 .5em}
+h4{font-size:1.02rem; font-weight:600; margin:0 0 .3em}
+p{margin:0 0 1em; max-width:68ch}
+a{color:var(--blue); text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--orange); outline-offset:2px}
+em{font-style:italic}
+code{font-family:var(--mono); font-size:.84em; background:var(--bg2); padding:.08em .35em; border-radius:4px}
+.eyebrow{font-family:var(--mono); font-size:.74rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+.lede{font-size:1.2rem; line-height:1.55; color:var(--fg2); max-width:60ch}
+section{padding-block:56px 8px; border-top:1px solid var(--rule)}
+section:first-of-type{border-top:0}
+ul,ol{padding-left:1.2em; margin:0 0 1em} li{margin:.25em 0; max-width:66ch}
+
+/* hero */
+.hero{padding-block:56px 32px}
+.hero .eyebrow{margin-bottom:18px}
+.hero h1 span{color:var(--red)}
+.hero .lede{margin-top:22px}
+
+/* toc as a metro line */
+.toc{position:relative; margin:28px 0 8px; padding:18px 0 4px; overflow-x:auto}
+.toc ol{list-style:none; margin:0; padding:0; display:flex; gap:0; min-width:720px; position:relative}
+.toc ol::before{content:""; position:absolute; left:10px; right:10px; top:9px; height:6px; border-radius:3px; background:var(--red)}
+.toc li{flex:1; position:relative; padding-top:28px; margin:0; font-family:var(--mono); font-size:.72rem; line-height:1.3}
+.toc li::before{content:""; position:absolute; top:2px; left:4px; width:14px; height:14px; border-radius:50%; background:var(--station); border:4px solid var(--red)}
+.toc li.x::before{border-color:var(--fg); width:16px; height:16px; top:1px}
+.toc a{color:var(--fg2); text-decoration:none; display:block; padding-right:8px}
+.toc a:hover{color:var(--red)}
+
+/* callouts */
+.turn{background:var(--card); border:1px solid var(--rule); border-radius:14px; padding:20px 22px; margin:18px 0 24px; box-shadow:var(--shadow)}
+.turn p:last-child{margin-bottom:0}
+.thesis{font-family:var(--display); font-size:clamp(1.3rem,3.2vw,1.7rem); font-weight:600; line-height:1.3; border-left:6px solid var(--red); padding:4px 0 4px 18px; margin:26px 0; max-width:34ch}
+
+/* figures */
+figure{margin:28px 0 30px}
+figcaption{font-family:var(--mono); font-size:.76rem; color:var(--muted); margin-top:10px; line-height:1.5; max-width:80ch}
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+svg text{font-family:var(--mono)}
+
+/* lanes */
+.lanes{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin:22px 0}
+.lane{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:16px 16px 14px; display:flex; flex-direction:column; gap:8px}
+.lane .who{font-family:var(--mono); font-size:.72rem; color:var(--muted)}
+.lane p{font-size:.93rem; margin:0; line-height:1.5}
+.lane .brk{font-size:.86rem; color:var(--fg2)}
+.lane .brk b{font-family:var(--mono); font-weight:500; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color:var(--red); margin-right:4px}
+.glyph{height:34px}
+
+/* commons */
+.two{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+@media (max-width:700px){.two{grid-template-columns:1fr}}
+.col h4{font-family:var(--mono); font-size:.78rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:10px}
+.col ol{margin:0}
+.col li{font-size:.95rem}
+
+/* field notes */
+.notes{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:0 28px; margin-top:12px}
+.fn{padding:14px 0; border-top:1px solid var(--rule)}
+.fn h4 a{color:var(--fg); text-decoration:none}
+.fn h4 a:hover{color:var(--blue)}
+.fn .tag{font-family:var(--mono); font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+.fn p{font-size:.92rem; margin:.3em 0 0; line-height:1.5}
+.fn .steal{color:var(--fg2)}
+.fn .steal b{color:var(--green); font-family:var(--mono); font-weight:500; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase}
+.fn .skip b{color:var(--red); font-family:var(--mono); font-weight:500; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase}
+.fn .skip{color:var(--fg2)}
+
+/* questions */
+.q{margin:40px 0 10px}
+.q .num{font-family:var(--mono); font-size:.76rem; color:var(--red); letter-spacing:.08em}
+.q h3{margin-top:4px; font-size:1.5rem}
+.facts{display:grid; grid-template-columns:120px 1fr; gap:10px 18px; margin:14px 0 18px; font-size:.95rem}
+.facts dt{font-family:var(--mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding-top:4px}
+.facts dd{margin:0}
+.facts dd p{margin:0 0 .5em}
+@media (max-width:560px){.facts{grid-template-columns:1fr; gap:2px 0}.facts dd{margin-bottom:10px}}
+.rec{background:var(--card); border:1px solid var(--rule); border-left:5px solid var(--green); border-radius:10px; padding:14px 16px}
+.open{border-left-color:var(--yellow)}
+
+/* phones */
+.phones{display:flex; gap:18px; padding-bottom:6px; min-width:max-content}
+.phone{width:236px; flex:none; background:var(--bg2); border:1px solid var(--rule); border-radius:28px; padding:12px 10px 10px; display:flex; flex-direction:column; gap:6px; font-family:var(--body); font-size:.78rem; line-height:1.4; position:relative; min-height:430px}
+.phone .ttl{font-family:var(--mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:center; margin-bottom:2px}
+.phone .bar{font-family:var(--display); font-weight:600; font-size:.9rem; padding:4px 6px}
+.row{background:var(--bg); border-radius:10px; padding:8px 10px 8px 22px; position:relative}
+.row.sel{outline:2px solid var(--fg2)}
+.row.dim{opacity:.55}
+.ticks{position:absolute; left:7px; top:9px; display:flex; flex-direction:column; gap:3px}
+.ticks i{display:block; width:6px; height:6px; border-radius:50%}
+.u{text-decoration:underline; text-decoration-color:var(--purple); text-decoration-thickness:2px; text-underline-offset:2px}
+.lk{color:var(--blue)}
+.sheet{position:absolute; left:6px; right:6px; bottom:6px; background:var(--card); border:1px solid var(--rule); border-radius:18px; padding:10px; display:flex; flex-direction:column; gap:6px; box-shadow:0 -6px 20px rgba(0,0,0,.12)}
+.sheet .grab{width:36px; height:4px; border-radius:2px; background:var(--rule); margin:0 auto 2px}
+.sheet .ctx{font-family:var(--mono); font-size:.62rem; color:var(--muted)}
+.pill{display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:.64rem; padding:3px 8px; border-radius:999px; border:1px solid var(--rule); background:var(--bg)}
+.dot{width:8px; height:8px; border-radius:50%; display:inline-block}
+.board{display:flex; flex-direction:column; gap:6px}
+.stationname{font-family:var(--display); font-weight:800; font-size:1.05rem; padding:4px 6px 0}
+.lineblock{background:var(--bg); border-radius:10px; padding:8px 10px; border-left:5px solid}
+.lineblock .ln{font-family:var(--mono); font-size:.64rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+.lineblock .nav{display:flex; justify-content:space-between; gap:6px; margin-top:4px}
+.lineblock .nav span{flex:1}
+.lineblock .nav span:last-child{text-align:right}
+.tabbar{margin-top:auto; display:flex; justify-content:space-around; padding:8px 4px 2px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:.6rem; color:var(--muted)}
+.carry{align-self:center; background:var(--fg); color:var(--bg); font-family:var(--mono); font-size:.66rem; padding:6px 10px; border-radius:999px; display:flex; gap:6px; align-items:center}
+.drop{height:0; border-top:3px solid var(--orange); margin:-2px 8px; position:relative}
+.drop::before{content:""; position:absolute; left:-6px; top:-6px; width:9px; height:9px; border-radius:50%; background:var(--orange)}
+.lifted{transform:scale(1.03) rotate(-1deg); box-shadow:0 8px 18px rgba(0,0,0,.18)}
+.toast{align-self:center; background:var(--card); border:1px solid var(--rule); border-radius:999px; font-family:var(--mono); font-size:.64rem; padding:5px 10px}
+.orb{border:1.5px dashed var(--purple); border-radius:10px; padding:7px 9px; background:var(--bg); font-size:.74rem}
+.orb .acts{display:flex; gap:6px; margin-top:5px}
+.orb .acts span{font-family:var(--mono); font-size:.62rem; border:1px solid var(--rule); border-radius:999px; padding:2px 8px}
+
+/* sure/open */
+.ledger{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+@media (max-width:700px){.ledger{grid-template-columns:1fr}}
+.ledger .box{background:var(--card); border:1px solid var(--rule); border-radius:12px; padding:18px}
+.ledger h4{font-family:var(--mono); font-size:.76rem; letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px}
+.ledger li{font-size:.94rem}
+
+/* filter */
+.filter{counter-reset:f; list-style:none; padding:0}
+.filter li{counter-increment:f; position:relative; padding-left:44px; margin:14px 0}
+.filter li::before{content:counter(f); position:absolute; left:0; top:0; width:30px; height:30px; border-radius:50%; border:3px solid var(--blue); background:var(--station); font-family:var(--mono); font-size:.8rem; display:grid; place-items:center; color:var(--fg)}
+
+/* build line */
+.build{position:relative; margin:26px 0; padding-left:0}
+.build ol{list-style:none; margin:0; padding:0 0 0 34px; position:relative}
+.build ol::before{content:""; position:absolute; left:10px; top:8px; bottom:8px; width:6px; border-radius:3px; background:linear-gradient(var(--green),var(--green) 70%, var(--rule) 70%)}
+.build li{position:relative; margin:0 0 18px; max-width:66ch}
+.build li::before{content:""; position:absolute; left:-31px; top:4px; width:14px; height:14px; border-radius:50%; background:var(--station); border:4px solid var(--green)}
+.build li.later::before{border-color:var(--rule)}
+.build li b{font-family:var(--display); font-weight:600}
+.build li span{display:block; font-size:.92rem; color:var(--fg2)}
+
+.asks li{margin:.7em 0}
+.src{columns:2 280px; column-gap:28px; font-size:.84rem; line-height:1.5}
+.src p{break-inside:avoid; margin:0 0 .6em}
+.src b{font-family:var(--mono); font-weight:500; font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); display:block; margin-top:.6em}
+table.cost{border-collapse:collapse; width:100%; font-size:.9rem; min-width:620px}
+table.cost th,table.cost td{text-align:left; vertical-align:top; padding:9px 10px; border-bottom:1px solid var(--rule)}
+table.cost th{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:500}
+table.cost td:first-child{font-family:var(--mono); font-size:.8rem; white-space:nowrap}
+@media (prefers-reduced-motion: no-preference){ .toc a,.fn h4 a{transition:color .15s} }
+</style>
+
+<div class="wrap hero">
+  <div class="eyebrow">Threadz · direction report · 26 Sep 2026</div>
+  <h1>Everyone draws graphs.<br>Writers need <span>lines.</span></h1>
+  <p class="lede">You said the product is whether someone can see, and make, a coherent path through separate notes. I agree, and I read that as a UI problem first and a data problem second. This report looks at how about thirty tools, research prototypes and games handle that path, what they share, where they break, and what Threadz should build.</p>
+
+  <nav class="toc" aria-label="Contents">
+    <ol>
+      <li><a href="#correction">What changed</a></li>
+      <li class="x"><a href="#landscape">Where connections live</a></li>
+      <li><a href="#fieldnotes">Field notes</a></li>
+      <li><a href="#games">Games</a></li>
+      <li class="x"><a href="#model">Lines, stops, pool</a></li>
+      <li><a href="#hard">Hard questions</a></li>
+      <li><a href="#ledger">Sure vs open</a></li>
+      <li class="x"><a href="#method">How to build</a></li>
+      <li><a href="#asks">Your calls</a></li>
+    </ol>
+  </nav>
+</div>
+
+<div class="wrap">
+<section id="correction">
+  <div class="eyebrow">What changed since the last answer</div>
+  <h2>A note stays the unit. The path through notes is the product.</h2>
+  <p>Last time I said the note is the basic unit and everything else is a view. That's still true for storage, but it's the wrong thing to lead with. A typewriter stores units just fine. What a typewriter can't do is show you that the paragraph you wrote in March and the one you wrote on a walk yesterday belong to the same line of thought, and let you follow that line.</p>
+  <p>Two things change because of it:</p>
+  <ul>
+    <li><b>I'm reversing one recommendation.</b> I said "one home thread per note, show it elsewhere through link previews." If the product is paths, a note has to be able to sit on several paths at once, the way a station sits on several metro lines. Heptabase, Are.na, Supernotes and Workflowy all landed on the same answer.</li>
+    <li><b>The name already says it.</b> Ariadne's thread gets you through a labyrinth and back out. A Memex "trail" was a new linear sequence laid across unrelated microfilm frames. Luhmann's numbered slips (<code>21/3d7a</code>) were a predefined path through a box of cards. In each of these, the thread is a path through material that lives elsewhere, and Threadz can mean exactly that.</li>
+  </ul>
+  <p class="thesis">A thread is a line drawn through notes. A note can sit on many lines. The pool is every note that sits on none yet.</p>
+</section>
+
+<section id="landscape">
+  <div class="eyebrow">Landscape</div>
+  <h2>Where does a connection live?</h2>
+  <p>Every tool in this space answers that one question, usually without saying so. Where a connection is stored decides what you can see, what you can make on a phone, and what survives an export. There are six answers.</p>
+
+  <div class="lanes">
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><rect x="2" y="8" width="70" height="4" rx="2" fill="var(--rule)"/><rect x="2" y="18" width="40" height="4" rx="2" fill="var(--rule)"/><rect x="44" y="18" width="26" height="4" rx="2" fill="var(--blue)"/><path d="M72 20 C 92 20, 92 6, 112 6" stroke="var(--blue)" stroke-width="2" fill="none"/><circle cx="112" cy="6" r="4" fill="var(--blue)"/></svg>
+      <h4>In the text</h4>
+      <div class="who">Roam · Obsidian · Logseq · Reflect · Bear · Threadz today</div>
+      <p>An inline <code>[[link]]</code>. The link is part of the prose, so it's portable and says <em>where</em> the connection is.</p>
+      <p class="brk"><b>Breaks</b>A link can't say why it exists, and you can only make one while writing, with a keyboard.</p>
+    </div>
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><rect x="6" y="4" width="44" height="26" rx="5" fill="none" stroke="var(--rule)" stroke-width="2"/><rect x="66" y="4" width="44" height="26" rx="5" fill="none" stroke="var(--rule)" stroke-width="2"/><rect x="38" y="11" width="40" height="12" rx="3" fill="var(--green)"/></svg>
+      <h4>In membership</h4>
+      <div class="who">Are.na · Heptabase · Supernotes · Workflowy · Scrivener collections</div>
+      <p>The same item placed in several collections. Two notes are connected because they sit in the same place.</p>
+      <p class="brk"><b>Breaks</b>A collection is a bag. It says two notes are related, but not in what order or why.</p>
+    </div>
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><rect x="4" y="4" width="30" height="16" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="2"/><rect x="80" y="14" width="34" height="16" rx="3" fill="var(--card)" stroke="var(--rule)" stroke-width="2"/><path d="M34 12 Q 58 4 80 22" stroke="var(--orange)" stroke-width="2" fill="none"/></svg>
+      <h4>In space</h4>
+      <div class="who">Scapple · Kinopio · Muse · Obsidian Canvas · LiquidText · Campfire</div>
+      <p>Where a card sits on a board, and arrows drawn between cards. Closeness itself means something.</p>
+      <p class="brk"><b>Breaks</b>You can't query it, it's mostly desktop or iPad only, and the meaning is lost when the layout changes.</p>
+    </div>
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><rect x="4" y="6" width="36" height="22" rx="4" fill="none" stroke="var(--rule)" stroke-width="2"/><text x="10" y="21" font-size="9" fill="var(--purple)">#char</text><path d="M40 17 H 76" stroke="var(--purple)" stroke-width="2"/><text x="44" y="13" font-size="7" fill="var(--muted)">father of</text><rect x="76" y="6" width="38" height="22" rx="4" fill="none" stroke="var(--rule)" stroke-width="2"/></svg>
+      <h4>In structure</h4>
+      <div class="who">Tana supertags · Capacities objects · TheBrain · Novelcrafter codex</div>
+      <p>Typed objects with fields and named relations: parent, child, jump, "participant in". Precise and searchable.</p>
+      <p class="brk"><b>Breaks</b>You have to set up a schema first. TheBrain has been niche for 25 years and Tana's learning curve is famous.</p>
+    </div>
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><circle cx="60" cy="17" r="7" fill="var(--aqua)"/><circle cx="24" cy="9" r="4" fill="var(--rule)"/><circle cx="96" cy="10" r="5" fill="var(--rule)"/><circle cx="34" cy="28" r="3" fill="var(--rule)"/><circle cx="88" cy="28" r="4" fill="var(--rule)"/><path d="M53 15 L28 10 M67 15 L91 11 M55 21 L37 27 M66 21 L85 27" stroke="var(--aqua)" stroke-width="1" stroke-dasharray="2 2"/></svg>
+      <h4>In similarity</h4>
+      <div class="who">Napkin · Smart Connections · Reor · Mem · Linus Lee's lenses</div>
+      <p>Computed from embeddings or tags. Needs no work from you and turns up surprises.</p>
+      <p class="brk"><b>Breaks</b>It's the machine's guess, not your claim. Mem is the cautionary tale: when that guess is the only way in, people stop trusting search.</p>
+    </div>
+    <div class="lane">
+      <svg class="glyph" viewBox="0 0 120 34" aria-hidden="true"><path d="M6 17 H 114" stroke="var(--red)" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="17" r="5" fill="var(--station)" stroke="var(--red)" stroke-width="3"/><circle cx="48" cy="17" r="5" fill="var(--station)" stroke="var(--red)" stroke-width="3"/><circle cx="78" cy="17" r="5" fill="var(--station)" stroke="var(--red)" stroke-width="3"/><circle cx="104" cy="17" r="5" fill="var(--station)" stroke="var(--red)" stroke-width="3"/></svg>
+      <h4>In sequence</h4>
+      <div class="who">Luhmann's Folgezettel · Memex trails · Scrivener binder · Plottr grid · Aeon narrative order</div>
+      <p>The order is the claim: <em>this</em> follows from <em>that</em>. It's the only kind of connection that is also a piece of writing.</p>
+      <p class="brk"><b>Breaks</b>Almost nobody treats it as a connection type. Tools keep one fixed order (the binder) or none at all.</p>
+    </div>
+  </div>
+
+  <p>The last lane is the one that matters. Coherence is a property of sequences: a graph shows that A touches B, and a line shows that B follows from A. Writers turn graphs into lines for a living. The popular tools cover the first five lanes, and the only mature tools that take the sixth seriously are Scrivener and Aeon Timeline. Both are desktop apps for managing a manuscript, with no pool of loose notes and no phone story.</p>
+
+  <div class="two">
+    <div class="col">
+      <h4>What they all have in common</h4>
+      <ol>
+        <li>A capture inbox, whatever it's called: Drafts, Heptabase Inbox, Muse's iPhone inbox, Roam's daily page.</li>
+        <li>A "linked from" list. Every serious tool shows what points at the note you're reading.</li>
+        <li>A local view of connections that works, next to a global one that doesn't: Obsidian's local graph is used and its global graph is admired once.</li>
+        <li>Search as the main way around once there are more than a few hundred notes (⌘O, ⌘K).</li>
+        <li>A split between devices: the phone captures and reads, the desktop or iPad arranges. Heptabase mobile couldn't move cards or draw arrows for a long time, Campfire's relationship web isn't on mobile, Scapple has no mobile app, and Muse's iPhone app is an inbox.</li>
+        <li>Stable IDs under everything, so a link survives a rename.</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h4>What sets each apart</h4>
+      <ol>
+        <li><b>Which screen is home.</b> Heptabase opens on a whiteboard, Roam on today's page, Are.na on a channel, Napkin on one thought with its neighbours around it, Tana on an outline, Scrivener on a binder. That default view is the product's personality.</li>
+        <li><b>How big the unit is.</b> A page (Obsidian), a block (Roam, Tana), a card (Heptabase, Supernotes) or an object (Capacities). Smaller units are easier to connect and harder to read as prose.</li>
+        <li><b>Who does the connecting.</b> The user (Scapple), a schema (Tana) or a model (Napkin). Tools do best when the machine suggests and the person decides.</li>
+        <li><b>What leaves with you.</b> Markdown (Obsidian, iA Writer), JSON Canvas (Obsidian), or nothing.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="fieldnotes">
+  <div class="eyebrow">Field notes</div>
+  <h2>What to take from each, and what to leave</h2>
+  <p>For each tool: the specific mechanism, the part to copy, and the part to avoid. These are grouped by what they help with, not by product category.</p>
+
+  <h3>Seeing a connection</h3>
+  <div class="notes">
+    <div class="fn"><span class="tag">research · 1965–</span><h4><a href="https://maggieappleton.com/xanadu-patterns">Xanadu: visible links, parallel documents</a></h4>
+      <p>Ted Nelson called the core problem of hypertext "being able to see connections side by side": two documents next to each other with coloured bands linking the related passages.</p>
+      <p class="steal"><b>Take</b> a link that shows its destination in context: the other note together with its neighbours on its own line.</p>
+      <p class="skip"><b>Leave</b> the global web of permissions and micropayments.</p></div>
+    <div class="fn"><span class="tag">web · notes</span><h4><a href="https://notes.andymatuschak.org/">Andy Matuschak's stacked panes</a></h4>
+      <p>Each link you follow opens as a new column to the right, so the path you took stays on screen. Obsidian later made this a built-in option.</p>
+      <p class="steal"><b>Take</b> on desktop, your route through the notes stays visible as you go.</p>
+      <p class="skip"><b>Leave</b> columns on a phone. There's no width for them.</p></div>
+    <div class="fn"><span class="tag">web · essays</span><h4><a href="https://gwern.net/design">gwern.net recursive popups</a></h4>
+      <p>A preview can contain links that open their own previews, as deep as you like. They chose non-modal pop-ins so the reader never loses the page underneath.</p>
+      <p class="steal"><b>Take</b> a peek can open another peek, and closing one steps back a level.</p></div>
+    <div class="fn"><span class="tag">game · strategy</span><h4><a href="https://www.pcgamesn.com/victoria-3/nested-tooltip-system">Crusader Kings III nested tooltips</a></h4>
+      <p>Every highlighted concept, including every character name, opens a tooltip that you can lock and then hover into for the next one. This is hypertext in a game with thousands of entities.</p>
+      <p class="steal"><b>Take</b> every mention can be tapped. On touch this is easier than on desktop because a tap locks by default.</p>
+      <p class="skip"><b>Leave</b> hover-to-open timing. The Paradox forums are full of people losing a stack of tooltips to one stray mouse move.</p></div>
+    <div class="fn"><span class="tag">pdf · research</span><h4><a href="https://www.liquidtext.net/liquidtextadeeperdive">LiquidText ink links</a></h4>
+      <p>Draw a line between any two points and it becomes a live link, with a button at each end that brings back the other side. Excerpts keep a link back to the exact spot they came from.</p>
+      <p class="steal"><b>Take</b> a connection has two ends, and you can tap either one to go to the other.</p></div>
+    <div class="fn"><span class="tag">notes · graph</span><h4><a href="https://danholloran.me/posts/making-obsidians-graph-view-actually-useful">Obsidian graph view</a></h4>
+      <p>A dense hairball beyond a few hundred notes: "it only ever offers a shape." The local graph at depth one or two is the part people keep open. Its defenders use it to spot orphans and to see which drafts are still thinly connected.</p>
+      <p class="steal"><b>Take</b> show only the neighbourhood of the current note. Treat orphans and thinly connected notes as useful signals.</p>
+      <p class="skip"><b>Leave</b> the global force-directed graph.</p></div>
+  </div>
+
+  <h3>One item in many places</h3>
+  <div class="notes">
+    <div class="fn"><span class="tag">curation</span><h4><a href="https://help.are.na/docs/llms-full.txt">Are.na "connect"</a></h4>
+      <p>A block lives in any number of channels. There are no likes, no favourites and no time-sorted feed: "there is no such thing as a 'like'… instead we have connections."</p>
+      <p class="steal"><b>Take</b> connecting is the main gesture, and the list of places a note belongs to is shown on the note.</p></div>
+    <div class="fn"><span class="tag">visual pkm</span><h4><a href="https://wiki.heptabase.com/user-interface-logic">Heptabase card ↔ whiteboards</a></h4>
+      <p>A card sits on many whiteboards, and editing it updates it everywhere. The card's Info panel lists "which whiteboards, and where on them" it appears, and a click takes you to that spot.</p>
+      <p class="steal"><b>Take</b> a list on each note of "on these lines, at this position", where each entry takes you there.</p></div>
+    <div class="fn"><span class="tag">cards</span><h4><a href="https://supernotes.app/features/multi-parent-nesting/">Supernotes multi-parent</a></h4>
+      <p>A card can have several parents. Their community forum has a thread titled "why do cards appear multiple times in outline?"</p>
+      <p class="skip"><b>Leave</b> duplicates that look identical. A note shown in a second place needs a mark saying so.</p></div>
+    <div class="fn"><span class="tag">outliner</span><h4><a href="https://workflowy.com/feature/mirrors/">Workflowy mirrors</a></h4>
+      <p>Live copies of a bullet, created with <code>((</code> or ⌘⇧M. They're drawn with a distinct bullet style so you can tell a mirror from the original.</p>
+      <p class="steal"><b>Take</b> a text trigger to place an existing note, and a visual mark on repeated notes.</p></div>
+    <div class="fn"><span class="tag">writing</span><h4><a href="https://ia.net/writer/support/library/content-blocks">iA Writer content blocks</a></h4>
+      <p>A line starting with <code>/Section.txt</code> embeds another file, and it exports to HTML, PDF and Word. They published the syntax as an open spec.</p>
+      <p class="steal"><b>Take</b> a line can be exported as plain markdown that pulls its notes in order.</p></div>
+  </div>
+
+  <h3>Order as meaning</h3>
+  <div class="notes">
+    <div class="fn"><span class="tag">1945</span><h4><a href="https://en.wikipedia.org/wiki/Memex">Memex trails</a></h4>
+      <p>Bush proposed "a new linear sequence of microfilm frames across any arbitrary sequence", with personal comments and side trails, which you could name and pass on to someone else.</p>
+      <p class="steal"><b>Take</b> the whole model: a named path with a short note at each step, and branches off it.</p></div>
+    <div class="fn"><span class="tag">1950s–90s</span><h4><a href="https://www.clairmind.ai/wiki/folgezettel">Luhmann's Folgezettel</a></h4>
+      <p>A follow-up slip is filed right behind the one it continues, and the numbering (<code>1 → 1a → 1a1</code>) records the branch. The numbers are a fixed route through the box, with cross-references as shortcuts.</p>
+      <p class="steal"><b>Take</b> the idea that "this continues that" is a different kind of link from "see also".</p></div>
+    <div class="fn"><span class="tag">writing · desktop</span><h4><a href="https://www.literatureandlatte.com/blog/integrating-scriveners-binder-corkboard-and-outliner">Scrivener's three views</a></h4>
+      <p>Binder, corkboard and outliner show the same documents. Reorder in one and the others follow. Scrivenings mode joins a folder's documents into one scrolling text.</p>
+      <p class="steal"><b>Take</b> a line can be read as one continuous text, laid out as cards, or listed as rows.</p></div>
+    <div class="fn"><span class="tag">fiction · time</span><h4><a href="https://help.timeline.app/article/149-chronological-vs-narrative-order">Aeon Timeline two orders</a></h4>
+      <p>Chronological order always contains everything. Narrative order is opt-in, and an item can be in either or both, "so you can model more backstory than you intend to include."</p>
+      <p class="steal"><b>Take</b> the date something was written is always kept, and reading order is something you add on top.</p></div>
+    <div class="fn"><span class="tag">fiction · plotting</span><h4><a href="https://plottr.com/features/">Plottr grid</a></h4>
+      <p>Plotlines are rows, chapters are columns, and scenes are cards at the crossings. It's a two-dimensional view of connections that is really a table, so it doesn't need a free canvas.</p>
+      <p class="steal"><b>Take</b> for a map, tracks laid out as rows are easier to draw than a free graph and still legible.</p></div>
+  </div>
+
+  <h3>Structure that grows out of text</h3>
+  <div class="notes">
+    <div class="fn"><span class="tag">fiction · codex</span><h4><a href="https://www.novelcrafter.com/help/docs/codex/codex-tracking">Novelcrafter codex tracking</a></h4>
+      <p>Entry names and aliases are "instantly recognized and linked as you type", underlined in the manuscript and counted in a mentions tracker. There's a per-entry switch and optional case sensitivity.</p>
+      <p class="steal"><b>Take</b> mentions detected without any model. This is Threadz's best feature that works fully offline.</p></div>
+    <div class="fn"><span class="tag">research · Ink &amp; Switch</span><h4><a href="https://www.inkandswitch.com/potluck/">Potluck</a></h4>
+      <p>Plain text becomes structured through "searches" (patterns like <code>{number} g</code>) and annotations shown over the text. Because the state is text, undo comes free. What failed: changing a shared search broke every document that used it, and non-programmers struggled.</p>
+      <p class="steal"><b>Take</b> text stays the source of truth and structure is highlighted on top of it (<code>/todo</code> already works this way).</p>
+      <p class="skip"><b>Leave</b> patterns users write themselves. Detect names and aliases, and don't expose regex.</p></div>
+    <div class="fn"><span class="tag">objects</span><h4><a href="https://docs.capacities.io/tutorials/networked-note-taking">Capacities</a></h4>
+      <p>Typed objects. When a link sits in a property, the property's name becomes the label on the graph edge.</p>
+      <p class="steal"><b>Take</b> a label on a connection comes from what the user already wrote, not from a relation type they had to define.</p></div>
+    <div class="fn"><span class="tag">graph · 1998–</span><h4><a href="https://assets.thebrain.com/documents/TheBrain12/TheBrain12-User-Guide_V9.pdf">TheBrain plex</a></h4>
+      <p>The active thought sits in the middle, parents above, children below, jumps to the side. Click one and it moves to the centre. The same links are also listed under the note as plain text.</p>
+      <p class="steal"><b>Take</b> tap a neighbour to make it the current note. That's the "game-like navigation" you described.</p>
+      <p class="skip"><b>Leave</b> the requirement to decide parent vs child vs jump for every link.</p></div>
+    <div class="fn"><span class="tag">outliner · power</span><h4><a href="https://tana.inc/articles/intro-to-supertags-search-nodes-and-views">Tana search nodes</a></h4>
+      <p>A saved search can live inside a note and refer to its PARENT, so every #project automatically lists its own #tasks.</p>
+      <p class="steal"><b>Take</b> a character's line can show "every note that mentions me" without any manual linking.</p></div>
+  </div>
+
+  <h3>Space, and what it costs</h3>
+  <div class="notes">
+    <div class="fn"><span class="tag">research · tablet</span><h4><a href="https://www.inkandswitch.com/capstone/">Capstone</a></h4>
+      <p>A "shelf" that works as a visible clipboard holding several items across devices. Zooming in to peek was intuitive. Their finding: the DOM is "misaligned with game-like continuous worlds", and choosing a stylus tool remained unsolved.</p>
+      <p class="steal"><b>Take</b> a visible tray that holds several notes while you move around. That's the carry gesture below.</p>
+      <p class="skip"><b>Leave</b> an infinite canvas built on the web stack as your first map.</p></div>
+    <div class="fn"><span class="tag">tablet · canvas</span><h4><a href="https://www.inkandswitch.com/muse/">Muse</a></h4>
+      <p>No chrome, 120 fps, boards nested inside boards with zoom. Users said very wide and very tall boards felt "wobbly" and disorienting. Their conclusion: "extending to phones and desktops presents both technical and UI design problems."</p>
+      <p class="steal"><b>Take</b> speed counts as a feature, and zoom should snap to fixed levels.</p></div>
+    <div class="fn"><span class="tag">desktop</span><h4><a href="https://www.literatureandlatte.com/scapple/overview">Scapple</a></h4>
+      <p>"Every note is equal". Connections are optional and there's no central node. Made by the Scrivener team as a messy pre-writing space, and never released for iOS.</p>
+      <p class="steal"><b>Take</b> a loose area where notes don't have to be connected yet. That's the pool.</p></div>
+    <div class="fn"><span class="tag">spec</span><h4><a href="https://jsoncanvas.org/spec/1.0/">JSON Canvas</a></h4>
+      <p>Obsidian's open, MIT-licensed format: nodes with x, y, width and height; edges with <code>fromSide</code>, <code>toSide</code>, <code>label</code> and arrow ends; groups.</p>
+      <p class="steal"><b>Take</b> if a free-form canvas ever ships, export to this format and don't invent another.</p></div>
+    <div class="fn"><span class="tag">ai · resurfacing</span><h4><a href="https://tfthacker.substack.com/p/collecting-connecting-and-inspiring-with-napkin-748bb1337ee1">Napkin</a></h4>
+      <p>The note you're on sits in the middle with a "swarm" of related notes around it. Reviewers call clicking through it "addictive". Each morning it resurfaces a few notes to swipe away or pin.</p>
+      <p class="steal"><b>Take</b> tapping to the next note is a pleasure in itself, and suggestions are small cards you keep or swipe away.</p>
+      <p class="skip"><b>Leave</b> connections based only on tag overlap.</p></div>
+    <div class="fn"><span class="tag">capture</span><h4><a href="https://docs.getdrafts.com/gettingstarted/">Drafts · Things 3</a></h4>
+      <p>Drafts opens straight into a blank editor and you decide what to do with the text afterwards. In Things 3 you drag the + button to the exact spot where the new item should go.</p>
+      <p class="steal"><b>Take</b> capture goes to the pool with no choices to make, and placing a note is a drag to a specific spot between two others.</p></div>
+  </div>
+</section>
+
+<section id="games">
+  <div class="eyebrow">Games</div>
+  <h2>Games that are about connecting clues</h2>
+  <p>You mentioned War Thunder: a simplified control scheme on top of a deep simulation. Several games are built around making connections, and they've solved "show me what I know and what's still missing" better than any notes app.</p>
+  <div class="notes">
+    <div class="fn"><span class="tag">exploration</span><h4><a href="https://outerwilds.fandom.com/wiki/Computer">Outer Wilds ship log</a></h4>
+      <p>Two views of the same facts. <b>Map mode</b> groups them by place. <b>Rumor mode</b> shows them as cards with arrows for how one fact points to another. Entries you haven't finished are marked "there's more to explore here."</p>
+      <p class="steal"><b>Take</b> two modes, <em>where it lives</em> and <em>what it leads to</em>, plus visible loose ends. A <code>/todo</code> or an open question on a note is a "more to explore" marker on the map.</p></div>
+    <div class="fn"><span class="tag">rpg</span><h4><a href="https://discoelysium.wiki.gg/wiki/Thought_Cabinet">Disco Elysium thought cabinet</a></h4>
+      <p>Ideas are "the loot from conversations". A thought appears as an orb that you accept or reject. Only a few slots can be active at a time, and working a thought through takes time.</p>
+      <p class="steal"><b>Take</b> AI suggestions appear as orbs you accept or dismiss, never as silent changes. A small number of "active lines" gives you focus.</p></div>
+    <div class="fn"><span class="tag">fmv · mystery</span><h4><a href="https://en.wikipedia.org/wiki/Her_Story_(video_game)">Her Story</a></h4>
+      <p>The whole game is a search box over interview clips. You piece the story together out of order, one query at a time. "If you can Google, you can play."</p>
+      <p class="steal"><b>Take</b> search works as navigation. Chronology doesn't have to be the structure for a story to hold together.</p></div>
+    <div class="fn"><span class="tag">adventure</span><h4>Point-and-click inventory</h4>
+      <p>Pick up an item, carry it across rooms, use it on something. One thumb, no dragging across the whole screen, and it works through any number of screen changes.</p>
+      <p class="steal"><b>Take</b> this is how to make a connection on a phone. See Q3.</p></div>
+  </div>
+</section>
+
+<section id="model">
+  <div class="eyebrow">The model</div>
+  <h2>Lines, stops and the pool</h2>
+  <p>A metro map is the one kind of network diagram most people read without training. It's legible because each line has one route, and the interesting points are where lines cross. That's the same shape as a writer's material: several lines of thought, and a few notes where they meet.</p>
+
+  <figure class="scroll">
+    <svg viewBox="0 0 720 330" width="720" role="img" aria-labelledby="mapT mapD" style="max-width:none">
+      <title id="mapT">Threadz as a metro map</title>
+      <desc id="mapD">Three coloured lines (Arya's arc, Winter, Chapter 3) pass through notes. Two notes are interchanges shared by two lines. Loose notes sit in a pool in the corner; one has a dashed suggested connection.</desc>
+      <path d="M40 160 H 690" stroke="var(--red)" stroke-width="8" fill="none" stroke-linecap="round"/>
+      <path d="M50 280 H 180 L 300 160 L 420 40 H 690" stroke="var(--blue)" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M380 300 L 520 160 L 600 80 H 690" stroke="var(--green)" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <g stroke-width="4" fill="var(--station)">
+        <circle cx="60" cy="160" r="7" stroke="var(--red)"/><circle cx="170" cy="160" r="7" stroke="var(--red)"/><circle cx="420" cy="160" r="7" stroke="var(--red)"/><circle cx="640" cy="160" r="7" stroke="var(--red)"/>
+        <circle cx="60" cy="280" r="7" stroke="var(--blue)"/><circle cx="170" cy="280" r="7" stroke="var(--blue)"/><circle cx="540" cy="40" r="7" stroke="var(--blue)"/><circle cx="650" cy="40" r="7" stroke="var(--blue)"/>
+        <circle cx="400" cy="280" r="7" stroke="var(--green)"/><circle cx="650" cy="80" r="7" stroke="var(--green)"/>
+      </g>
+      <g stroke="var(--fg)" stroke-width="4" fill="var(--station)">
+        <circle cx="300" cy="160" r="11"/><circle cx="520" cy="160" r="11"/>
+      </g>
+      <g font-size="11" fill="var(--fg)">
+        <text x="286" y="190" text-anchor="end">the wolf dream</text>
+        <text x="534" y="190">the list</text>
+        <text x="170" y="182" text-anchor="middle" fill="var(--fg2)">Needle</text>
+        <text x="420" y="182" text-anchor="middle" fill="var(--fg2)">Harrenhal</text>
+        <text x="60" y="306" text-anchor="middle" fill="var(--fg2)">first snow</text>
+        <text x="540" y="24" text-anchor="middle" fill="var(--fg2)">cold hands</text>
+        <text x="408" y="304" fill="var(--fg2)">ch3 opening</text>
+      </g>
+      <g><circle cx="664" cy="30" r="8" fill="var(--yellow)"/><text x="664" y="34" font-size="11" text-anchor="middle" fill="var(--bg)" font-weight="600">?</text></g>
+      <g font-size="10" fill="var(--muted)"><text x="600" y="220" letter-spacing="1.5">POOL</text></g>
+      <g fill="var(--muted)"><circle cx="604" cy="246" r="5"/><circle cx="628" cy="262" r="5"/><circle cx="652" cy="240" r="5"/><circle cx="676" cy="268" r="5"/><circle cx="620" cy="292" r="5"/><circle cx="660" cy="300" r="5"/></g>
+      <path d="M652 234 L 642 170" stroke="var(--purple)" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+      <text x="566" y="266" font-size="10" fill="var(--purple)" text-anchor="end">suggested</text>
+      <g font-size="11" font-weight="500">
+        <rect x="40" y="10" width="10" height="10" rx="2" fill="var(--red)"/><text x="56" y="19" fill="var(--fg)">Arya's arc</text>
+        <rect x="140" y="10" width="10" height="10" rx="2" fill="var(--blue)"/><text x="156" y="19" fill="var(--fg)">Winter (theme)</text>
+        <rect x="260" y="10" width="10" height="10" rx="2" fill="var(--green)"/><text x="276" y="19" fill="var(--fg)">Chapter 3 draft</text>
+      </g>
+    </svg>
+    <figcaption>Lines are threads (ordered, named paths). Stations are notes. Interchanges are notes on more than one line. The pool holds notes on no line; purple dashes are suggestions from main. The yellow "?" is a loose end: an open <code>/todo</code> or question on that note.</figcaption>
+  </figure>
+
+  <h3>What this means for the data</h3>
+  <p>The note (today's message: id, content, edit history) doesn't change. What's new is a <b>stop</b>: one small record saying that note N is on line L at position P. Today every message is exactly one stop on its thread, at position <code>seq</code>, so moving to this model is a backfill that doesn't change anything the user sees yet.</p>
+  <ul>
+    <li><b>The pool</b> is every note with no stops. This needs no new concept or new screen logic.</li>
+    <li><b>Branching,</b> which <code>inspiration.md</code> parks as "hard, needs parent pointers", comes for free. A branch is a new line that shares the first N stops. Edits to shared notes show up on both lines because it's the same note. "Clone from here" stops making copies.</li>
+    <li><b>Links</b> stay as they are (<code>[[ ]]</code> in the text, stored by id). A link made with a gesture instead of typing gets a small link record, with an optional one-line reason. That's the same split you already have for todos: a <code>/todo</code> in the text or a <code>meta.todo</code> flag.</li>
+    <li><b>Order within a line is chosen by the user.</b> <code>seq</code> becomes "when it was written", and a stop's position becomes "where it goes in this line".</li>
+  </ul>
+</section>
+
+<section id="hard">
+  <div class="eyebrow">Hard questions</div>
+  <h2>The nine decisions that shape everything else</h2>
+  <p>I've skipped the easy ones (search, themes, export). Each question below has the evidence, the choice, my recommendation, and what's still open.</p>
+
+  <div class="q"><div class="num">Q1</div><h3>What is a connection, exactly?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Inline links are portable but can't say why they exist. Drawn arrows carry meaning but disappear on export. Typed relations are precise but need a schema up front. Capacities labels a graph edge with the name of the property the link sits in. Are.na: "connections are paths we lay out for each other."</p></dd>
+      <dt>Choice</dt><dd><p>Links in the text only, link records only, positions on a canvas, or typed relations.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> Two kinds, and nothing else stores meaning. <b>"Follows from"</b> is being next to each other on a line (a stop). <b>"Relates to"</b> is a link, either inline or a record, with an optional reason written in plain words ("father of", "contradicts", "same smell as ch. 1"). A canvas position is view state and syncs as layout, not meaning. A model's similarity score is a suggestion until you accept it.</p></div>
+    <div class="rec open" style="margin-top:10px"><p><b>Still open.</b> Whether reasons that get reused turn into kinds. If you write "father of" five times, the app could offer it as a label, and an optional reverse label ("child of") on top of that. Letting labels harden into kinds only after you've used them keeps TheBrain's precision without its setup cost.</p></div>
+  </div>
+
+  <div class="q"><div class="num">Q2</div><h3>How do you see connections without a hairball?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Global graphs fail (Obsidian). The views that work all show one neighbourhood: the local graph, TheBrain's plex, Napkin's swarm, Heptabase's "appears on" list, Roam's linked references. Xanadu, Matuschak, gwern and CK3 all show the connected thing <em>in context</em>, without navigating away.</p></dd>
+      <dt>Choice</dt><dd><p>One big graph screen, or connections shown at the place you're already reading.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> Three distances, each one tap further than the last, all built around the note you're on.</p>
+      <ol>
+        <li><b>In the text.</b> The gutter you already have (the todo checkbox column) gets a coloured dot for each other line the note is on, and a small count of incoming links. Mentions are underlined the way Novelcrafter does it.</li>
+        <li><b>Beside the text.</b> Tap a dot to get a <em>peek</em>: the other note with its previous and next stops on <em>that</em> line (Xanadu's parallel documents). A peek can open another peek. On desktop, peeks stack as columns (Matuschak).</li>
+        <li><b>The station board.</b> A screen for one note: every line through it with the previous and next stop on each, then links in, links out, and mentions. Tap a stop to go there. On a phone this replaces the map.</li>
+      </ol></div>
+  </div>
+
+  <figure class="scroll">
+    <div class="phones" role="img" aria-label="Three phone mockups: gutter dots in a thread, a peek sheet showing a note in its other line, and a station board">
+      <div class="phone">
+        <div class="ttl">1 · in the text</div>
+        <div class="bar">Arya's arc</div>
+        <div class="row"><span class="ticks"><i style="background:var(--red)"></i></span>Needle hidden under the loose stone, not the bed.</div>
+        <div class="row sel"><span class="ticks"><i style="background:var(--red)"></i><i style="background:var(--blue)"></i></span>The wolf dream: she runs with <span class="u">Nymeria</span> and tastes snow she has never seen.</div>
+        <div class="row"><span class="ticks"><i style="background:var(--red)"></i></span>At <span class="u">Harrenhal</span> she stops saying her name out loud.</div>
+        <div class="row"><span class="ticks"><i style="background:var(--red)"></i><i style="background:var(--green)"></i></span>The list, whispered like a prayer. <span class="lk">↗ 3</span></div>
+        <div class="tabbar"><span>Lines</span><span>Pool</span><span>Todos</span><span>⚙</span></div>
+      </div>
+      <div class="phone">
+        <div class="ttl">2 · beside the text</div>
+        <div class="bar">Arya's arc</div>
+        <div class="row dim">Needle hidden under the loose stone…</div>
+        <div class="row dim">The wolf dream: she runs with Nymeria…</div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="ctx"><span class="dot" style="background:var(--blue)"></span> Winter · stop 3 of 6</div>
+          <div class="row dim" style="background:var(--bg2)">…first snow on the Wall, no one looks up.</div>
+          <div class="row sel" style="background:var(--bg)"><span class="ticks"><i style="background:var(--red)"></i><i style="background:var(--blue)"></i></span>The wolf dream: she runs with Nymeria and tastes snow…</div>
+          <div class="row dim" style="background:var(--bg2)">Cold hands. Everyone in the north has cold hands. <span class="lk">↗</span></div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap"><span class="pill">Open line</span><span class="pill">Peek next ↗</span></div>
+        </div>
+      </div>
+      <div class="phone">
+        <div class="ttl">3 · station board</div>
+        <div class="stationname">The wolf dream</div>
+        <div class="board">
+          <div class="lineblock" style="border-left-color:var(--red)"><div class="ln">Arya's arc · 2/5</div><div class="nav"><span>← Needle</span><span>Harrenhal →</span></div></div>
+          <div class="lineblock" style="border-left-color:var(--blue)"><div class="ln">Winter · 3/6</div><div class="nav"><span>← first snow</span><span>cold hands →</span></div></div>
+          <div class="lineblock" style="border-left-color:var(--rule)"><div class="ln">Linked from · 2</div><div>“Nymeria is the id” · “ch3 opening”</div></div>
+          <div class="lineblock" style="border-left-color:var(--purple)"><div class="ln">Mentions</div><div><span class="u">Nymeria</span> · 7 notes</div></div>
+          <div class="orb">Might belong on <b>Chapter 3 draft</b>, before “the list”.<div class="acts"><span>Place</span><span>Dismiss</span></div></div>
+        </div>
+        <div class="tabbar"><span>Lines</span><span>Pool</span><span>Todos</span><span>⚙</span></div>
+      </div>
+    </div>
+    <figcaption>Three distances, all on a phone. Dots in the gutter are the other lines this note is on. A peek shows the connected note inside its own line. The station board is the list-shaped map: tap a stop to travel to it. The dashed card is an AI suggestion shown as an accept-or-dismiss orb.</figcaption>
+  </figure>
+
+  <div class="q"><div class="num">Q3</div><h3>How do you <em>make</em> a connection with one thumb?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>No product has solved this. Heptabase mobile couldn't draw arrows, Campfire's relationship web isn't on mobile, and Muse handed the phone an inbox. What does work on phones: typing a trigger (<code>[[</code>, <code>((</code>), Things' drag-to-a-spot, Napkin's tap-to-recentre, Capstone's visible shelf.</p></dd>
+      <dt>Choice</dt><dd><p>Typing only, a miniature canvas, or a new gesture.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation: carry.</b> Long-press a note to pick it up. It docks as a chip above the tab bar and stays there while you move around the app (the point-and-click inventory, Capstone's shelf). Drop it between two stops to place it on that line, or on a note to link the two. Once it lands, an optional "why?" field appears, pre-filled with a suggestion from main when one is available. You can carry several notes at once. It works offline and needs no canvas. On desktop the same action is drag and drop, and typing <code>[[</code> stays for linking while you write.</p></div>
+  </div>
+
+  <figure class="scroll">
+    <div class="phones" role="img" aria-label="Four-step storyboard of the carry gesture">
+      <div class="phone" style="min-height:330px">
+        <div class="ttl">a · lift</div>
+        <div class="bar">Pool</div>
+        <div class="row">Winning means choosing a lower table.</div>
+        <div class="row lifted sel">She never cries at funerals, only at weddings.</div>
+        <div class="row">Smell of pitch at the harbour.</div>
+      </div>
+      <div class="phone" style="min-height:330px">
+        <div class="ttl">b · carry</div>
+        <div class="bar">Chapter 3 draft</div>
+        <div class="row">The feast begins badly.</div>
+        <div class="row">Her uncle toasts the dead.</div>
+        <div class="row">The list, whispered like a prayer.</div>
+        <div class="carry"><span class="dot" style="background:var(--orange)"></span>Carrying 1 · never cries…</div>
+        <div class="tabbar"><span>Lines</span><span>Pool</span><span>Todos</span><span>⚙</span></div>
+      </div>
+      <div class="phone" style="min-height:330px">
+        <div class="ttl">c · aim</div>
+        <div class="bar">Chapter 3 draft</div>
+        <div class="row">The feast begins badly.</div>
+        <div class="drop"></div>
+        <div class="row">Her uncle toasts the dead.</div>
+        <div class="row">The list, whispered like a prayer.</div>
+        <div class="carry" style="opacity:.6">drop between · or on a note to link</div>
+      </div>
+      <div class="phone" style="min-height:330px">
+        <div class="ttl">d · placed</div>
+        <div class="bar">Chapter 3 draft</div>
+        <div class="row">The feast begins badly.</div>
+        <div class="row sel"><span class="ticks"><i style="background:var(--green)"></i></span>She never cries at funerals, only at weddings.</div>
+        <div class="row">Her uncle toasts the dead.</div>
+        <div class="toast">Placed on Chapter 3 · Undo</div>
+      </div>
+    </div>
+    <figcaption>Carry: lift from anywhere, move freely, drop between two stops (place) or onto a note (link). The note leaves the pool because it now has a stop.</figcaption>
+  </figure>
+
+  <div class="q"><div class="num">Q4</div><h3>Where does time go?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Roam and Logseq organise everything by day. Are.na refuses to sort by time. Aeon keeps chronological order for everything and makes narrative order opt-in. Her Story tells a coherent story entirely out of order. Threadz today: <code>seq</code> is the order within a thread and the only one.</p></dd>
+      <dt>Choice</dt><dd><p>This is what "neutral towards time" means in practice. There are three different clocks, and today's app only has the first.</p></dd>
+    </dl>
+  </div>
+
+  <figure class="scroll">
+    <svg viewBox="0 0 720 210" width="720" role="img" aria-labelledby="clkT" style="max-width:none">
+      <title id="clkT">The same five notes in three orders</title>
+      <g font-size="11" fill="var(--muted)" letter-spacing="1"><text x="0" y="38">WRITTEN</text><text x="0" y="108">LINE ORDER</text><text x="0" y="178">STORY TIME</text></g>
+      <g stroke-width="2" fill="none" opacity=".55">
+        <path d="M160 40 C 160 75, 400 70, 400 105" stroke="var(--red)"/>
+        <path d="M280 40 C 280 75, 160 70, 160 105" stroke="var(--blue)"/>
+        <path d="M400 40 C 400 75, 640 70, 640 105" stroke="var(--green)"/>
+        <path d="M520 40 C 520 75, 280 70, 280 105" stroke="var(--purple)"/>
+        <path d="M640 40 C 640 75, 520 70, 520 105" stroke="var(--orange)"/>
+        <path d="M400 110 C 400 145, 520 140, 520 175" stroke="var(--red)"/>
+        <path d="M160 110 C 160 145, 160 140, 160 175" stroke="var(--blue)"/>
+        <path d="M640 110 C 640 145, 400 140, 400 175" stroke="var(--green)"/>
+        <path d="M280 110 C 280 145, 640 140, 640 175" stroke="var(--purple)"/>
+        <path d="M520 110 C 520 145, 280 140, 280 175" stroke="var(--orange)"/>
+      </g>
+      <g font-size="11" text-anchor="middle">
+        <g><rect x="110" y="26" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--red)" stroke-width="2"/><text x="160" y="42" fill="var(--fg)">the list</text></g>
+        <g><rect x="230" y="26" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--blue)" stroke-width="2"/><text x="280" y="42" fill="var(--fg)">Needle</text></g>
+        <g><rect x="350" y="26" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--green)" stroke-width="2"/><text x="400" y="42" fill="var(--fg)">wolf dream</text></g>
+        <g><rect x="470" y="26" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--purple)" stroke-width="2"/><text x="520" y="42" fill="var(--fg)">Harrenhal</text></g>
+        <g><rect x="590" y="26" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--orange)" stroke-width="2"/><text x="640" y="42" fill="var(--fg)">first kill</text></g>
+
+        <g><rect x="110" y="96" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--blue)" stroke-width="2"/><text x="160" y="112" fill="var(--fg)">Needle</text></g>
+        <g><rect x="230" y="96" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--purple)" stroke-width="2"/><text x="280" y="112" fill="var(--fg)">Harrenhal</text></g>
+        <g><rect x="350" y="96" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--red)" stroke-width="2"/><text x="400" y="112" fill="var(--fg)">the list</text></g>
+        <g><rect x="470" y="96" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--orange)" stroke-width="2"/><text x="520" y="112" fill="var(--fg)">first kill</text></g>
+        <g><rect x="590" y="96" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--green)" stroke-width="2"/><text x="640" y="112" fill="var(--fg)">wolf dream</text></g>
+
+        <g><rect x="110" y="166" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--blue)" stroke-width="2"/><text x="160" y="182" fill="var(--fg)">Needle</text></g>
+        <g><rect x="230" y="166" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--orange)" stroke-width="2"/><text x="280" y="182" fill="var(--fg)">first kill</text></g>
+        <g><rect x="350" y="166" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--green)" stroke-width="2"/><text x="400" y="182" fill="var(--fg)">wolf dream</text></g>
+        <g><rect x="470" y="166" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--red)" stroke-width="2"/><text x="520" y="182" fill="var(--fg)">the list</text></g>
+        <g><rect x="590" y="166" width="100" height="24" rx="12" fill="var(--card)" stroke="var(--purple)" stroke-width="2"/><text x="640" y="182" fill="var(--fg)">Harrenhal</text></g>
+      </g>
+    </svg>
+    <figcaption>One set of notes, three clocks. <b>Written</b>: when you had the idea (always recorded, like Aeon's chronological order). <b>Line order</b>: where it goes in the argument or chapter (chosen by you, per line). <b>Story time</b>: when it happens in the fiction (optional, later). Today Threadz only has the first, and uses it as the structure.</figcaption>
+  </figure>
+  <div class="rec"><p><b>Recommendation.</b> The time a note was written is always kept and always available as a sort, but it never decides structure. A line's order is whatever the user chose. The pool is sorted by when notes were written, because it's an inbox and that's honest there. "Resurfacing" changes from "old" to "unconnected for a while": the note that's been in the pool longest, or a line nobody has added to in a while.</p></div>
+  <div class="rec open" style="margin-top:10px"><p><b>Still open.</b> Story time is worth adding only if the target is fiction. It's a date or chapter field per stop, and it would give you Aeon's contradiction checks ("she's 11 here and 13 two scenes earlier").</p></div>
+
+  <div class="q"><div class="num">Q5</div><h3>One home per note, or many?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Every tool that takes connecting seriously lets an item sit in many places: Are.na, Heptabase, Supernotes, Workflowy, Scrivener collections. The cost shows up as confusion (Supernotes' "why does this appear twice?") and as a harder sync.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> Many. Keep an <em>origin</em> (the line where you wrote it) for provenance and default navigation, and show a mark on any note that's on other lines too (the gutter dots). Removing a note from a line removes the stop. Deleting the note warns first ("on 3 lines"). Stops merge by id with a removal marker, exactly like messages do today, so union merge still holds.</p></div>
+  </div>
+
+  <div class="q"><div class="num">Q6</div><h3>What is the AI's job?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Napkin's automatic connections are fun to browse but built on shallow tags. Smart Connections surfaces related notes while you write. Mem's AI-only search lost people's trust. Linus Lee's work treats models as <em>lenses</em>: ways to look at your notes that turn up surprises. Your stance: main does the heavy lifting, the phone shows precomputed results.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> Four jobs, all on main, all shown as orbs you accept or dismiss, all in the derived layer that never causes a merge conflict.</p>
+      <ul>
+        <li><b>Scout:</b> suggests a line, and a position, for a note in the pool.</li>
+        <li><b>Surveyor:</b> proposes a new line when several pool notes cluster together.</li>
+        <li><b>Scribe:</b> drafts the reason for a connection you just made.</li>
+        <li><b>Editor:</b> reads a line in order and flags where the jump between two stops isn't explained. No graph tool can do this, because it only makes sense for sequences. It's the one AI feature that follows directly from "coherent paths".</li>
+      </ul></div>
+  </div>
+
+  <div class="q"><div class="num">Q7</div><h3>Is a canvas needed?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Capstone: the web DOM fights continuous spatial worlds. Muse: big boards feel wobbly, and phones are unsolved. Plottr and Aeon get two-dimensional views out of grids, with no free placement.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> Build a <em>computed</em> map first and a free canvas later. The first map is a <b>tracks view</b> on desktop: each line is a row, positions run left to right, and shared notes are drawn as vertical connectors between rows (Plottr's grid combined with a subway diagram). Nothing is placed by hand, so there's nothing to author on a phone and nothing to sync but data. A free-form "desk" canvas can come afterwards as a separate view, desktop only, with positions as layout state and export to JSON Canvas.</p></div>
+    <div class="rec open" style="margin-top:10px"><p><b>Still open.</b> Real metro-map layout (lines bent only at 45°) is a research problem. Tracks avoid it. Try the harder layout only if tracks feel too flat.</p></div>
+  </div>
+
+  <div class="q"><div class="num">Q8</div><h3>How much structure, and who adds it?</h3>
+    <dl class="facts">
+      <dt>Evidence</dt><dd><p>Tana and Capacities: power comes from typing things up front. Potluck: structure should grow gradually out of the text, and user-written patterns don't scale. Novelcrafter: names and aliases alone get writers most of the way.</p></dd>
+    </dl>
+    <div class="rec"><p><b>Recommendation.</b> One piece of structure only: any line can be marked as being <em>about</em> something (a character, a place, an idea), with aliases. Every note that mentions one of those names gets underlined and shows up under that line. That's all done on the device with text matching, fully offline. No schemas, no fields, no user-written regex. Labels on connections can harden into kinds later (Q1).</p></div>
+  </div>
+
+  <div class="q"><div class="num">Q9</div><h3>What does it cost in the code you have?</h3>
+    <p>This does change decisions that are currently load-bearing. That's the real price, so here it is in full.</p>
+    <div class="scroll">
+    <table class="cost">
+      <thead><tr><th>Today</th><th>Becomes</th><th>Risk</th></tr></thead>
+      <tbody>
+        <tr><td>messages.seq</td><td>Order of writing. Order within a line moves to a stop's position, as a sortable string key so a note can be inserted between two others without renumbering.</td><td>FTS triggers and <code>group_concat … ORDER BY seq</code> in <code>backend/db.ts</code> need to follow the new order.</td></tr>
+        <tr><td>"never reordered"</td><td>Notes are still never deleted by a sync, but a line can be reordered.</td><td>README's load-bearing section needs rewriting. Conflicting positions: the most recent move wins for each stop.</td></tr>
+        <tr><td>threadHash</td><td>Also covers stop ids and positions.</td><td>Hash tests need updating, and a pull must notice when only order changed.</td></tr>
+        <tr><td>message.threadId</td><td>Origin. Membership lives in stops.</td><td>The <code>?thread=&amp;msg=</code> deep link, the todo jump and reference ranges all need to know which line they're pointing into.</td></tr>
+        <tr><td>Clone from here</td><td>New line from here, sharing the same notes.</td><td>Old clones stay as copies. That's fine.</td></tr>
+        <tr><td>annotations</td><td>Can serve as the link reason: a note attached to a link record.</td><td>Needs a design pass: keep the notes-on-messages feature separate, or merge the two.</td></tr>
+        <tr><td>SyncPayload</td><td>Adds <code>stops</code> and <code>links</code>, both merged by id.</td><td>Handled the same way as annotations and deletes today. Main's backups cover them.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<section id="ledger">
+  <div class="eyebrow">Ledger</div>
+  <h2>What we need for sure, and what's still open</h2>
+  <div class="ledger">
+    <div class="box">
+      <h4 style="color:var(--green)">Needed for sure</h4>
+      <ul>
+        <li>Stops: a note on many lines, in an order you choose</li>
+        <li>The pool, as notes with no stops (capture lands here)</li>
+        <li>Carry: place and link with one thumb, offline</li>
+        <li>Gutter dots and incoming-link counts in the text</li>
+        <li>Peek that can open further peeks (columns on desktop)</li>
+        <li>Station board as the phone's map</li>
+        <li>Links you can follow in both directions (you already store them by id)</li>
+        <li>Mentions via "about" lines and aliases (offline)</li>
+        <li>Read a line as one continuous text, and export it as markdown</li>
+        <li>Search as navigation (⌘K and full-text search already exist)</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4 style="color:var(--yellow)">Open</h4>
+      <ul>
+        <li>Reasons on links: optional (my pick) or encouraged?</li>
+        <li>When labels harden into kinds, and whether they get reverse labels</li>
+        <li>Story time: only if the target is fiction</li>
+        <li>Tracks view vs a real metro layout vs a free canvas desk</li>
+        <li>Which AI job ships first (I'd pick Scout)</li>
+        <li>Merge annotations into link reasons, or keep them separate</li>
+        <li>How many "active lines" are pinned for focus (Disco Elysium's slots)</li>
+        <li>Name: "thread" or "line" in the UI</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="method">
+  <div class="eyebrow">Method</div>
+  <h2>How to decide on features from now on</h2>
+  <p>Six questions to run every idea through, before and during the build:</p>
+  <ol class="filter">
+    <li><b>Which distance does it serve?</b> In the text, beside it, or the board/map. If it serves none, it isn't helping anyone see connections, so it needs its own justification (the Todos tab has one, most things won't).</li>
+    <li><b>Can you do it with one thumb, offline?</b> If making it needs a desktop, say so up front and give the phone a way to read it.</li>
+    <li><b>Is it meaning or layout?</b> Meaning (text, stops, links) syncs and merges. Layout (positions, zoom, open peeks) stays on the device.</li>
+    <li><b>Does it survive as markdown?</b> A line exported to markdown has to read correctly on its own.</li>
+    <li><b>Does the AI suggest or decide?</b> Suggest, as an orb you can see and undo. Always.</li>
+    <li><b>Which clock does it use, and did the user pick it?</b> Time-of-writing as the default structure is what makes the app feel like a chat log.</li>
+  </ol>
+
+  <h3>Build order</h3>
+  <p>Each step can be shipped and used on its own, and each one teaches you something before the next.</p>
+  <div class="build">
+    <ol>
+      <li><b>Stops, backfilled.</b><span>One stop per existing message, position taken from <code>seq</code>. Nothing visible changes, and it proves sync, hashing and deep links still work. Then add drag-to-reorder within a thread.</span></li>
+      <li><b>The pool and carry.</b><span>Capture goes to the pool. Long-press to lift, drop to place. "Clone from here" becomes "new line from here".</span></li>
+      <li><b>Gutter dots, peek and "linked from".</b><span>The first time you'll actually <em>see</em> connections. Peeks that open further peeks.</span></li>
+      <li><b>Station board, and "about" lines with mentions.</b><span>The phone's map and the best offline feature. Reading a line as one continuous text, plus markdown export, fits here too.</span></li>
+      <li class="later"><b>AI orbs from main.</b><span>Scout first, then the Editor pass over a line.</span></li>
+      <li class="later"><b>Tracks view on desktop.</b><span>The computed map.</span></li>
+      <li class="later"><b>Desk canvas.</b><span>Only if tracks feel too flat. JSON Canvas export.</span></li>
+    </ol>
+  </div>
+  <p>What I'd park: typed relation schemas, custom-pattern structure (Potluck's lesson), a global graph, and in-thread chat branching (a branch is now just a line sharing stops). Keep customization to choosing views and palettes. Every product that offered deep configuration ended up spending its effort on the settings panel.</p>
+</section>
+
+<section id="asks">
+  <div class="eyebrow">Your calls</div>
+  <h2>Four questions only you can answer</h2>
+  <ol class="asks">
+    <li><b>Is fiction the main use?</b> If yes, "about" lines, mentions and story time move up. If the audience is thinkers and essayists more broadly, the pool, carry and the Editor pass lead.</li>
+    <li><b>Can a thread stop being a chat log?</b> Letting you reorder notes breaks the look of a timestamped feed you add to at the bottom. You could keep that look as an optional view ("as written"). But the default reading of a thread becomes its line order.</li>
+    <li><b>Where do you land when you open the app?</b> The pool (Drafts' "text first" model) or the list of lines (today). I lean towards the pool on a phone and lines on desktop.</li>
+    <li><b>Should link reasons be encouraged?</b> A one-line "why" on each connection is what makes a web of notes into an argument. It's also friction. My pick is optional, with the field focused and pre-filled.</li>
+  </ol>
+</section>
+
+<section id="sources">
+  <div class="eyebrow">Sources</div>
+  <h2>Read for this report</h2>
+  <p style="font-size:.88rem;color:var(--muted)">Pages were read through a summarizing fetch tool or search results, so treat details as leads to verify. None of the apps were run.</p>
+  <div class="src">
+    <b>Tools for thought</b>
+    <p><a href="https://wiki.heptabase.com/fundamental-elements">Heptabase: fundamental elements</a> · <a href="https://wiki.heptabase.com/user-interface-logic">UI logic</a> · <a href="https://wiki.heptabase.com/changelog/2025">2025 changelog</a> · <a href="https://www.goedel.io/p/unleashing-the-mind-heptabase">Gödel's review (mobile limits)</a> · <a href="https://medium.com/sheracaolity/my-vision-project-meta-e0bedd1467b2">Alan Chan's vision</a></p>
+    <p><a href="https://help.are.na/docs/llms-full.txt">Are.na docs</a> · <a href="https://supernotes.app/features/multi-parent-nesting/">Supernotes multi-parent</a> · <a href="https://community.supernotes.app/t/why-do-cards-appear-multiple-times-in-outline/1749">"appear multiple times"</a> · <a href="https://workflowy.com/feature/mirrors/">Workflowy mirrors</a></p>
+    <p><a href="https://tana.inc/articles/intro-to-supertags-search-nodes-and-views">Tana supertags &amp; search nodes</a> · <a href="https://docs.capacities.io/tutorials/networked-note-taking">Capacities networked notes</a> · <a href="https://thesweetsetup.com/a-thorough-beginners-guide-to-roam-research/">Roam guide (sidebar, references)</a></p>
+    <p><a href="https://obsidian.md/help/plugins/graph">Obsidian graph view</a> · <a href="https://danholloran.me/posts/making-obsidians-graph-view-actually-useful">Holloran on the hairball</a> · <a href="https://www.eleanorkonik.com/p/its-not-just-a-pretty-gimmick-in-defense-of-obsidians-graph-view">Konik's defence</a> · <a href="https://jsoncanvas.org/spec/1.0/">JSON Canvas 1.0</a></p>
+    <p><a href="https://tfthacker.substack.com/p/collecting-connecting-and-inspiring-with-napkin-748bb1337ee1">Napkin (TfTHacker)</a> · <a href="https://kinopio.club/help/posts/creating-cards-and-connections/">Kinopio</a> · <a href="https://www.literatureandlatte.com/scapple/overview">Scapple</a> · <a href="https://docs.getdrafts.com/gettingstarted/">Drafts</a> · <a href="https://culturedcode.com/things/support/articles/2803582/">Things gestures</a> · <a href="https://www.liquidtext.net/liquidtextadeeperdive">LiquidText</a></p>
+    <p><a href="https://assets.thebrain.com/documents/TheBrain12/TheBrain12-User-Guide_V9.pdf">TheBrain 12 guide</a> · <a href="https://apps.apple.com/us/app/muse-dive-into-big-ideas/id1501563902">Muse App Store</a></p>
+    <b>Writing tools</b>
+    <p><a href="https://www.novelcrafter.com/features/codex">Novelcrafter codex</a> · <a href="https://www.novelcrafter.com/help/docs/codex/codex-tracking">codex tracking</a> · <a href="https://www.literatureandlatte.com/blog/integrating-scriveners-binder-corkboard-and-outliner">Scrivener views</a> · <a href="https://help.timeline.app/article/149-chronological-vs-narrative-order">Aeon: chronological vs narrative</a> · <a href="https://plottr.com/features/">Plottr</a> · <a href="https://reedsy.com/blog/guide/book-writing-software/campfire-write-review/">Campfire review (relationships not on mobile)</a> · <a href="https://ia.net/writer/support/library/content-blocks">iA Writer content blocks</a></p>
+    <b>Research &amp; history</b>
+    <p><a href="https://www.inkandswitch.com/potluck/">Potluck</a> · <a href="https://www.inkandswitch.com/capstone/">Capstone</a> · <a href="https://www.inkandswitch.com/muse/">Muse (Ink &amp; Switch)</a> · <a href="https://maggieappleton.com/xanadu-patterns">Xanadu patterns</a> · <a href="https://maggieappleton.com/bidirectionals">Bidirectional links</a> · <a href="https://en.wikipedia.org/wiki/Memex">Memex</a> · <a href="https://www.clairmind.ai/wiki/folgezettel">Folgezettel</a> · <a href="https://gwern.net/design">gwern.net design</a> · <a href="https://thesephist.com/posts/spc/">Linus Lee, notebook for seeing</a></p>
+    <b>Games</b>
+    <p><a href="https://outerwilds.fandom.com/wiki/Computer">Outer Wilds ship log</a> · <a href="https://discoelysium.wiki.gg/wiki/Thought_Cabinet">Disco Elysium thought cabinet</a> · <a href="https://en.wikipedia.org/wiki/Her_Story_(video_game)">Her Story</a> · <a href="https://www.pcgamesn.com/victoria-3/nested-tooltip-system">Paradox nested tooltips</a> · <a href="https://forum.paradoxplaza.com/forum/threads/reminder-to-the-devs-that-nested-tooltips-is-bad-ux-design.1702017/">…and their critics</a></p>
+  </div>
+</section>
+</div>
