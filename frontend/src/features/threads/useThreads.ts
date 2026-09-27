@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
-import { getThreads } from "@/lib/db";
+import { onChange } from "@/lib/changeSignal";
+import { listThreads, searchThreadIds } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
-import { onChange, pullThreads } from "@/lib/sync";
 import { useFlaggedThreadIds } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
 import { type Sort, visibleThreads } from "./visibleThreads";
@@ -15,29 +14,32 @@ export const useThreads = () => {
   const [error, setError] = useState<string | null>(null);
   const pinned = useFlaggedThreadIds("pinned");
 
-  const load = useCallback(() => getThreads().then(setThreads, (e) => setError(errorMessage(e))), []);
+  const load = useCallback(() => listThreads().then(setThreads, (e) => setError(errorMessage(e))), []);
 
+  // v1's `refresh` pulled from main; the phone always reads its own database now, so this just
+  // re-reads it (`syncEngine.ts`'s `manualSync` is the network round-trip, wired separately —
+  // see SyncSection.tsx). Kept as its own function so callers (a pull-to-refresh gesture, say)
+  // still have something to call.
   const refresh = useCallback(async () => {
     setSyncing(true);
     setError(null);
     try {
-      await pullThreads();
+      await load();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     load();
-    refresh();
     return onChange(load);
-  }, [load, refresh]);
+  }, [load]);
 
-  // Titles, descriptions and tags are matched on the device at once; note text needs the API (main while
-  // live, the device copy while local). A failed lookup just leaves the instant matches. `ranks` keeps
-  // the API's own relevance order (id -> position) so visibleThreads can rank content-only hits by it.
+  // Titles are matched on the device instantly; note content needs a query over every thread's
+  // messages (`lib/data.ts`'s `searchThreadIds`, backed by `core.search`). `ranks` keeps that
+  // query's own relevance order (id -> position) so visibleThreads can rank content-only hits by it.
   const [content, setContent] = useState<{ q: string; ranks: ReadonlyMap<string, number> }>({
     q: "",
     ranks: NO_HITS,
@@ -54,8 +56,8 @@ export const useThreads = () => {
     if (!q) return;
     let stale = false;
     const timer = setTimeout(() => {
-      api.listThreads(q).then(
-        (rows) => !stale && setContent({ q, ranks: new Map(rows.map((r, i) => [r.id, i])) }),
+      searchThreadIds(q).then(
+        (ids) => !stale && setContent({ q, ranks: new Map(ids.map((id, i) => [id, i])) }),
         () => {},
       );
     }, 200);

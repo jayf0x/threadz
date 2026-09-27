@@ -5,10 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
 import { MessageInput, type MessageInputHandle } from "@/features/message-input";
-import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { copyThread } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
-import { pullThreads } from "@/lib/sync";
 import type { Message } from "@/lib/types";
 import type { VoiceState } from "@/lib/voice/engine";
 import { useVoiceCapture } from "./useVoiceCapture";
@@ -99,14 +98,8 @@ export const Composer = ({
     setCopying(true);
     try {
       const text = input.current?.getText() ?? "";
-      const newThreadId = crypto.randomUUID();
-      const { thread } = await api.copyThread(threadId, {
-        newThreadId,
-        uptoMessageId: lastMessage.id,
-        appendNote: text ? { id: `note-${newThreadId}`, content: text } : undefined,
-      });
+      const thread = await copyThread(threadId, lastMessage.id, text || undefined);
       input.current?.clear();
-      await pullThreads();
       onCopied(thread.id);
     } catch (e) {
       toast({ title: "Clone failed", description: errorMessage(e) }); // the draft is left untouched

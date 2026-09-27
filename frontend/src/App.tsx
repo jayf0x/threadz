@@ -10,19 +10,16 @@ import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads"
 import { cn } from "@/lib/cn";
 import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
 import { shortcutBlocked } from "@/lib/dom";
-import { useStatus } from "@/lib/status";
 import { trackViewport } from "@/lib/viewport";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
-// The shell is keyed by mode: switching stores remounts every view so nothing
-// keeps rendering the other store's data. Drafts survive (useDraft); the dialog
-// lives outside the key so a sync's result stays on screen across the switch.
+// The phone always reads/writes its own database now (docs/direction.md "Sync") — there's no
+// separate "store" to switch between any more, so unlike v1 the shell never needs to remount itself.
 // `LazyMotion` + the `m` component (used by Popover/ThreadView/Composer) load only the
 // fade/scale/exit feature set instead of Motion's full bundle (which also carries drag and
 // layout animation code this app never uses) — one provider up here covers all of them.
 export const App = () => {
-  const { mode } = useStatus();
-  const [selected, setSelectedRaw] = useState<string | null>(null); // survives a mode switch: same thread, other store
+  const [selected, setSelectedRaw] = useState<string | null>(null);
   // The open thread's currently-selected message — thread-scoped (cleared any time `selected`
   // changes), mirrors `selected`/its setters exactly: a controlled value down to ThreadView plus
   // an `onSelectMessage` callback for a plain in-thread click. Reflected in `?msg=` by the URL-sync
@@ -132,7 +129,6 @@ export const App = () => {
       <LazyMotion features={domAnimation}>
         <BackgroundLayer />
         <Shell
-          key={mode}
           selected={selected}
           closeThread={closeThread}
           autofocus={!!selected && selected === captureId}

@@ -7,9 +7,6 @@ const thread: Thread = {
   title: "Trip planning",
   createdAt: 0,
   updatedAt: 0,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
 };
 
 // Built with the local `Date` constructor (not `Date.UTC`) and formatted with `format()`, which is

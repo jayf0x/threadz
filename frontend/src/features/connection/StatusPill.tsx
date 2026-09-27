@@ -1,24 +1,23 @@
 import { cn } from "@/lib/cn";
-import { openPanel, total, useStatus } from "@/lib/status";
+import { openPanel, useSyncStatus } from "@/lib/syncEngine";
 
-// Three honest states, told apart by SHAPE as well as colour (the tooltip adds whether main is reachable):
-//   ● Live      — filled ochre disc: reading/writing main
-//   ○ Offline   — hollow disc: live mode, main unreachable (drafts queue)
-//   ■ Local     — filled ink square: this device is the source of truth
-// A count of changes not yet on main (`n↑`) follows the label when there are any.
+// Four states, told apart by shape as well as colour (docs/direction.md "B9" — replaces v1's
+// Live/Offline/Local trio, since there's no "local" mode any more: the phone always reads/writes its
+// own database):
+//   ● Synced      — filled ochre disc: nothing pending, keep-live off
+//   ◐ Keep-live   — half-filled disc: the 15s auto-sync loop is on
+//   ○ N pending   — hollow disc with a count: work saved here, not yet sent
+//   ■ Unreachable — filled ink square: the last sync attempt failed
 export const StatusPill = () => {
-  const s = useStatus();
-  const local = s.mode === "local";
-  const up = s.checked ? s.reachable : true; // don't flash "Offline" before the first probe
-  const pending = total(s.unsynced);
-  const label = local ? "Local" : up ? "Live" : "Offline";
-  const hint = local
-    ? up
-      ? "Working locally. Reachable — open to sync."
-      : "Working locally. No connection."
-    : up
-      ? "Live. Open to work locally."
-      : "Unreachable. Open for options.";
+  const s = useSyncStatus();
+  const label = s.unreachable ? "Unreachable" : s.keepLive ? "Keep-live" : s.pending ? "Pending" : "Synced";
+  const hint = s.unreachable
+    ? "Can't reach main. Open for options."
+    : s.keepLive
+      ? "Syncing automatically every 15s."
+      : s.pending
+        ? "Saved on this device. Open to sync."
+        : "Everything is synced.";
 
   return (
     <button
@@ -34,17 +33,19 @@ export const StatusPill = () => {
         aria-hidden
         className={cn(
           "size-2.5 shrink-0 border",
-          local
+          s.unreachable
             ? "border-foreground bg-foreground"
-            : up
-              ? "rounded-full border-primary bg-primary"
-              : "rounded-full border-muted-foreground",
+            : s.keepLive
+              ? "rounded-full border-primary bg-primary/50"
+              : s.pending
+                ? "rounded-full border-muted-foreground"
+                : "rounded-full border-primary bg-primary",
         )}
       />
       {label}
-      {pending > 0 && (
+      {s.pending > 0 && (
         <span className="tabular-nums text-muted-foreground">
-          {pending}↑<span className="sr-only"> changes not yet synced</span>
+          {s.pending}↑<span className="sr-only"> changes not yet synced</span>
         </span>
       )}
     </button>

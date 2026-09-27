@@ -7,10 +7,6 @@ const thread = (title: string): Thread => ({
   title,
   createdAt: 1,
   updatedAt: 1,
-  renamedAt: null,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
 });
 
 const note = (content: string, role: Message["role"] = "user"): Message => ({

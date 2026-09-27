@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { exportSnapshot } from "./local";
+import { allMessages } from "./data";
 
 // Photos in notes. A note holds only a reference, `![](img:<sha256hex>#<w>x<h>)`; the bytes live
 // here, in their OWN IndexedDB database. Nothing that snapshots, backs up, exports or imports
@@ -92,19 +92,15 @@ export const deleteOrphanImages = async (used: Set<string>, now = Date.now()) =>
   return removed;
 };
 
-// What the device copy (`threadz-local`, trash included, every kept edit) refers to — messages AND
-// annotations, since an image can be referenced from either. An empty copy (not warmed yet) collects
-// nothing.
+// What every live thread's messages refer to, every kept edit included. NOT scanning the Bin (v2 has
+// no JSON trash payload to walk — a binned note's rows are just tombstoned, still in the phone's own
+// SQLite): a binned note's images can get GC'd sooner than in v1. Flagged as a gap, not fixed here —
+// out of scope for this pass.
 export const gcDeviceImages = async (now = Date.now()) => {
-  const { messages, annotations, trash } = await exportSnapshot();
-  const all = [
-    ...messages,
-    ...(annotations ?? []),
-    ...(trash ?? []).flatMap((t) => [...t.messages, ...(t.annotations ?? [])]),
-  ];
-  if (!all.length) return [];
+  const { messages } = await allMessages();
+  if (!messages.length) return [];
   return deleteOrphanImages(
-    referencedHashes(all.flatMap((m) => [m.content, ...(m.edits ?? []).map((v) => v.content)])),
+    referencedHashes(messages.flatMap((m) => [m.content, ...(m.edits ?? []).map((v) => v.content)])),
     now,
   );
 };

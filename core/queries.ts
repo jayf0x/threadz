@@ -20,6 +20,19 @@ const resolveVersion = async (d: Driver, noteId: string, pinVersionId: string | 
   return v;
 };
 
+export type ThreadListRow = { id: string; title: string; created_at: number; updated_at: number };
+
+// Every live thread, newest-updated first. Not in the original frozen query set (direction.md's
+// lenses don't name a plain "list all threads" query) but every list-style UI needs one, so it's
+// added here per the note in that file: "core/queries.ts is yours to extend, not just consume."
+export const listThreads = async (d: Driver): Promise<ThreadListRow[]> =>
+  d.all<ThreadListRow>(
+    `SELECT t.id, t.title, e.created_at, t.updated_at FROM threads t
+     JOIN entities e ON e.id = t.id
+     WHERE e.deleted_at IS NULL
+     ORDER BY t.updated_at DESC`,
+  );
+
 export type ThreadViewRow = { message: MessageRow; version: NoteVersionRow };
 
 // Thread view (chat and line mode share this query; they only differ in the view). A thread's messages in

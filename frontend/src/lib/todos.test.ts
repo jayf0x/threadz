@@ -93,10 +93,6 @@ const thread = (id: string, title: string): Thread => ({
   title,
   createdAt: 0,
   updatedAt: 0,
-  renamedAt: null,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
 });
 
 const message = (

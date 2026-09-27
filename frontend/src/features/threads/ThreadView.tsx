@@ -8,12 +8,11 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { toast } from "@/components/ui/toast";
 import { Composer } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
-import { api } from "@/lib/api";
-import { getThreadLocal } from "@/lib/db";
+import { onChange } from "@/lib/changeSignal";
+import { copyThread, getThread } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
 import { resolveMessageRange } from "@/lib/references";
-import { useStatus } from "@/lib/status";
-import { onChange, pullThreads } from "@/lib/sync";
+import { useSyncStatus } from "@/lib/syncEngine";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
 import type { Thread } from "@/lib/types";
 import { EntryRow } from "./EntryRow";
@@ -69,7 +68,9 @@ export const ThreadView = ({
     deleteAnnotation,
     ask,
   } = useThread(threadId);
-  const local = useStatus().mode === "local";
+  // Ask needs main (docs/direction.md "B10"): disabled/greyed out, never queued, while the last sync
+  // attempt failed. Replaces v1's local/live `mode` check.
+  const askUnavailable = useSyncStatus().unreachable;
   const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
@@ -126,8 +127,7 @@ export const ThreadView = ({
     if (copying) return;
     setCopying(true);
     try {
-      const { thread: copy } = await api.copyThread(threadId, { newThreadId: crypto.randomUUID(), uptoMessageId });
-      await pullThreads();
+      const copy = await copyThread(threadId, uptoMessageId);
       onCopied(copy.id);
     } catch (e) {
       toast({ title: "Clone failed", description: errorMessage(e) }); // nothing was touched
@@ -151,7 +151,7 @@ export const ThreadView = ({
   useEffect(() => {
     let seen = false;
     const load = () =>
-      getThreadLocal(threadId).then((t) => {
+      getThread(threadId).then((t) => {
         seen ||= !!t;
         setThread(t ?? null);
         setVanished(seen && !t);
@@ -387,7 +387,7 @@ export const ThreadView = ({
               threadId={threadId}
               messages={messages}
               busy={busy}
-              canAsk={!local}
+              canAsk={!askUnavailable}
               onNote={addMessage}
               onAsk={onAsk}
               onCopied={onCopied}

@@ -90,9 +90,6 @@ test("completeThread inserts a closed, valid link and continues into the message
     title: "Groceries",
     createdAt: 0,
     updatedAt: 0,
-    description: null,
-    tags: [],
-    hasEmbedding: false,
   };
   const { edit, next } = completeThread(state, thread);
   expect(edit).toEqual({ from: 6, to: 6 + 2 + 4, text: "[Groceries](thread=t1)" });
@@ -223,9 +220,6 @@ const thread = (over: Partial<Thread>): Thread => ({
   title: "",
   createdAt: 0,
   updatedAt: 0,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
   ...over,
 });
 

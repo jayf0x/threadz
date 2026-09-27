@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { exportSnapshot } from "@/lib/local";
+import { allMessages } from "@/lib/data";
 import { messageSnippet, type ReferenceAutocompleteState, searchMessages, searchThreads } from "@/lib/references";
 import type { Message, Thread } from "@/lib/types";
 import type { ReferenceOption } from "./ReferenceAutocompleteMenu";
@@ -13,14 +13,14 @@ export const useReferenceAutocomplete = (state: ReferenceAutocompleteState) => {
   const [snapshot, setSnapshot] = useState<{ threads: Thread[]; messages: Message[] } | null>(null);
   const [highlighted, setHighlighted] = useState(0);
 
-  // Reloaded each time the autocomplete (re)opens, not on every keystroke: an IndexedDB read is
-  // cheap at this app's scale, but there's no reason to repeat it while a session is just narrowing
-  // an already-open query — see `lib/local.ts`'s `exportSnapshot`.
+  // Reloaded each time the autocomplete (re)opens, not on every keystroke: a phone-db read is cheap
+  // at this app's scale, but there's no reason to repeat it while a session is just narrowing an
+  // already-open query — see `lib/data.ts`'s `allMessages`.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    exportSnapshot().then((snap) => {
-      if (!cancelled) setSnapshot({ threads: snap.threads, messages: snap.messages });
+    allMessages().then((snap) => {
+      if (!cancelled) setSnapshot(snap);
     });
     return () => {
       cancelled = true;

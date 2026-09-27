@@ -7,9 +7,6 @@ const thread = (id: string, updatedAt: number): Thread => ({
   title: id,
   createdAt: updatedAt,
   updatedAt,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
 });
 
 // Deterministic PRNG (mulberry32) so the statistical trials below are reproducible, not flaky.

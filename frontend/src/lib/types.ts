@@ -1,40 +1,40 @@
+// v2 view-model types (docs/direction.md "Data model"). These are the shapes `lib/data.ts` hands
+// to the UI — derived from `core`'s normalized rows (entities/note_versions/messages/…), not the
+// rows themselves. Kept close to v1's `Thread`/`Message` shape on purpose: most consumers (EntryRow,
+// lib/todos.ts, lib/versions.ts, lib/threadOrder.ts) need no change at all this way; the real
+// per-lens rework (versions UI, links, property values, an `Annotation` replacement built on the
+// `attached` link type) is out of scope here and belongs to a later step.
+
 export type Thread = {
   id: string;
   title: string;
   createdAt: number;
   updatedAt: number;
-  renamedAt?: number | null; // last rename; newest wins on sync
-  description: string | null;
-  tags: string[];
-  hasEmbedding: boolean;
 };
 
-// A previous text of a message; `at` (when that text was written) identifies it.
+// A previous text of a message; `at` (when that text was written) identifies it. Same shape as v1's
+// Version, backed now by `note_versions` rows instead of a `edits` JSON column.
 export type Version = { content: string; at: number };
 
-// `meta`'s one typed field so far: the ⋯ menu's "Todo" toggle (see features/todos), a whole
-// message flagged as a todo without inserting `/todo` text. Still a bag, not a closed shape — an
-// index signature, so a future key can ride along without every reader needing to know about it.
-// `editMessageMeta` (backend) / `toggleMessageTodo`/`removeMessageTodo` (lib/api.ts) always merge a
-// patch into this, never replace it wholesale.
-export type MessageMeta = { todo?: { done: boolean } } & Record<string, unknown>;
+export type MessageMeta = { todo?: { done: boolean }; voice?: boolean } & Record<string, unknown>;
 
 export type Message = {
-  id: string;
+  id: string; // message (placement) id
   threadId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: number;
-  seq: number;
-  meta: MessageMeta | null;
-  editedAt?: number | null; // null/absent = never edited
-  edits?: Version[]; // previous texts, oldest first
-  metaEditedAt?: number | null; // when meta was last patched; null/absent = never — own clock from editedAt
+  role: "user" | "assistant"; // note_versions.author
+  content: string; // live (or pinned) note_versions.content
+  createdAt: number; // the message entity's created_at (when it was placed)
+  seq: number; // position in `orderedMessageIds` — replaces v1's stored seq column
+  meta: MessageMeta | null; // meta.todo mirrors the `todos` table; nothing else is wired yet
+  editedAt?: number | null; // newest note_versions.created_at, if later than the note's first version
+  edits?: Version[]; // earlier note_versions, oldest first
+  metaEditedAt?: number | null; // todos.updated_at
 };
 
-// A note attached to one message. Same fields as a message minus `role` (only the user writes
-// annotations in v1), plus the thread and message it belongs to. No annotations of annotations:
-// `messageId` always names a row in `messages`, never another annotation.
+// NOT built yet: v2's replacement for a one-per-message note is an `attached` link (docs/
+// direction.md "Links have no kind column"), not a dedicated table. `EntryRow`/`NoteSurface` still
+// expect this shape, so the type stays and every call site (`lib/data.ts`) always hands back
+// `undefined`/`[]` for it until that lens is built — never partially faked.
 export type Annotation = {
   id: string;
   threadId: string;
@@ -45,72 +45,5 @@ export type Annotation = {
   edits?: Version[];
 };
 
-// LEGACY: the old offline queue. Nothing writes it any more; leftovers are drained
-// into the local store on the first successful pull (see lib/replica.ts).
-export type OutboxItem = {
-  id: string; // client UUID == idempotency key sent to the backend
-  threadId: string;
-  content: string;
-  meta: Record<string, unknown> | null;
-  createdAt: number;
-};
-
-// Where reads/writes go. "local" = this device's own database is authoritative
-// until the user explicitly syncs it back to the backend.
-export type Mode = "live" | "local";
-
-// Whole-store JSON: what the backend's /api/snapshot returns and what "Export backup" writes.
-export type Snapshot = {
-  version: 1;
-  exportedAt: number;
-  threads: Thread[];
-  messages: Message[];
-  // Optional so an old backup file (made before annotations existed) still imports cleanly.
-  annotations?: Annotation[];
-  // Threads deleted on this device. Backups keep them so a delete is recoverable by hand;
-  // import ignores them.
-  trash?: { thread: Thread; messages: Message[]; annotations?: Annotation[]; deletedAt: number }[];
-};
-
-// What a sync would push. Shown to the user before they confirm.
-export type Unsynced = { threads: number; messages: number; annotations: number; deletions: number };
-
-// Change detection: one hash per thread (title + message ids + edit times) and one for the whole store.
-export type Head = { head: string; threads: Record<string, string> };
-
-export type SyncPayload = {
-  threads: { id: string; title: string; createdAt: number; renamedAt: number | null }[];
-  messages: {
-    id: string;
-    threadId: string;
-    role: "user" | "assistant";
-    content: string;
-    meta: unknown;
-    createdAt: number;
-    editedAt: number | null;
-    edits: Version[];
-    metaEditedAt: number | null;
-  }[];
-  annotations: {
-    id: string;
-    threadId: string;
-    messageId: string;
-    content: string;
-    createdAt: number;
-    editedAt: number | null;
-    edits: Version[];
-  }[];
-  deletes: { id: string; baseHash: string }[];
-  // Same idea as `deletes`, scoped to one annotation: `baseVersion` is the device's last-known
-  // editedAt ?? createdAt for that row.
-  annotationDeletes: { id: string; baseVersion: number }[];
-};
-
-export type SyncResult = Head & {
-  created: number;
-  appended: number;
-  deleted: string[];
-  kept: string[]; // deletes refused because main changed since our base
-  missing: string[]; // notes skipped because main no longer has the thread
-  hashes: Record<string, string>; // main's hash for every thread we touched
-};
+// What `syncEngine.ts` reports: rows pending (not yet stamped with a `rev`) across every core table.
+export type Unsynced = { pending: number };

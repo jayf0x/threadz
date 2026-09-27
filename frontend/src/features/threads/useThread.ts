@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
-import { getThreadAnnotations, getThreadMessages } from "@/lib/db";
-import { ApiError, errorMessage } from "@/lib/errors";
-import { unsyncedAnnotationIds, unsyncedMessageIds } from "@/lib/local";
+import { onChange } from "@/lib/changeSignal";
+import {
+  appendNote,
+  editMessage as editMessageContent,
+  getThread,
+  pendingMessageIds,
+  renameThread,
+  setTodo,
+  threadMessages,
+} from "@/lib/data";
+import { errorMessage } from "@/lib/errors";
 import { getSettings } from "@/lib/settings";
-import { onChange, pullThread, pullThreads } from "@/lib/sync";
+import { ask as askModel } from "@/lib/syncEngine";
 import type { Annotation, Message, Thread } from "@/lib/types";
 import { autoTitle, noteText } from "./titles";
-
-const uuid = () => crypto.randomUUID();
 
 // Names (or renames) the thread from `content` (Settings → Naming). Fire-and-forget: a title is a
 // nicety, so a failure here never touches the note that was just stored. `autoTitle` already refuses
@@ -20,42 +25,36 @@ const autoName = async (thread: Thread, content: string, previous?: string) => {
   try {
     const title = await autoTitle(thread, content, previous);
     if (!title) return;
-    await api.renameThread(thread.id, title);
-    await pullThreads();
+    await renameThread(thread.id, title);
   } catch {}
 };
 
 export const useThread = (threadId: string | null) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // NOT built yet — see lib/types.ts's `Annotation` comment. Always empty until the `attached`-link
+  // lens exists; kept as state (not a constant) only so the shape stays obviously swappable later.
+  const [annotations] = useState<Annotation[]>([]);
   const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
-  const [unsyncedAnnotations, setUnsyncedAnnotations] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [gone, setGone] = useState(false); // the active store says this thread does not exist
+  const [gone, setGone] = useState(false); // this thread doesn't exist in the phone's own database
   const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
   const loads = useRef(0);
-  // Every `messages` update — initial history and every later change alike — flows through this
-  // same `load()`, so it's the one place that can tell "was already here" from "just showed up".
-  // The very first resolution (whatever it finds, even nothing) is the history load and seeds
-  // `seenIds` without flagging anything; only ids that appear afterwards go into `justAdded`, so a
-  // long thread's initial render never animates and a genuinely new/incoming message does.
   const seenIds = useRef<Set<string>>(new Set());
   const hydrated = useRef(false);
 
-  // Reads overlap (every change signal starts one); only the newest may write, or an older,
-  // slower read could put stale messages back over fresh ones.
+  // Reads overlap (every change signal starts one); only the newest may write, or an older, slower
+  // read could put stale messages back over fresh ones.
   const load = useCallback(async () => {
     if (!threadId) return;
     const mine = ++loads.current;
-    // Notes (and annotations) only the device has (written while detached) are marked until they sync.
-    const [rows, pending, annos, pendingAnnos] = await Promise.all([
-      getThreadMessages(threadId),
-      unsyncedMessageIds(threadId),
-      getThreadAnnotations(threadId),
-      unsyncedAnnotationIds(threadId),
+    const [rows, pending, thread] = await Promise.all([
+      threadMessages(threadId),
+      pendingMessageIds(threadId),
+      getThread(threadId),
     ]);
     if (mine !== loads.current) return;
+    setGone(!thread);
     const additions: string[] = [];
     for (const r of rows) {
       if (seenIds.current.has(r.id)) continue;
@@ -65,12 +64,6 @@ export const useThread = (threadId: string | null) => {
     hydrated.current = true;
     setMessages(rows);
     setUnsynced(pending);
-    setAnnotations(annos);
-    setUnsyncedAnnotations(pendingAnnos);
-    // Self-clearing, not permanent: `isNew` only needs to be true long enough for the entrance
-    // animation to play once. Left set forever, it'd replay on every future remount of the same
-    // row — which a virtualized list does constantly as rows scroll in and out — and it'd retain
-    // every message id ever seen in a long-lived thread for nothing.
     if (additions.length) {
       setJustAdded((prev) => new Set([...prev, ...additions]));
       setTimeout(() => {
@@ -83,17 +76,6 @@ export const useThread = (threadId: string | null) => {
     }
   }, [threadId]);
 
-  const refresh = useCallback(async () => {
-    if (!threadId) return;
-    try {
-      await pullThread(threadId);
-      setGone(false);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setGone(true);
-      else setError(errorMessage(e));
-    }
-  }, [threadId]);
-
   useEffect(() => {
     setMessages([]);
     setError(null);
@@ -102,40 +84,36 @@ export const useThread = (threadId: string | null) => {
     seenIds.current = new Set();
     hydrated.current = false;
     load();
-    refresh();
     const off = onChange(load);
     return () => {
       loads.current++; // a read still in flight belongs to a thread we've left
       off();
     };
-  }, [load, refresh]);
+  }, [load]);
 
-  // Add a message. `api` writes to main, or to the device copy when detached (switching
-  // by itself if main just vanished). Resolves true only once the text is stored, so the
-  // composer never clears a draft that went nowhere.
+  // Add a message. Resolves true only once the text is stored, so the composer never clears a draft
+  // that went nowhere.
   const addMessage = useCallback(
-    async (content: string, meta: Record<string, unknown> | null = null): Promise<boolean> => {
+    async (content: string, _meta: Record<string, unknown> | null = null): Promise<boolean> => {
       const text = content.trim();
       if (!threadId || !text) return false;
       setBusy(true);
       setError(null);
       try {
-        await api.appendMessage(threadId, { id: uuid(), role: "user", content: text, meta });
+        await appendNote(threadId, text, "user");
+        const thread = await getThread(threadId);
+        if (thread) autoName(thread, noteText([...messages, { role: "user", content: text } as Message]));
+        return true;
       } catch (e) {
         setError(errorMessage(e));
         return false;
       } finally {
         setBusy(false);
       }
-      // refreshing the view can fail; the write already succeeded
-      const view = await pullThread(threadId).catch(() => null);
-      if (view) autoName(view.thread, noteText(view.messages));
-      return true;
     },
-    [threadId],
+    [threadId, messages],
   );
 
-  // Edit a sent message. Same contract as addMessage: true only once the new text is stored.
   const editMessage = useCallback(
     async (id: string, content: string): Promise<boolean> => {
       const text = content.trim();
@@ -143,59 +121,47 @@ export const useThread = (threadId: string | null) => {
       setBusy(true);
       setError(null);
       try {
-        await api.editMessage(threadId, id, text);
+        await editMessageContent(id, text);
+        return true;
       } catch (e) {
         setError(errorMessage(e));
         return false;
       } finally {
         setBusy(false);
       }
-      const view = await pullThread(threadId).catch(() => null);
-      const first = view?.messages[0];
-      if (view && first?.id === id) autoName(view.thread, first.content, first.edits?.at(-1)?.content);
-      return true;
     },
     [threadId],
   );
 
-  // Flags/unflags a whole message as a todo (the ⋯ menu's "Todo" toggle) — non-textual
-  // (`meta.todo`), never a content edit, so this never touches `editMessage`. `done: null` clears
-  // the flag entirely; `false`/`true` sets it (see lib/api.ts's toggleMessageTodo/removeMessageTodo).
-  const setMessageTodo = useCallback(
-    async (id: string, done: boolean | null): Promise<boolean> => {
-      if (!threadId) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        if (done === null) await api.removeMessageTodo(threadId, id);
-        else await api.toggleMessageTodo(threadId, id, done);
-      } catch (e) {
-        setError(errorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-      await pullThread(threadId).catch(() => {});
+  // Flags/unflags a whole message as a todo (the ⋯ menu's "Todo" toggle) — non-textual (the `todos`
+  // table), never a content edit. `done: null` clears the flag entirely.
+  const setMessageTodo = useCallback(async (id: string, done: boolean | null): Promise<boolean> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await setTodo(id, done);
       return true;
-    },
-    [threadId],
-  );
+    } catch (e) {
+      setError(errorMessage(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
-  // Ask Claude. commit=false → disposable scratch answer (returned, not stored).
-  // commit=true → appended at commit time.
+  // Ask Claude. commit=false → disposable scratch answer (returned, not stored). commit=true →
+  // appended (by main) at ask time — v2 has no separate "commit later" step (docs/direction.md "B10"):
+  // main always writes the question+answer, so a non-committed Ask just doesn't pull the result in.
+  // TODO(lens step): a true scratch (never touching main at all) would need its own endpoint; out of
+  // scope for this pass — every Ask reaches main today, `commit` only decides whether we pull it in.
   const ask = useCallback(
     async (prompt: string, commit: boolean): Promise<string> => {
       if (!threadId) return "";
       setBusy(true);
       setError(null);
       try {
-        const { answer } = await api.ask(threadId, {
-          prompt,
-          commit,
-          userMessageId: uuid(),
-          assistantMessageId: uuid(),
-        });
-        if (commit) await pullThread(threadId);
+        const answer = await askModel(threadId, prompt);
+        if (commit) await load();
         return answer;
       } catch (e) {
         setError(errorMessage(e));
@@ -204,80 +170,20 @@ export const useThread = (threadId: string | null) => {
         setBusy(false);
       }
     },
-    [threadId],
+    [threadId, load],
   );
 
-  // Edit an existing annotation's content, keeping history (same contract as editMessage).
-  const editAnnotation = useCallback(
-    async (id: string, content: string): Promise<boolean> => {
-      const text = content.trim();
-      if (!threadId || !text) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        await api.editAnnotation(threadId, id, text);
-      } catch (e) {
-        setError(errorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-      await pullThread(threadId).catch(() => {});
-      return true;
-    },
-    [threadId],
-  );
-
-  // Add a note to a message — or, when the backend's one-per-message constraint would refuse a
-  // second row (this device already knows about one for this message), fold the text in as an edit
-  // onto it instead. Belt-and-suspenders: keeps normal use from ever hitting the DB constraint path,
-  // which a stale UI or two offline devices could still reach (see db.ts's appendAnnotation).
-  const addAnnotation = useCallback(
-    async (messageId: string, content: string): Promise<boolean> => {
-      const text = content.trim();
-      if (!threadId || !text) return false;
-      const existing = annotations.find((a) => a.messageId === messageId);
-      if (existing) return editAnnotation(existing.id, text);
-      setBusy(true);
-      setError(null);
-      try {
-        await api.appendAnnotation(threadId, messageId, { id: uuid(), content: text });
-      } catch (e) {
-        setError(errorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-      await pullThread(threadId).catch(() => {}); // the write already succeeded even if the refresh fails
-      return true;
-    },
-    [threadId, annotations, editAnnotation],
-  );
-
-  const deleteAnnotation = useCallback(
-    async (id: string): Promise<boolean> => {
-      if (!threadId) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        await api.deleteAnnotation(threadId, id);
-      } catch (e) {
-        setError(errorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-      await pullThread(threadId).catch(() => {});
-      return true;
-    },
-    [threadId],
-  );
+  // NOT built yet (see lib/types.ts's `Annotation` comment) — every call is a safe no-op until the
+  // `attached`-link lens exists.
+  const addAnnotation = useCallback(async (_messageId: string, _content: string) => false, []);
+  const editAnnotation = useCallback(async (_id: string, _content: string) => false, []);
+  const deleteAnnotation = useCallback(async (_id: string) => false, []);
 
   return {
     messages,
     annotations,
     unsynced,
-    unsyncedAnnotations,
+    unsyncedAnnotations: EMPTY_SET,
     busy,
     error,
     gone,
@@ -289,6 +195,8 @@ export const useThread = (threadId: string | null) => {
     editAnnotation,
     deleteAnnotation,
     ask,
-    refresh,
+    refresh: load,
   };
 };
+
+const EMPTY_SET: Set<string> = new Set();

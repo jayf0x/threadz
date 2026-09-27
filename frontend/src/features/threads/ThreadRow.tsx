@@ -5,13 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Menu } from "@/components/ui/menu";
 import { PencilSparkles } from "@/components/ui/pencil-sparkles";
 import { toast } from "@/components/ui/toast";
-import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { deleteThread, renameThread, restoreFromBin, threadMessages } from "@/lib/data";
+import { download } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
 import { exportThreadMarkdown } from "@/lib/exportMarkdown";
-import { download, restoreThread } from "@/lib/handoff";
 import { buildReferenceHref } from "@/lib/references";
-import { pullThreads } from "@/lib/sync";
 import { setThreadFlag, useThreadFlag } from "@/lib/threadFlags";
 import type { Thread } from "@/lib/types";
 import { noteText, titleFrom } from "./titles";
@@ -55,8 +54,7 @@ export const ThreadRow = ({
     setRenaming(false);
     if (!next || next === thread.title) return;
     try {
-      await api.renameThread(thread.id, next);
-      await pullThreads();
+      await renameThread(thread.id, next);
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -69,15 +67,14 @@ export const ThreadRow = ({
     setError(null);
     setNote(null);
     try {
-      const { messages } = await api.getThread(thread.id);
+      const messages = await threadMessages(thread.id);
       const title = await titleFrom(noteText(messages));
       if (!title || title === thread.title) {
         setNote(title ? "Already named for what it says." : "Not enough written to name it yet.");
         setTimeout(() => setNote(null), 3500);
         return;
       }
-      await api.renameThread(thread.id, title);
-      await pullThreads();
+      await renameThread(thread.id, title);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -94,8 +91,8 @@ export const ThreadRow = ({
     setExporting(true);
     setError(null);
     try {
-      const { messages, annotations } = await api.getThread(thread.id);
-      const md = exportThreadMarkdown(thread, messages, annotations);
+      const messages = await threadMessages(thread.id);
+      const md = exportThreadMarkdown(thread, messages);
       await download(md, filenameFrom(thread.title), "text/markdown");
     } catch (e) {
       setError(errorMessage(e));
@@ -122,8 +119,7 @@ export const ThreadRow = ({
   const del = async () => {
     setError(null);
     try {
-      await api.deleteThread(thread.id);
-      await pullThreads().catch(() => {}); // drop it from the index
+      await deleteThread(thread.id);
       onDeleted(thread.id);
       toast({
         title: "Thread deleted",
@@ -131,7 +127,7 @@ export const ThreadRow = ({
         action: {
           label: "Undo",
           onClick: () => {
-            restoreThread(thread.id).then(onClick, (e) =>
+            restoreFromBin(thread.id, "thread").then(onClick, (e) =>
               toast({ title: "Restore failed", description: errorMessage(e) }),
             );
           },

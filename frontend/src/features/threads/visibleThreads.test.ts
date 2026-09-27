@@ -7,10 +7,6 @@ const t = (id: string, o: Partial<Thread> = {}): Thread => ({
   title: id,
   createdAt: 1,
   updatedAt: 1,
-  renamedAt: null,
-  description: null,
-  tags: [],
-  hasEmbedding: false,
   ...o,
 });
 
@@ -28,7 +24,7 @@ test("orders by updated (default), created, or title when there's no query", () 
 });
 
 test("search matches the title, case-insensitively, and never mutates the input", () => {
-  const rows = [t("Sourdough Bread"), t("x", { description: "About BREAD" }), t("y", { tags: ["bread"] }), t("z")];
+  const rows = [t("Sourdough Bread"), t("x"), t("y"), t("z")];
   expect(ids(visibleThreads(rows, "  bread ", "title"))).toEqual(["Sourdough Bread"]);
   expect(ids(rows)).toEqual(["Sourdough Bread", "x", "y", "z"]);
 });

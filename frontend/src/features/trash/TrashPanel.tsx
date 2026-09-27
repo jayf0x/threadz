@@ -4,17 +4,16 @@ import { useState } from "react";
 import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/cn";
+import type { BinItem } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
-import type { TrashedThread } from "@/lib/local";
 import { useTrash } from "./useTrash";
 
-// The sidebar's Bin view: every thread still sitting in this device's own trash (lib/local.ts's
-// `trash` store), newest deletion first, one restore action per row — same list/row shape as
-// TodosPanel, a button instead of a checkbox. See lib/handoff.ts's `restoreThread` for what
-// "restore" means live vs local (AGENTS.md's Local mode note: main keeps no trash of its own, so a
-// live restore only ever works for a thread this device still has a copy of from before its delete
-// synced). A restored row disappears from this list on its own — `useTrash`'s `onChange` subscription
-// re-reads `trash` once the restore's write lands.
+// The sidebar's Bin view: every deleted thread or note (`lib/data.ts`'s `listBin`, entities with
+// `deleted_at` set), newest deletion first, one restore action per row — same list/row shape as
+// TodosPanel, a button instead of a checkbox. A restored thread reopens (`onRestored`); a restored
+// note has nowhere to jump to yet (it lands back in the Pool, which has no view built yet — see
+// docs/direction.md's Lenses table), so it just disappears from this list. A restored row disappears
+// on its own either way — `useTrash`'s `onChange` subscription re-reads once the write lands.
 export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => void }) => {
   const { trash, restore } = useTrash();
 
@@ -23,7 +22,7 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
       <header className="px-5 pb-3 pt-6">
         <h1 className="font-serif text-[32px] leading-none tracking-tight">Bin</h1>
         <Eyebrow className="mt-2">
-          {trash === null ? "Reading…" : `${trash.length} thread${trash.length === 1 ? "" : "s"}`}
+          {trash === null ? "Reading…" : `${trash.length} item${trash.length === 1 ? "" : "s"}`}
         </Eyebrow>
       </header>
 
@@ -31,7 +30,15 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
         {trash?.length === 0 && <Empty icon={Trash2}>Empty</Empty>}
         <ul>
           {trash?.map((t) => (
-            <TrashRow key={t.id} thread={t} onRestore={() => restore(t.id).then(() => onRestored(t.id))} />
+            <TrashRow
+              key={t.id}
+              item={t}
+              onRestore={() =>
+                restore(t.id, t.kind).then(() => {
+                  if (t.kind === "thread") onRestored(t.id);
+                })
+              }
+            />
           ))}
         </ul>
       </div>
@@ -39,7 +46,7 @@ export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => v
   );
 };
 
-const TrashRow = ({ thread, onRestore }: { thread: TrashedThread; onRestore: () => Promise<void> }) => {
+const TrashRow = ({ item: thread, onRestore }: { item: BinItem; onRestore: () => Promise<void> }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

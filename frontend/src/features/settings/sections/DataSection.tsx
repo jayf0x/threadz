@@ -2,14 +2,17 @@ import { formatDistanceToNow } from "date-fns";
 import { Download, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { exportBackup, importBackup, lastExport } from "@/lib/handoff";
+import { getPhoneDb } from "@/lib/data";
 import { Section } from "./SettingsSection";
 
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+const EXPORTED_KEY = "threadz.lastExport";
+const lastExport = () => Number(localStorage.getItem(EXPORTED_KEY)) || null;
 
-// Low-usage, so it lives at the bottom of Settings rather than in the sync dialog it used to share
-// a footer with. Works in either mode: import is a union merge (`mergeSnapshot`), export a plain
-// snapshot download — neither depends on being local or live.
+// Low-usage, so it lives at the bottom of Settings. Export/import is now a real `.sqlite` file
+// (docs/direction.md "Device storage and export"), not a JSON snapshot: export is
+// `phoneDb.exportFile()` (a plain browser download/share), import merges a file's rows in with the
+// same insert-if-missing/last-write-wins rules a sync push uses (`phoneDb.importFile`, backed by
+// `core`'s `applyChanges`).
 export const DataSection = () => {
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +39,9 @@ export const DataSection = () => {
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await exportBackup();
+              const db = await getPhoneDb();
+              await db.exportFile();
+              localStorage.setItem(EXPORTED_KEY, String(Date.now()));
               setExportedAt(lastExport());
             })
           }
@@ -49,15 +54,16 @@ export const DataSection = () => {
         <input
           ref={file}
           type="file"
-          accept="application/json,.json"
+          accept=".sqlite,application/x-sqlite3"
           className="sr-only"
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (f)
               run(async () => {
-                const added = await importBackup(f);
-                setNote(`Imported ${plural(added.threads, "thread")} and ${plural(added.messages, "note")}.`);
+                const db = await getPhoneDb();
+                const { imported } = await db.importFile(f);
+                setNote(`Imported ${imported} row${imported === 1 ? "" : "s"}.`);
               });
           }}
         />

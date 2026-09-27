@@ -2,11 +2,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Search, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
-import { getThreads } from "@/lib/db";
+import { listThreads } from "@/lib/data";
 import { chordBlocked } from "@/lib/dom";
 import { matchScore } from "@/lib/search";
-import { onChange } from "@/lib/sync";
 import type { Thread } from "@/lib/types";
 
 // ⌘K/Ctrl+K, global: type to jump straight to a thread instead of navigating to the sidebar search
@@ -27,7 +27,7 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
   // Kept warm the whole session (not just while open) so the first keystroke after ⌘K has
   // something to match against instantly — same `getThreads` + `onChange` pairing `useThreads` uses.
   useEffect(() => {
-    const load = () => getThreads().then(setThreads, () => {});
+    const load = () => listThreads().then(setThreads, () => {});
     load();
     return onChange(load);
   }, []);

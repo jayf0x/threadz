@@ -1,6 +1,4 @@
-import { api } from "@/lib/api";
-import { getThreadMessages, getThreads } from "@/lib/db";
-import { pullThreads } from "@/lib/sync";
+import { createThread, listThreads, threadMessages } from "@/lib/data";
 import type { Thread } from "@/lib/types";
 import { isPlaceholderTitle, nextTitle } from "./titles";
 
@@ -9,16 +7,15 @@ import { isPlaceholderTitle, nextTitle } from "./titles";
 // title, no notes yet), reuse it instead of leaving another behind. Shared by the sidebar's
 // New button/`n` and the `/capture` deep link (`App.tsx`) — same "don't pile up placeholders" rule either way.
 export const createOrReuseThread = async (): Promise<string> => {
-  const existing = await getThreads();
+  const existing = await listThreads();
   const newest = existing.reduce<Thread | undefined>(
     (best, t) => (!best || t.createdAt > best.createdAt ? t : best),
     undefined,
   );
-  if (newest && isPlaceholderTitle(newest.title) && (await getThreadMessages(newest.id)).length === 0) {
+  if (newest && isPlaceholderTitle(newest.title) && (await threadMessages(newest.id)).length === 0) {
     return newest.id;
   }
   const title = nextTitle(existing.map((t) => t.title));
-  const thread = await api.createThread({ title });
-  await pullThreads();
+  const thread = await createThread(title);
   return thread.id;
 };
