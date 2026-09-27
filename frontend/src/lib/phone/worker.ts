@@ -7,6 +7,13 @@
 // they're @subframe7536/sqlite-wasm's storage-preset factories, named that way by its own convention).
 import { initSQLite } from "@subframe7536/sqlite-wasm";
 import { useIdbStorage as idbStorage } from "@subframe7536/sqlite-wasm/idb";
+// The package's default wasm loader falls back to `new URL("wa-sqlite-async.wasm", import.meta.url)`
+// resolved against its own (pre-bundled) chunk, which Vite doesn't rewrite to a real asset URL — so the
+// request 404s and Vite's dev-server SPA fallback serves index.html back instead (the "<!do" magic-byte
+// error). Importing the wasm with `?url` puts it through Vite's asset pipeline (a fingerprinted file in
+// dev's optimize-deps cache and a real file in `dist/assets/` for prod) and we hand that resolved URL to
+// `useIdbStorage` explicitly instead of relying on the library's own resolution.
+import wasmAsyncUrl from "@subframe7536/sqlite-wasm/wasm-async?url";
 import {
   applyChanges,
   type Changes,
@@ -82,7 +89,7 @@ const streamForImport = (bytes: Uint8Array): ReadableStream<Uint8Array> => {
 // `applyChanges` against the already-open phone db — the exact same insert-if-missing / last-write-wins
 // merge that a real sync push uses, not a bespoke import path.
 const importBytes = async (bytes: Uint8Array): Promise<{ imported: number }> => {
-  const temp = await initSQLite(idbStorage("phone-import-scratch.sqlite"));
+  const temp = await initSQLite(idbStorage("phone-import-scratch.sqlite", { url: wasmAsyncUrl }));
   try {
     await temp.sync(streamForImport(bytes));
     // Assigning per-table into `changes[table]` with `table: Table` (a union key) hits TS's usual
@@ -100,7 +107,7 @@ const importBytes = async (bytes: Uint8Array): Promise<{ imported: number }> => 
 const handleRequest = async (msg: PhoneRequest): Promise<unknown> => {
   switch (msg.type) {
     case "open":
-      db = await initSQLite(idbStorage(msg.name));
+      db = await initSQLite(idbStorage(msg.name, { url: wasmAsyncUrl }));
       await initSchema(driverOf(db));
       return null;
     case "run":
@@ -121,13 +128,22 @@ const handleRequest = async (msg: PhoneRequest): Promise<unknown> => {
   }
 };
 
-self.onmessage = async (e: MessageEvent<PhoneRequest>) => {
+// @subframe7536/sqlite-wasm's IDBBatchAtomicVFS locking (WebLocksMixin) throws ("lockState.gate is not
+// a function") when two requests race against the same handle from the same JS realm — real SQLite
+// itself only ever runs one statement at a time anyway, so a request queue here (rather than firing
+// `handleRequest` for each message as it arrives) is both the fix and the correct model: every request
+// this worker receives runs to completion before the next one starts.
+let queue = Promise.resolve();
+
+self.onmessage = (e: MessageEvent<PhoneRequest>) => {
   const msg = e.data;
-  try {
-    const result = await handleRequest(msg);
-    const transfer = result instanceof Uint8Array ? [result.buffer] : [];
-    postMessage({ id: msg.id, ok: true, result } satisfies PhoneResponse, transfer);
-  } catch (err) {
-    postMessage({ id: msg.id, ok: false, error: errorMessage(err) } satisfies PhoneResponse);
-  }
+  queue = queue
+    .then(async () => {
+      const result = await handleRequest(msg);
+      const transfer = result instanceof Uint8Array ? [result.buffer] : [];
+      postMessage({ id: msg.id, ok: true, result } satisfies PhoneResponse, transfer);
+    })
+    .catch((err) => {
+      postMessage({ id: msg.id, ok: false, error: errorMessage(err) } satisfies PhoneResponse);
+    });
 };
