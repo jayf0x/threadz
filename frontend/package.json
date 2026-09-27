@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",
+    "@threadz/core": "workspace:*",
     "@milkdown/crepe": "^7.22.0",
     "@milkdown/kit": "^7.22.0",
     "@radix-ui/react-dialog": "^1.1.23",
