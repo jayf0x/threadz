@@ -37,20 +37,22 @@ export const saveImage = async (hash: string, bytes: Uint8Array) => {
 };
 
 // --- orphan GC --------------------------------------------------------------------------------
-// Conservative: a file goes only if NO message mentions its hash (current text or any kept edit) AND it
-// is older than a week — a photo is PUT before the note that shows it, so a fresh file may just be
-// waiting for its note. Threads deleted on main are gone from SQLite, so their photos become orphans.
+// Conservative: a file goes only if NO note version mentions its hash AND it is older than a week
+// -- a photo is PUT before the note that shows it, so a fresh file may just be waiting for its
+// note. Threads deleted on main tombstone their messages but the underlying notes' `note_versions`
+// rows stay (v2 keeps history; a purge is the only real delete), so this only orphans a hash once
+// every version that ever mentioned it is gone too.
+//
+// v2 adaptation: a note's content (and every kept edit) is one row per version in `note_versions`
+// (core/schema.ts) instead of v1's `messages.content` + `annotations.content` + their inline
+// `edits` JSON blobs -- scanning "every version of every note" is now just every row in that table.
 
 export const ORPHAN_MIN_AGE_MS = 7 * 24 * 3600 * 1000;
 
 const referencedHashes = () => {
   const found = new Set<string>();
-  const rows = [
-    ...(db.query("SELECT content, edits FROM messages").all() as { content: string; edits: string | null }[]),
-    ...(db.query("SELECT content, edits FROM annotations").all() as { content: string; edits: string | null }[]),
-  ];
-  for (const { content, edits } of rows)
-    for (const m of `${content}\n${edits ?? ""}`.matchAll(/img:([0-9a-f]{64})/g)) found.add(m[1] as string);
+  const rows = db.query("SELECT content FROM note_versions").all() as { content: string }[];
+  for (const { content } of rows) for (const m of content.matchAll(/img:([0-9a-f]{64})/g)) found.add(m[1] as string);
   return found;
 };
 

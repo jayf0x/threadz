@@ -2,6 +2,10 @@
   "name": "@threadz/core",
   "type": "module",
   "main": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./bun": "./bun.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   }

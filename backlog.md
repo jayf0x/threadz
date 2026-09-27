@@ -12,13 +12,24 @@ _Nothing._
 ## v2 features (deferred by design)
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
-  yet (ideas for a details view and for tags in `inspiration.md`).
-- **Related threads / "similar to x".** `GET /api/threads/:id/related` exists and is unused. It failed for a fixable
-  reason: one vector per thread, built in `metadata.ts` from `title + description + tags + the first 2000 chars`
-  of the transcript, so a growing thread drifts away from its vector. Try per-note (or chunk) embeddings, keep
+  yet (ideas for a details view and for tags in `inspiration.md`). D2a (main on `core/`) dropped
+  `backend/metadata.ts`'s generation pipeline and `/api/threads/:id/metadata` + `/api/threads/:id/related`
+  entirely rather than adapt them: `core/schema.ts`'s `threads` table has no description/tags/embedding columns,
+  and giving those a v2 home (a `property_set`? a dedicated table?) is a real design decision, not carried
+  over. `looksLikeGarbage`/`stripImages`/`MIN_WORDS` are kept in `metadata.ts` as pure helpers for whenever this
+  comes back.
+- **Related threads / "similar to x".** Was `GET /api/threads/:id/related`, removed in D2a along with the rest of
+  metadata generation (see above) — no schema location for an embedding to read. When this comes back: one vector
+  per thread failed for a fixable reason (built from `title + description + tags + the first 2000 chars` of the
+  transcript, so a growing thread drifts away from its vector). Try per-note (or chunk) embeddings, keep
   generated text out of the embedding input, thread score = best/mean note match; judge on real data first. A
   semantic fallback for search would use the same embeddings. A graph version (entity extraction + community
   detection) comes after.
+- **Backup retention by time, not count (direction.md "B8").** `backend/db.ts`'s `backupDb()` still keeps the
+  newest N (`THREADZ_KEEP_BACKUPS`, default 20) backups by count, same as v1. Under "keep live" (a push roughly
+  every 15s per Round 5's B7) that cycles through all 20 in a few minutes. direction.md's answer is an
+  hourly-for-a-day / daily-for-a-month / weekly Time-Machine-style schedule — not implemented, flagged in D2a
+  rather than guessed at.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 - **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or

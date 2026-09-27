@@ -1,48 +1,10 @@
+import { applyChanges, type Changes, changesSince, stampRevs, TABLE_NAMES, threadView } from "@threadz/core";
 import type { BunRequest } from "bun";
 import type { z } from "zod";
-import {
-  allAnnotations,
-  allMessages,
-  annotationJson,
-  appendAnnotation,
-  appendMessage,
-  applySync,
-  backupDb,
-  copyThread,
-  createThread,
-  deleteAnnotation,
-  deleteThread,
-  editAnnotation,
-  editMessage,
-  editMessageMeta,
-  getAnnotation,
-  getAnnotations,
-  getMessage,
-  getMessages,
-  getThread,
-  heads,
-  listThreads,
-  messageJson,
-  renameThread,
-  threadEmbeddings,
-  threadHash,
-  threadJson,
-} from "./db";
+import { appendNoteMessage, backupDb, currentRev, driver, ensureSchema, getThread, now } from "./db";
 import { collectOrphanImages, imageFile, saveImage } from "./images";
-import { generateMetadata, metadataEnabled, refreshMetadata } from "./metadata";
-import { askModel, type ChatMessage, CLAUDE_MODEL, embed, HttpError } from "./model";
-import {
-  AppendMessage,
-  AskThread,
-  CopyThread,
-  CreateAnnotation,
-  CreateThread,
-  EditAnnotation,
-  EditMessage,
-  EditMessageMeta,
-  RenameThread,
-  SyncPayload,
-} from "./schemas";
+import { askModel, type ChatMessage, CLAUDE_MODEL, HttpError } from "./model";
+import { AskBody, PushBody } from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -61,6 +23,7 @@ const wrap =
   ) =>
   async (req: BunRequest<Path>) => {
     try {
+      await ensureSchema(); // never a bare 500 from a request racing schema init (see db.ts)
       return await fn(req, req.params);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message }, err.status);
@@ -82,26 +45,6 @@ const readBody = async <S extends z.ZodType>(req: Request, schema: S): Promise<z
   const issue = parsed.error.issues[0];
   const path = issue?.path.map(String).join(".");
   throw new HttpError(400, path ? `${path}: ${issue?.message}` : (issue?.message ?? "invalid body"));
-};
-
-const cosine = (a: ArrayLike<number>, b: ArrayLike<number>) => {
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i] ?? 0;
-    const y = b[i] ?? 0;
-    dot += x * y;
-    na += x * x;
-    nb += y * y;
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
-};
-
-const requireThread = (id: string) => {
-  const t = getThread(id);
-  if (!t) throw new HttpError(404, "thread not found");
-  return t;
 };
 
 // Desktop launcher (Threadz.app): every open tab holds this stream; when the last one drops, exit.
@@ -128,6 +71,9 @@ const presence = () => {
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache", ...CORS } });
 };
 
+// How many rows a push body actually carries, across every table.
+const countRows = (c: PushBody) => TABLE_NAMES.reduce((n, t) => n + (c[t]?.length ?? 0), 0);
+
 const server = Bun.serve({
   port: PORT,
   hostname: "0.0.0.0", // reachable from the phone over the LAN
@@ -135,37 +81,36 @@ const server = Bun.serve({
     "/api/health": () => json({ ok: true, model: CLAUDE_MODEL }),
     "/api/presence": presence,
 
-    // Whole store in one consistent read: a device going local copies this, and verifies against it.
-    // Text only — images are fetched one by one from /api/images/:hash.
-    "/api/snapshot": () =>
-      json({
-        version: 1,
-        exportedAt: Date.now(),
-        threads: listThreads().map(threadJson),
-        messages: allMessages().map(messageJson),
-        annotations: allAnnotations().map(annotationJson),
+    // Pull: "rows with rev > since", plus main's current rev as the new cursor (docs/direction.md
+    // "Sync"). `since` defaults to 0, so a fresh device's first pull sees everything.
+    "/api/changes": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      GET: wrap(async (req) => {
+        const url = new URL(req.url);
+        const raw = url.searchParams.get("since");
+        const since = raw == null ? 0 : Number(raw);
+        if (!Number.isFinite(since) || since < 0) throw new HttpError(400, "since must be a non-negative number");
+        const changes = await changesSince(driver, since);
+        return json({ changes, cursor: await currentRev() });
       }),
+    },
 
-    // Cheap "did main move?" check: one hash per thread + one for the whole store.
-    "/api/head": () => json(heads()),
-
-    // A device's offline work, applied atomically after a backup of main.
-    "/api/sync": {
+    // Push: a device's pending rows (docs/direction.md "Sync"). Backs main up first (same
+    // convention as v1), applies the changeset (`applyChanges` is insert-if-missing for immutable
+    // rows and last-write-wins on mutable ones -- see core/merge.ts), stamps every row that just
+    // landed with the next rev, and returns those rows stamped -- reusing `changesSince` with the
+    // cursor from just before this push -- so the client can update its own cursor without a second
+    // round-trip. A retry is harmless: merging is idempotent.
+    "/api/push": {
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req) => {
-        const payload = await readBody(req, SyncPayload);
-        if (
-          payload.threads.length +
-            payload.messages.length +
-            payload.annotations.length +
-            payload.deletes.length +
-            payload.annotationDeletes.length >
-          0
-        )
-          backupDb();
-        const { touched, ...result } = applySync(payload);
-        for (const id of touched) refreshMetadata(id);
-        return json({ ...result, ...heads() });
+        const body = await readBody(req, PushBody);
+        if (countRows(body) > 0) backupDb();
+        const since = await currentRev();
+        await applyChanges(driver, body as unknown as Partial<Changes>);
+        const cursor = await stampRevs(driver);
+        const changes = await changesSince(driver, since);
+        return json({ changes, cursor });
       }),
     },
 
@@ -184,246 +129,36 @@ const server = Bun.serve({
       ),
     },
 
-    "/api/threads": {
+    // Ask (docs/direction.md "B10"): push -> ask -> main writes the question and the answer as
+    // notes -> pull (the pull itself is the client's job). The thread's transcript is assembled
+    // from `core`'s `threadView` query, so main sees exactly what a device would render.
+    "/api/ask": {
       OPTIONS: () => new Response(null, { headers: CORS }),
-      GET: wrap((req) => {
-        const url = new URL(req.url);
-        const rows = listThreads(url.searchParams.get("q") || undefined, url.searchParams.get("sort") || "updated");
-        return json(rows.map(threadJson));
-      }),
       POST: wrap(async (req) => {
-        const body = await readBody(req, CreateThread);
-        const id = body.id || crypto.randomUUID();
-        // Idempotent like appends: a device replaying a local thread may hit an id we already have.
-        const existing = getThread(id);
-        if (existing) return json(threadJson(existing));
-        const title = (body.title || "Untitled thread").slice(0, 200);
-        const thread = createThread(id, title, body.createdAt);
-        if (body.seed?.trim()) {
-          appendMessage({ id: crypto.randomUUID(), threadId: id, role: "user", content: body.seed.trim() });
-          refreshMetadata(id);
-        }
-        return json(threadJson(thread), 201);
-      }),
-    },
+        const body = await readBody(req, AskBody);
+        if (!body.threadId || !body.question?.trim()) throw new HttpError(400, "threadId and question are required");
+        const thread = await getThread(body.threadId);
+        if (!thread) throw new HttpError(404, "thread not found");
 
-    "/api/threads/:id": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      GET: wrap((_req, p) => {
-        const thread = requireThread(p.id);
-        return json({
-          thread: threadJson(thread),
-          messages: getMessages(p.id).map(messageJson),
-          annotations: getAnnotations(p.id).map(annotationJson),
-          hash: threadHash(thread),
-        });
-      }),
-      PATCH: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, RenameThread);
-        if (!body.title?.trim()) throw new HttpError(400, "title is required");
-        const thread = renameThread(p.id, body.title, body.renamedAt)!;
-        refreshMetadata(p.id);
-        return json(threadJson(thread));
-      }),
-      DELETE: wrap((_req, p) => {
-        requireThread(p.id);
-        deleteThread(p.id);
-        return json({ ok: true });
-      }),
-    },
-
-    // A B copy of A from its first message up to and including `uptoMessageId`. `newThreadId` is
-    // minted by the client, once, so a retry (or a double tap) replays the same id and this is a
-    // no-op the second time. A never changes.
-    "/api/threads/:id/copy": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      POST: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, CopyThread);
-        if (!body.newThreadId || !body.uptoMessageId)
-          throw new HttpError(400, "newThreadId and uptoMessageId are required");
-        const result = copyThread(body.newThreadId, p.id, body.uptoMessageId, body.appendNote);
-        if (!result) throw new HttpError(404, "message not found");
-        return json(
-          {
-            thread: threadJson(result.thread),
-            messages: result.messages.map(messageJson),
-            annotations: result.annotations.map(annotationJson),
-          },
-          201,
-        );
-      }),
-    },
-
-    "/api/threads/:id/messages": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      POST: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, AppendMessage);
-        if (!body.id || !body.content?.trim()) throw new HttpError(400, "id and content are required");
-        const { message, inserted } = appendMessage({
-          id: body.id,
-          threadId: p.id,
-          role: body.role || "user",
-          content: body.content.trim(),
-          meta: body.meta,
-          createdAt: body.createdAt,
-        });
-        if (inserted) refreshMetadata(p.id);
-        return json({ message: messageJson(message), inserted });
-      }),
-    },
-
-    // Edit in place; the previous text is kept in the message's `edits`.
-    "/api/threads/:id/messages/:mid": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      PATCH: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, EditMessage);
-        if (!body.content?.trim()) throw new HttpError(400, "content is required");
-        const at = Math.min(body.editedAt || Date.now(), Date.now());
-        const message = editMessage(p.mid, [{ content: body.content.trim(), at }]);
-        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
-        refreshMetadata(p.id);
-        return json({ message: messageJson(message) });
-      }),
-    },
-
-    // Non-textual message state (the ⋯ menu's "Todo" toggle, the sidebar's message-todo
-    // checkbox) — merged into `meta`, never replaces it; a key set to `null` clears it. Its own
-    // route, not EditMessage above: `content` stays required there, and a meta patch has no content
-    // to send. `metaEditedAt` gets its own clock (never `editedAt`) so this never reads as a content
-    // edit (no history entry, no "edited" label) but still moves threadHash for sync (see db.ts).
-    "/api/threads/:id/messages/:mid/meta": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      PATCH: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, EditMessageMeta);
-        const at = Math.min(body.metaEditedAt || Date.now(), Date.now());
-        const message = editMessageMeta(p.mid, body.meta, at);
-        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
-        return json({ message: messageJson(message) });
-      }),
-    },
-
-    // A note attached to one message: text required, images optional (an image-only annotation is
-    // still text — a markdown image ref). Idempotent by client id, like a message append.
-    "/api/threads/:id/messages/:mid/annotations": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      POST: wrap(async (req, p) => {
-        requireThread(p.id);
-        const message = getMessage(p.mid);
-        if (!message || message.thread_id !== p.id) throw new HttpError(404, "message not found");
-        const body = await readBody(req, CreateAnnotation);
-        if (!body.id || !body.content?.trim()) throw new HttpError(400, "id and content are required");
-        const { annotation, inserted } = appendAnnotation({
-          id: body.id,
-          threadId: p.id,
-          messageId: p.mid,
-          content: body.content.trim(),
-          createdAt: body.createdAt,
-        });
-        return json({ annotation: annotationJson(annotation), inserted });
-      }),
-    },
-
-    // Edit in place; the previous text is kept in the annotation's `edits`, same as a message.
-    "/api/threads/:id/annotations/:aid": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      PATCH: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, EditAnnotation);
-        if (!body.content?.trim()) throw new HttpError(400, "content is required");
-        const at = Math.min(body.editedAt || Date.now(), Date.now());
-        const annotation = editAnnotation(p.aid, [{ content: body.content.trim(), at }]);
-        if (!annotation || annotation.thread_id !== p.id) throw new HttpError(404, "annotation not found");
-        return json({ annotation: annotationJson(annotation) });
-      }),
-      // Unconditional delete, like live `DELETE /api/threads/:id` — conflict resolution ("content
-      // wins") is a sync concept (see /api/sync's annotationDeletes), not something a live device-to-
-      // main call needs. Ownership is checked BEFORE deleting (not delete-then-check like the PATCH
-      // above) so a mismatched :id/:aid pair can never remove a row that belongs to another thread.
-      DELETE: wrap((_req, p) => {
-        requireThread(p.id);
-        const annotation = getAnnotation(p.aid);
-        if (!annotation || annotation.thread_id !== p.id) throw new HttpError(404, "annotation not found");
-        deleteAnnotation(p.aid);
-        return json({ ok: true });
-      }),
-    },
-
-    "/api/threads/:id/ask": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      POST: wrap(async (req, p) => {
-        requireThread(p.id);
-        const body = await readBody(req, AskThread);
-        if (!body.prompt?.trim()) throw new HttpError(400, "prompt is required");
-
-        const history: ChatMessage[] = getMessages(p.id).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-        const messages: ChatMessage[] = [...history, { role: "user", content: body.prompt.trim() }];
-        const { text } = await askModel({
+        const view = await threadView(driver, body.threadId);
+        const history: ChatMessage[] = view.map((row) => ({ role: row.version.author, content: row.version.content }));
+        const question = body.question.trim();
+        const messages: ChatMessage[] = [...history, { role: "user", content: question }];
+        const { text: answer } = await askModel({
           system:
             "You are a thinking partner inside a personal knowledge system. The messages are an existing thread the user is picking back up. Be concise and concrete.",
           messages,
         });
 
-        let committed = false;
-        if (body.commit) {
-          // Appended AT commit time, not backdated — keeps the log append-only.
-          appendMessage({
-            id: body.userMessageId || crypto.randomUUID(),
-            threadId: p.id,
-            role: "user",
-            content: body.prompt.trim(),
-          });
-          appendMessage({
-            id: body.assistantMessageId || crypto.randomUUID(),
-            threadId: p.id,
-            role: "assistant",
-            content: text,
-          });
-          committed = true;
-          refreshMetadata(p.id);
-        }
-        return json({ answer: text, committed });
-      }),
-    },
-
-    "/api/threads/:id/metadata": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      POST: wrap(async (_req, p) => {
-        requireThread(p.id);
-        if (!metadataEnabled()) throw new HttpError(503, "metadata generation is off (set THREADZ_METADATA=1)");
-        await generateMetadata(p.id);
-        return json(threadJson(getThread(p.id)!));
-      }),
-    },
-
-    // v2 — kept for a future revisit, NOT surfaced in the UI. Embedding-similarity
-    // "related threads" wasn't giving meaningful results at personal scale, so the
-    // frontend dropped it. Endpoint still works if you curl it.
-    "/api/threads/:id/related": {
-      OPTIONS: () => new Response(null, { headers: CORS }),
-      GET: wrap(async (_req, p) => {
-        const thread = requireThread(p.id);
-        if (!metadataEnabled()) throw new HttpError(503, "metadata generation is off (set THREADZ_METADATA=1)");
-        const all = threadEmbeddings();
-        // No stored embedding yet — embed the title on the fly so the result isn't empty.
-        const self = all.find((t) => t.id === p.id)?.vec ?? (await embed([thread.title], "query"))[0];
-        if (!self) throw new HttpError(502, "embed returned no vector");
-        // ponytail: brute-force cosine over every thread. Personal scale = thousands max;
-        // swap in sqlite-vec / an ANN index only if this ever gets slow.
-        const scored = all
-          .filter((t) => t.id !== p.id)
-          .map((t) => ({ id: t.id, title: t.title, score: cosine(self, t.vec) }))
-          .sort((a, b) => b.score - a.score)
-          .filter((r) => r.score > 0.35)
-          .slice(0, 5);
-        return json(scored);
+        const since = await currentRev();
+        const askedAt = now();
+        await appendNoteMessage(driver, body.threadId, question, "user", askedAt);
+        // +1 so the answer is never mis-ordered before its question (orderedMessageIds sorts by
+        // created_at, then id -- see core/merge.ts).
+        await appendNoteMessage(driver, body.threadId, answer, "assistant", askedAt + 1);
+        const cursor = await stampRevs(driver);
+        const changes = await changesSince(driver, since);
+        return json({ answer, changes, cursor });
       }),
     },
   },

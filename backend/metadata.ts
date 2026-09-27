@@ -1,22 +1,19 @@
-import { getMessages, getThread, setMetadata } from "./db";
-import { embed, ollamaGenerateJson } from "./model";
-
-// Runs synchronously or fire-and-forget on commit. No queue, no tiers —
-// personal volume + local model = a couple seconds, commits are human-paced.
-
-// gemma3:270m is tiny — it needs a worked example or it parrots the instructions
-// back. Few-shot + a sanity filter on the way out.
-const SYSTEM = `You summarise a personal knowledge thread. Output ONLY JSON:
-{"description": string, "tags": string[]}
-- description: one plain sentence describing what the thread is about, <= 140 chars.
-- tags: 3 to 6 short lowercase topic keywords.
-
-Example input:
-Thread title: Sourdough hydration
-Messages:
-user: notes — 70% hydration, 20% starter, 18h cold proof, bread flour
-Example output:
-{"description":"Notes on a high-hydration sourdough recipe and its cold-proof schedule.","tags":["sourdough","baking","hydration","cold-proof"]}`;
+// v1's metadata pipeline (description/tags/embedding, generated fire-and-forget and stored on the
+// old `threads` table, served from `/api/threads/:id/metadata` + `/api/threads/:id/related`) has no
+// home in the v2 schema: core/schema.ts's `threads` table is just `id, title, updated_at, rev` --
+// no description/tags/embedding columns -- and docs/direction.md's data model (Round 3-5) never
+// reintroduces them. AGENTS.md's "the code stays for v2" referred to *this* file surviving for a
+// future revisit, not to the v1 storage shape carrying over unchanged.
+//
+// Giving this a new home (a `property_set` holding a generated description? a dedicated table
+// keyed by thread/entity id? where does an embedding, which is bytes, fit a schema whose only BLOB
+// was this exact column?) is a real design decision, not a mechanical rename -- so it's flagged
+// here rather than guessed at (see the D2a handback report). `/api/threads/:id/metadata` and
+// `/api/threads/:id/related` are dropped from backend/server.ts for the same reason: there is
+// nothing left in the schema for either to read or write.
+//
+// The two pure text-processing helpers below have no schema dependency and are kept in case
+// metadata generation comes back in some v2 shape.
 
 // Reject output that's just the instructions echoed back (small local models do this).
 export const looksLikeGarbage = (s: string) =>
@@ -27,57 +24,3 @@ export const MIN_WORDS = 4;
 
 // Images are `![](img:<hash>#WxH)` — noise to a text summariser.
 export const stripImages = (s: string) => s.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
-
-// Off by default — v1 dropped generated description/tags/embeddings/related from the UI (weak output, no
-// solid place to show them). The code stays for v2; read live (not cached) so tests can flip it per-case.
-export const metadataEnabled = () => process.env.THREADZ_METADATA === "1";
-
-export const generateMetadata = async (threadId: string) => {
-  const thread = getThread(threadId);
-  if (!thread) return;
-  const messages = getMessages(threadId);
-  const transcript = messages
-    .map((m) => `${m.role}: ${stripImages(m.content)}`)
-    .join("\n")
-    .slice(0, 6000);
-
-  let description = thread.description || "";
-  let tags: string[] = thread.tags ? JSON.parse(thread.tags) : [];
-
-  // Too little to summarise — don't let the model invent/parrot. Fall back to the title.
-  const wordCount = `${thread.title} ${transcript}`.split(/\s+/).filter(Boolean).length;
-  if (wordCount < MIN_WORDS) {
-    description = "";
-    tags = [];
-  } else {
-    try {
-      const out = await ollamaGenerateJson<{ description?: string; tags?: string[] }>(
-        `Thread title: ${thread.title}\nMessages:\n${transcript}`,
-        SYSTEM,
-      );
-      if (out.description && !looksLikeGarbage(out.description)) {
-        description = String(out.description).slice(0, 200);
-      }
-      if (Array.isArray(out.tags)) {
-        const clean = out.tags
-          .map((t) => String(t).toLowerCase().trim())
-          .filter((t) => t && t.length <= 30 && !looksLikeGarbage(t));
-        if (clean.length) tags = clean.slice(0, 6);
-      }
-    } catch (err) {
-      console.error("[threadz] metadata gen failed", err);
-    }
-  }
-
-  const summaryText = `${thread.title}\n${description}\n${tags.join(", ")}\n${transcript.slice(0, 2000)}`;
-  const [vec] = await embed([summaryText], "document");
-  if (!vec) throw new Error("embed returned no vector");
-  setMetadata(threadId, description, tags, vec);
-};
-
-// Fire-and-forget wrapper used by append/commit paths. No-op unless THREADZ_METADATA=1 —
-// with the flag off, nothing here ever calls Ollama.
-export const refreshMetadata = (threadId: string) => {
-  if (!metadataEnabled()) return;
-  generateMetadata(threadId).catch((err) => console.error("[threadz] refreshMetadata", err));
-};
