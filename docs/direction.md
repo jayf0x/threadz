@@ -211,9 +211,11 @@ This replaces per-thread hashes, `base`, and hash-checked deletes.
 
 ### Device storage and export
 
-- The phone has no SQLite of its own. It runs SQLite compiled to WASM, stored in IndexedDB: **wa-sqlite with
-  `IDBBatchAtomicVFS`**. OPFS-based storage is less stable on iOS Safari. It's the same schema and the same queries as
-  main.
+- The phone has no SQLite of its own. It runs SQLite compiled to WASM, stored in IndexedDB: still wa-sqlite's
+  `IDBBatchAtomicVFS` under the hood, now reached through **`@subframe7536/sqlite-wasm`** (plain `wa-sqlite` ships
+  without FTS5 compiled in; this wrapper's prebuilt async wasm has FTS5 + the trigram tokenizer baked in, see the
+  Foundation spikes below). OPFS-based storage is less stable on iOS Safari. It's the same schema and the same
+  queries as main.
 - **Known risks** (PowerSync, May 2026): Safari can throw "maximum call stack size exceeded" on large queries with
   this VFS, and performance degrades beyond about 100MB. The first spike (below) measures both.
 - iOS PWA storage is not trusted. **Export writes the whole database as a `.sqlite` file**: a full snapshot that
@@ -316,8 +318,9 @@ first group should be built before that group is answered.
    synchronous today, because it was written for bun:sqlite.
    - Change the `Driver` to return promises; main wraps bun:sqlite.
    - *Blocks:* all shared queries.
-3. **Search on the phone.** Check the wa-sqlite build includes FTS5 with the trigram tokenizer (main already uses it).
-   Otherwise the phone and main rank search results differently, which is today's `lib/search.ts` split.
+3. **Search on the phone.** ~~Check the wa-sqlite build includes FTS5 with the trigram tokenizer~~ done: plain
+   `wa-sqlite` doesn't ship FTS5; `@subframe7536/sqlite-wasm` does (its bundled async wasm has FTS5 + trigram
+   compiled in, confirmed in `frontend/scripts/spike-sqlite-wasm/`), so the phone matches main's ranking.
 4. **Export and import a real `.sqlite` file.**
    - Find how to get the database bytes out of the VFS (read the file through the VFS, or `VACUUM INTO` a memory file).
    - Verify the file opens in the `sqlite3` CLI, and that importing it on main merges with the sync rules.

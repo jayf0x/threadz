@@ -34,15 +34,20 @@ Nothing left to build; this is what can only be *observed* on an iPhone (everyth
 Chromium at iPhone size, including offline dictation from the production build). Code for each is in place.
 
 - **wa-sqlite storage volume at scale (v2, direction.md "A. Foundation" #1):** seed ~10k notes, 50k versions, 2k
-  threads into `IDBBatchAtomicVFS` on a real installed PWA and confirm writes/IndexedDB don't choke — the headless
-  spike (`frontend/scripts/spike-wa-sqlite/`) only exercised a handful of rows in desktop Chromium.
+  threads into `IDBBatchAtomicVFS` (now via `@subframe7536/sqlite-wasm`'s `useIdbStorage`) on a real installed PWA
+  and confirm writes/IndexedDB don't choke — the headless spikes (`frontend/scripts/spike-wa-sqlite/`,
+  `frontend/scripts/spike-sqlite-wasm/`) only exercised a handful of rows in desktop Chromium.
 - **Lens query timing at that volume:** time a thread view, full-text search and the Todos query against the seeded
   10k/50k/2k dataset on real iOS Safari, not desktop Chromium.
 - **Safari's "maximum call stack size exceeded" on large wa-sqlite queries** (PowerSync, May 2026 — already cited in
-  docs/direction.md's "Device storage and export"): the headless spike above didn't reproduce it at its tiny data
+  docs/direction.md's "Device storage and export"): the headless spikes above didn't reproduce it at their tiny data
   volume on desktop Chromium; check whether it shows up on real iOS Safari at the 10k-note volume.
 - **Persistence after a week of the PWA not being opened:** confirm IndexedDB (and the wa-sqlite file inside it)
   survives Safari's real-world storage eviction after a week of idle time, not just a fresh install.
+- ~~FTS5 trigram search on the phone~~ resolved: the plain `wa-sqlite` npm package has no FTS5 compiled in
+  (`frontend/scripts/spike-wa-sqlite/`), but `@subframe7536/sqlite-wasm`'s bundled async wasm does, and its trigram
+  tokenizer matches main's (`frontend/scripts/spike-sqlite-wasm/`, headless Chromium at iPhone size) — the phone no
+  longer needs a plain-LIKE fallback search.
 - **Keyboard and viewport:** the shell follows `visualViewport` (`lib/viewport.ts`); composer pin/unpin around the
   keyboard, reachable top/bottom of a long thread while it animates, no rubber-band on tab panels, safe-area padding.
 - **Keyboard from taps:** Edit (`enterEdit()` + `lib/keyboard.ts` proxy), Add/Edit note in the sheet, the dictation tap.

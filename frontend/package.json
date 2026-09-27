@@ -17,6 +17,7 @@
     "@radix-ui/react-popover": "^1.1.23",
     "@radix-ui/react-toast": "^1.2.23",
     "@ricky0123/vad-web": "^0.0.30",
+    "@subframe7536/sqlite-wasm": "^1.3.1",
     "@tanstack/react-virtual": "^3.14.13",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -44,7 +45,6 @@
     "vite": "^6.1.0",
     "vite-plugin-pwa": "^0.21.1",
     "vite-plugin-static-copy": "^4.1.1",
-    "wa-sqlite": "^1.0.0",
     "workbox-window": "^7.3.0"
   }
 }
