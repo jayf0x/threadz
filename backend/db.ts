@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { type Driver, initSchema } from "@threadz/core";
 import { bunDriver } from "@threadz/core/bun";
@@ -86,13 +86,38 @@ export const appendNoteMessage = async (
 // A consistent copy of the whole database, taken before a device's push is applied. Reverting main
 // = stop the backend and copy one of these over threadz.sqlite. Text only: images are files in
 // their own directory (backend/images.ts) and are never copied here.
-const KEEP_BACKUPS = Number(process.env.THREADZ_KEEP_BACKUPS || 20);
 
-// TODO (docs/direction.md "B8", flagged not implemented): retention is still by count, not time.
-// Under "keep live" (a push roughly every 15s per Round 5's B7) that cycles through all
-// `KEEP_BACKUPS` copies in a few minutes. direction.md's answer is an hourly-for-a-day /
-// daily-for-a-month / weekly Time-Machine-style schedule; that scheduling logic isn't written yet
-// -- left as a backlog item (see backlog.md) rather than guessed at here.
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
+const MONTH = 30 * DAY;
+
+// docs/direction.md "B8": retention by time, not count -- under "keep live" (a push roughly every
+// 15s) a count-based scheme cycles through its whole window in minutes. Time Machine's schedule:
+// hourly for the last day, daily out to a month, weekly beyond that. Pure and separately testable
+// (backend/db.test.ts) from the filesystem side-effects in `backupDb` below. Spec is silent on which
+// backup represents a bucket once it's wide enough to drop some; this keeps the *newest* survivor per
+// bucket, not the oldest -- the backup a push just took (always the newest timestamp overall) must
+// never be pruned by its own creation just because an earlier backup already claimed that hour/day/
+// week, since the whole point of backing up before a push is having that exact recovery point.
+export const selectBackupsToKeep = (backups: { path: string; timestamp: number }[], now: number): Set<string> => {
+  const bucketOf = (timestamp: number) => {
+    const age = now - timestamp;
+    if (age < DAY) return `h${Math.floor(timestamp / HOUR)}`;
+    if (age < MONTH) return `d${Math.floor(timestamp / DAY)}`;
+    return `w${Math.floor(timestamp / WEEK)}`;
+  };
+  const seen = new Set<string>();
+  const keep = new Set<string>();
+  for (const b of [...backups].sort((a, c) => c.timestamp - a.timestamp)) {
+    const bucket = bucketOf(b.timestamp);
+    if (seen.has(bucket)) continue;
+    seen.add(bucket);
+    keep.add(b.path);
+  }
+  return keep;
+};
+
 export const backupDb = () => {
   const dir = process.env.THREADZ_BACKUPS || join(dirname(resolve(DB_PATH)), "backups");
   mkdirSync(dir, { recursive: true });
@@ -102,10 +127,13 @@ export const backupDb = () => {
     `threadz-${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 6)}.sqlite`,
   );
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  const old = readdirSync(dir)
+  const backups = readdirSync(dir)
     .filter((f) => f.startsWith("threadz-") && f.endsWith(".sqlite"))
-    .sort()
-    .slice(0, -KEEP_BACKUPS);
-  for (const f of old) unlinkSync(join(dir, f));
+    .map((f) => {
+      const path = join(dir, f);
+      return { path, timestamp: statSync(path).mtimeMs };
+    });
+  const keep = selectBackupsToKeep(backups, Date.now());
+  for (const b of backups) if (!keep.has(b.path)) unlinkSync(b.path);
   return file;
 };
