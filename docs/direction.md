@@ -356,7 +356,7 @@ first group should be built before that group is answered.
    - *Blocks:* all shared queries.
 3. **Search on the phone.** ~~Check the wa-sqlite build includes FTS5 with the trigram tokenizer~~ done: plain
    `wa-sqlite` doesn't ship FTS5; `@subframe7536/sqlite-wasm` does (its bundled async wasm has FTS5 + trigram
-   compiled in, confirmed in `frontend/scripts/spike-sqlite-wasm/`), so the phone matches main's ranking.
+   compiled in, confirmed by a headless spike since removed), so the phone matches main's ranking.
 4. **Export and import a real `.sqlite` file.**
    - Find how to get the database bytes out of the VFS (read the file through the VFS, or `VACUUM INTO` a memory file).
    - Verify the file opens in the `sqlite3` CLI, and that importing it on main merges with the sync rules.

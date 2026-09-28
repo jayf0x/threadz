@@ -3,8 +3,7 @@
 //
 //   bun run frontend/scripts/verify-phone-db/run.ts
 //
-// Unlike ../spike-sqlite-wasm (a bare static server, since it only had to serve a plain worker.js), this
-// needs real module resolution: phoneDb.ts uses the `@/` alias, the `@threadz/core` workspace package,
+// This needs real module resolution: phoneDb.ts uses the `@/` alias, the `@threadz/core` workspace package,
 // and Vite's `new Worker(new URL(...), { type: "module" })` pattern. So this spins up a real Vite dev
 // server (frontend's own root, no app plugins needed) and points a headless, iPhone-sized Chromium at
 // client.ts, which drives the actual public API: open two independent phone dbs, write to each through
@@ -44,7 +43,7 @@ async function main() {
       // Pre-bundling this package churns its wasm asset through Vite's dep cache and, during this ad hoc
       // server's dependency (re-)optimization, that cache goes stale mid-request — the wasm fetch comes
       // back as Vite's HTML fallback instead of bytes. It's already pure ESM; serve it straight from
-      // node_modules, same as ../spike-sqlite-wasm's plain static server did.
+      // node_modules.
       exclude: ["@subframe7536/sqlite-wasm"],
     },
     plugins: [

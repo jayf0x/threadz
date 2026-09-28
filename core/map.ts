@@ -1,5 +1,5 @@
 import { orderedMessageIds } from "./merge";
-import { isReferenceStale } from "./queries";
+import { isPinStale, latestContentSql } from "./queries";
 import type { Driver } from "./schema";
 
 // The computed map, "tracks" layout (docs/direction.md "Lenses": Map): every thread is a row, its live messages
@@ -147,10 +147,7 @@ const linkedTo = async (d: Driver, id: string): Promise<Set<string>> => {
 // Ids touched by a pinned reference (a message's own pin, or a link's endpoints) whose note has moved on.
 const stalePinned = async (d: Driver, messages: Loaded[]): Promise<Set<string>> => {
   const out = new Set<string>();
-  const stale = async (pin: string) => {
-    const [v] = await d.all<{ note_id: string }>("SELECT note_id FROM note_versions WHERE id = ?", [pin]);
-    return v ? isReferenceStale(d, v.note_id, pin) : false;
-  };
+  const stale = (pin: string) => isPinStale(d, pin);
   for (const m of messages) if (m.pin && (await stale(m.pin))) out.add(m.message_id);
   const links = await d.all<{ from_id: string; to_id: string; pin: string }>(
     `SELECT l.from_id, l.to_id, l.pin_version_id AS pin FROM links l JOIN entities e ON e.id = l.id AND e.deleted_at IS NULL
@@ -173,7 +170,7 @@ const todoState = async (d: Driver): Promise<Map<string, "open" | "done">> => {
 export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapTracks> => {
   const all = await d.all<Loaded>(
     `SELECT m.id AS message_id, m.thread_id, m.note_id, m.pin_version_id AS pin, ne.created_at, t.title,
-       (SELECT content FROM note_versions v WHERE v.note_id = m.note_id ORDER BY v.created_at DESC, v.id DESC LIMIT 1) AS content
+       ${latestContentSql("m.note_id")} AS content
      FROM messages m
      JOIN entities me ON me.id = m.id AND me.deleted_at IS NULL
      JOIN entities ne ON ne.id = m.note_id AND ne.deleted_at IS NULL
@@ -271,7 +268,7 @@ export const mapFilterOptions = async (d: Driver): Promise<MapFilterOptions> => 
   );
   const ends = await d.all<{ id: string; kind: "note" | "thread"; n: number; title: string | null; content: string | null }>(
     `SELECT e.id, e.kind, COUNT(*) AS n, t.title,
-       (SELECT content FROM note_versions v WHERE v.note_id = e.id ORDER BY v.created_at DESC, v.id DESC LIMIT 1) AS content
+       ${latestContentSql("e.id")} AS content
      FROM (SELECT from_id AS eid, id AS lid FROM links UNION ALL SELECT to_id, id FROM links) x
      JOIN entities le ON le.id = x.lid AND le.deleted_at IS NULL
      JOIN entities e ON e.id = x.eid AND e.kind IN ('note','thread') AND e.deleted_at IS NULL

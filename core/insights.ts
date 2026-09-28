@@ -1,4 +1,4 @@
-import { isReferenceStale } from "./queries";
+import { isPinStale, latestContentSql } from "./queries";
 import type { Driver } from "./schema";
 
 // Insight v1 (docs/direction.md "Round 7"): deterministic, templated sentences over counts and co-occurrences.
@@ -151,7 +151,7 @@ const firstLine = (content: string): string => {
 export const mostLinked: InsightQuery = async (d) => {
   const rows = await d.all<{ id: string; n: number; content: string | null }>(
     `SELECT e.id, COUNT(*) AS n,
-       (SELECT content FROM note_versions v WHERE v.note_id = e.id ORDER BY v.created_at DESC, v.id DESC LIMIT 1) AS content
+       ${latestContentSql("e.id")} AS content
      FROM (SELECT from_id AS eid, id AS lid FROM links UNION ALL SELECT to_id, id FROM links) x
      JOIN entities le ON le.id = x.lid AND le.deleted_at IS NULL
      JOIN entities e ON e.id = x.eid AND e.kind = 'note' AND e.deleted_at IS NULL
@@ -226,8 +226,7 @@ export const stalePins: InsightQuery = async (d) => {
   );
   let n = 0;
   for (const { pin } of pins) {
-    const [v] = await d.all<{ note_id: string }>("SELECT note_id FROM note_versions WHERE id = ?", [pin]);
-    if (v && (await isReferenceStale(d, v.note_id, pin))) n++;
+    if (await isPinStale(d, pin)) n++;
   }
   if (n === 0) return [];
   return [

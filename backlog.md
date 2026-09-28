@@ -13,11 +13,10 @@ _Nothing._
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
   yet (ideas for a details view and for tags in `inspiration.md`). D2a (main on `core/`) dropped
-  `backend/metadata.ts`'s generation pipeline and `/api/threads/:id/metadata` + `/api/threads/:id/related`
-  entirely rather than adapt them: `core/schema.ts`'s `threads` table has no description/tags/embedding columns,
+  the v1 generation pipeline (`backend/metadata.ts`, since deleted) and `/api/threads/:id/metadata` +
+  `/api/threads/:id/related` entirely rather than adapt them: `core/schema.ts`'s `threads` table has no description/tags/embedding columns,
   and giving those a v2 home (a `property_set`? a dedicated table?) is a real design decision, not carried
-  over. `looksLikeGarbage`/`stripImages`/`MIN_WORDS` are kept in `metadata.ts` as pure helpers for whenever this
-  comes back.
+  over; nothing of it is kept in the tree.
 - **Related threads / "similar to x".** Was `GET /api/threads/:id/related`, removed in D2a along with the rest of
   metadata generation (see above) — no schema location for an embedding to read. When this comes back: one vector
   per thread failed for a fixable reason (built from `title + description + tags + the first 2000 chars` of the
@@ -44,18 +43,18 @@ Chromium at iPhone size, including offline dictation from the production build).
 
 - **wa-sqlite storage volume at scale (v2, direction.md "A. Foundation" #1):** seed ~10k notes, 50k versions, 2k
   threads into `IDBBatchAtomicVFS` (now via `@subframe7536/sqlite-wasm`'s `useIdbStorage`) on a real installed PWA
-  and confirm writes/IndexedDB don't choke — the headless spikes (`frontend/scripts/spike-wa-sqlite/`,
-  `frontend/scripts/spike-sqlite-wasm/`) only exercised a handful of rows in desktop Chromium.
+  and confirm writes/IndexedDB don't choke — the headless checks (`frontend/scripts/verify-phone-db/`)
+  only exercise a handful of rows in desktop Chromium.
 - **Lens query timing at that volume:** time a thread view, full-text search and the Todos query against the seeded
   10k/50k/2k dataset on real iOS Safari, not desktop Chromium.
 - **Safari's "maximum call stack size exceeded" on large wa-sqlite queries** (PowerSync, May 2026 — already cited in
-  docs/direction.md's "Device storage and export"): the headless spikes above didn't reproduce it at their tiny data
+  docs/direction.md's "Device storage and export"): the headless checks above didn't reproduce it at their tiny data
   volume on desktop Chromium; check whether it shows up on real iOS Safari at the 10k-note volume.
 - **Persistence after a week of the PWA not being opened:** confirm IndexedDB (and the wa-sqlite file inside it)
   survives Safari's real-world storage eviction after a week of idle time, not just a fresh install.
 - ~~FTS5 trigram search on the phone~~ resolved: the plain `wa-sqlite` npm package has no FTS5 compiled in
-  (`frontend/scripts/spike-wa-sqlite/`), but `@subframe7536/sqlite-wasm`'s bundled async wasm does, and its trigram
-  tokenizer matches main's (`frontend/scripts/spike-sqlite-wasm/`, headless Chromium at iPhone size) — the phone no
+  (spike since removed), but `@subframe7536/sqlite-wasm`'s bundled async wasm does, and its trigram
+  tokenizer matches main's (checked in headless Chromium at iPhone size) — the phone no
   longer needs a plain-LIKE fallback search.
 - **Keyboard and viewport:** the shell follows `visualViewport` (`lib/viewport.ts`); composer pin/unpin around the
   keyboard, reachable top/bottom of a long thread while it animates, no rubber-band on tab panels, safe-area padding.

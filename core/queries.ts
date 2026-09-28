@@ -309,6 +309,16 @@ export const isReferenceStale = async (d: Driver, noteId: string, pinnedVersionI
   return latest ? latest.id !== pinnedVersionId : false;
 };
 
+// `isReferenceStale` for a bare pinned version id (the note is looked up from it).
+export const isPinStale = async (d: Driver, pinVersionId: string): Promise<boolean> => {
+  const [v] = await d.all<{ note_id: string }>("SELECT note_id FROM note_versions WHERE id = ?", [pinVersionId]);
+  return v ? isReferenceStale(d, v.note_id, pinVersionId) : false;
+};
+
+// SQL scalar subselect: the latest version's content of the note whose id is `noteIdExpr`.
+export const latestContentSql = (noteIdExpr: string) =>
+  `(SELECT content FROM note_versions v WHERE v.note_id = ${noteIdExpr} ORDER BY v.created_at DESC, v.id DESC LIMIT 1)`;
+
 export type LinkCandidate = { id: string; label: string; updated_at: number };
 
 // Every live link, newest-updated first, each labelled with its best-effort "type" property value

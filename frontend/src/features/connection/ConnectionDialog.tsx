@@ -75,7 +75,7 @@ export const ConnectionDialog = () => {
           <div>
             <Eyebrow>{s.unreachable ? "Unreachable" : s.keepLive ? "Keep-live" : "Sync"}</Eyebrow>
             <h2 id="conn-title" className="mt-1 font-serif text-3xl leading-tight tracking-tight">
-              {s.unreachable ? "Can't reach main." : "This device."}
+              {s.unreachable ? "Can't sync." : "This device."}
             </h2>
           </div>
           <Button
