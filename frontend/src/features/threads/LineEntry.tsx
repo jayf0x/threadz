@@ -8,6 +8,7 @@ import {
   type MarkdownEditorHandle,
   useImageAttach,
 } from "@/features/editor";
+import { cn } from "@/lib/cn";
 import { toggleTodoLine } from "@/lib/todos";
 import type { Message } from "@/lib/types";
 
@@ -21,11 +22,13 @@ import type { Message } from "@/lib/types";
 export const LineEntry = ({
   message: m,
   busy,
+  pulsing,
   onEdit,
   onReferenceClick,
 }: {
   message: Message;
   busy: boolean;
+  pulsing: boolean; // arrival pulse (a `?thread=&msg=` deep link landed here), same as EntryRow's
   onEdit: (text: string) => Promise<boolean>;
   onReferenceClick: (threadId: string, messageId?: string) => void;
 }) => {
@@ -66,7 +69,7 @@ export const LineEntry = ({
 
   if (!mine) {
     return (
-      <div className="py-1.5 [overflow-wrap:anywhere]">
+      <div className={cn("rounded-lg py-1.5 [overflow-wrap:anywhere]", pulsing && "message-pulse")}>
         <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" onReferenceClick={navigateReference} />
       </div>
     );
@@ -77,7 +80,7 @@ export const LineEntry = ({
     // buttons) is fully keyboard-reachable once editing starts.
     // biome-ignore lint/a11y/noStaticElementInteractions: see above
     // biome-ignore lint/a11y/useKeyWithClickEvents: see above
-    <div className="py-1.5 [overflow-wrap:anywhere]" onClick={onClick}>
+    <div className={cn("rounded-lg py-1.5 [overflow-wrap:anywhere]", pulsing && "message-pulse")} onClick={onClick}>
       <ContentField
         variant="edit"
         handleRef={editor}

@@ -3,6 +3,7 @@
 // real markdown link (`[text](href)`), never the trigger itself. Everything here is pure (no DOM,
 // no React, no IndexedDB) so it's independently testable — `features/editor/MarkdownEditor.tsx`
 // (ProseMirror wiring) is the only place this touches the outside world.
+import { BUILTIN } from "@threadz/core";
 import { matchScore } from "./search";
 import type { Message, Thread } from "./types";
 
@@ -318,17 +319,17 @@ export const messageSnippet = (content: string): string => {
 
 // --- note/link/property-set candidates (wave 6 phase 2: references to anything) -------------
 
-/** A Pool note (`lib/data.ts`'s `listPool`/`core.pool`) offered as a `tz:note/<id>` candidate. Only
- * Pool notes — a note already placed in a thread is reachable through the existing `message` kind,
- * so offering it a second time under `note` would just be the same content twice in one list; this
- * is the simplest reasonable reading of "reference a note" for content that has no other reference
- * kind yet. */
+/** Any live note (`lib/data.ts`'s `listAllNotes`/`core.allNotes`) offered as a `tz:note/<id>`
+ * candidate. A note is one entity however many messages place it, so it is offered once, under its
+ * note id; the `message` kind stays the positional "this spot in that thread" reference, reached
+ * through a thread pick, never listed alongside. `searchNotes` dedupes by id as a guard. */
 export type NoteRefCandidate = { entityId: string; content: string; createdAt: number };
 
 export const searchNotes = (notes: NoteRefCandidate[], query: string, limit = RESULT_LIMIT): NoteRefCandidate[] => {
   const q = query.trim().toLowerCase();
-  if (!q) return [...notes].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
-  return notes
+  const unique = [...new Map(notes.map((n) => [n.entityId, n])).values()];
+  if (!q) return unique.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+  return unique
     .map((n) => ({ n, score: matchScore(messageSnippet(n.content), q) }))
     .filter((r): r is { n: NoteRefCandidate; score: number } => r.score != null)
     .sort((a, b) => b.score - a.score)
@@ -355,14 +356,17 @@ export const searchLinks = (links: LinkRefCandidate[], query: string, limit = RE
  * `tz:property_set/<id>` candidate. */
 export type PropertySetRefCandidate = { id: string; name: string };
 
+const BUILTIN_IDS: ReadonlySet<string> = new Set(Object.values(BUILTIN));
+
 export const searchPropertySets = (
   sets: PropertySetRefCandidate[],
   query: string,
   limit = RESULT_LIMIT,
 ): PropertySetRefCandidate[] => {
   const q = query.trim().toLowerCase();
-  if (!q) return sets.slice(0, limit);
-  return sets
+  const custom = sets.filter((s) => !BUILTIN_IDS.has(s.id));
+  if (!q) return custom.slice(0, limit);
+  return custom
     .map((s) => ({ s, score: matchScore(s.name, q) }))
     .filter((r): r is { s: PropertySetRefCandidate; score: number } => r.score != null)
     .sort((a, b) => b.score - a.score)

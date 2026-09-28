@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { allMessages, listLinkCandidates, listPool, listPropertySets } from "@/lib/data";
+import { allMessages, listAllNotes, listLinkCandidates, listPropertySets } from "@/lib/data";
 import {
   type LinkRefCandidate,
   messageSnippet,
@@ -45,13 +45,13 @@ export const useReferenceAutocomplete = (state: ReferenceAutocompleteState) => {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([allMessages(), listPool(), listLinkCandidates(), listPropertySets()]).then(
-      ([{ threads, messages }, pool, links, propertySets]) => {
+    Promise.all([allMessages(), listAllNotes(), listLinkCandidates(), listPropertySets()]).then(
+      ([{ threads, messages }, allNotes, links, propertySets]) => {
         if (cancelled) return;
         setSnapshot({
           threads,
           messages,
-          notes: pool.map((p) => ({ entityId: p.entityId, content: p.content, createdAt: p.createdAt })),
+          notes: allNotes.map((p) => ({ entityId: p.entityId, content: p.content, createdAt: p.createdAt })),
           links,
           propertySets: propertySets.map((s) => ({ id: s.id, name: s.name })),
         });
