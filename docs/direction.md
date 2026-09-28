@@ -323,6 +323,20 @@ home is a navigation dashboard; link reasons are always optional.
 - **Gutter marks.** Off by default, a Settings toggle turns them on — per "never show until wanted" (Principle
   1).
 
+## Round 7 (2026-09-28): wave 7 decisions
+
+- **Insight v1 is deterministic and phone-side.** Templated sentences over `core/insights.ts` queries; no model,
+  works offline. Every sentence carries the lens and filter that produced it; no source, no sentence. Because of
+  this, `derived_*` tables stay spec-only until the embeddings wave (replace unit, generation id and endpoint are
+  decided then).
+- **Home dashboard.** The app reopens the last route (remembered per device). The dashboard is reached by tapping
+  the app mark/title in the header, not a tab. Contents: recent threads, open todos, Pool count, insight cards.
+- **Computed map v1: "tracks".** One row per thread, its messages left to right; a note in several threads is a
+  vertical connector between rows. Presets filter by property value, linked-to, todo and time range. Same
+  component on phone and desktop (the phone scrolls). Saved presets are device-only settings, not synced.
+- **Wave 6 polish, all four:** clickable link chips (via the gutter/peek read path), line-mode arrival scroll +
+  highlight, built-in property sets out of `[[` candidates, note candidates beyond the Pool.
+
 ## What to resolve, and how
 
 Ordered by what blocks what. Each item says what's unknown, how to settle it, and what it blocks. Nothing below the

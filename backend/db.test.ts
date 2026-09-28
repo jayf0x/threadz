@@ -55,7 +55,7 @@ describe("selectBackupsToKeep", () => {
   });
 
   test("keeps the newest survivor within a bucket, so a fresh backup is never pruned by an older one in the same hour", () => {
-    const now = Date.now();
+    const now = Math.floor(Date.now() / HOUR) * HOUR + 45 * 60_000; // mid-hour so the three never straddle a bucket edge
     const backups = [
       { path: "oldest", timestamp: now - 30 * 60_000 },
       { path: "middle", timestamp: now - 20 * 60_000 },
