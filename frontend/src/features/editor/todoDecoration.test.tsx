@@ -14,8 +14,14 @@ for (const key of Object.getOwnPropertyNames(win)) {
 }
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
+import * as images from "@/lib/images";
 import { parseTodoGroups, parseTodos } from "@/lib/todos";
+
+// MarkdownEditor's mount effect calls `housekeeping()`, which chains into `allMessages()` and a
+// real phone-db Worker — pointless here and the wasm it tries to load doesn't exist under Bun's
+// test env (caught, but noisy). Cut at `@/lib/images`, the direct call site.
+mock.module("@/lib/images", () => ({ ...images, housekeeping: () => {} }));
 
 // Mirrors `features/threads/rowSelect.ts`'s `ROW_SELECT_IGNORE` constant, not imported — this file
 // lives under `features/editor/`, and reaching into another feature's internals (rather than its
