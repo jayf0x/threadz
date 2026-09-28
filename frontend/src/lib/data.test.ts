@@ -75,3 +75,39 @@ test("placeVersionReference: clone freezes to the version live at clone time, su
   const liveNow = await resolveLiveVersionId(d, "n1", null);
   expect(liveNow).toBe("v2");
 });
+
+// `editMessage`'s own re-pin branch (frontend/src/lib/data.ts) isn't reachable from this file
+// (it's pinned to the worker-backed phone db singleton, same boundary as above) — this drives the
+// same SQL shape directly against the raw driver to pin the behavioral contract: editing a pinned
+// (cloned) message must re-pin it to the version it just wrote, or the edit would silently land on
+// whichever OTHER message still follows that note live instead of the one being edited.
+test("editing a pinned (cloned) message re-pins it, so the edit lands on that message, not the original", async () => {
+  const d = await open();
+  await d.run("INSERT INTO entities VALUES ('src', 'thread', ?, ?, NULL, NULL)", [1, 1]);
+  await d.run("INSERT INTO threads VALUES ('src', 'Original', ?, NULL)", [1]);
+  await note(d, "n1", "v1", "first draft", 10);
+  await d.run("INSERT INTO entities VALUES ('m1', 'message', ?, ?, NULL, NULL)", [10, 10]);
+  await d.run("INSERT INTO messages VALUES ('m1', 'src', 'n1', NULL, ?, NULL, NULL)", [10]);
+  await d.run("INSERT INTO entities VALUES ('clone', 'thread', ?, ?, NULL, NULL)", [20, 20]);
+  await d.run("INSERT INTO threads VALUES ('clone', 'Copy: Original', ?, NULL)", [20]);
+  await placeVersionReference(d, "clone", "n1", "v1", 21);
+
+  // Edit the CLONE's message — same shape as `editMessage`'s re-pin branch: a new version, then
+  // (because the message being edited was pinned) the message's own pin follows that new version.
+  await d.run("INSERT INTO note_versions VALUES ('v2', 'n1', 'v1', 'edited via the clone', 'user', 30, NULL)");
+  await d.run("UPDATE messages SET pin_version_id = ?, updated_at = ? WHERE thread_id = 'clone'", ["v2", 30]);
+
+  const [cloneMsg] = await d.all<{ pin_version_id: string | null }>(
+    "SELECT pin_version_id FROM messages WHERE thread_id = 'clone'",
+  );
+  expect(cloneMsg?.pin_version_id).toBe("v2"); // re-pinned to the edit it just wrote, not left stale on v1
+
+  // The ORIGINAL message stays live (still `pin_version_id IS NULL`) and now shows the same edit —
+  // an accepted consequence of sharing one note, not a regression: the clone no longer silently
+  // "swallows" the edit, it just also isn't isolated from the original the way a real copy would be.
+  const [originalMsg] = await d.all<{ pin_version_id: string | null }>(
+    "SELECT pin_version_id FROM messages WHERE id = 'm1'",
+  );
+  expect(originalMsg?.pin_version_id).toBeNull();
+  expect(await resolveLiveVersionId(d, "n1", originalMsg?.pin_version_id ?? null)).toBe("v2");
+});

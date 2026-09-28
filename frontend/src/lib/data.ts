@@ -312,23 +312,32 @@ export const appendNote = async (
 };
 
 // An edit is a new `note_versions` row (docs/direction.md "Versions"), never an update to an
-// existing one — immutable rows are insert-if-missing on sync.
+// existing one — immutable rows are insert-if-missing on sync. A pinned message (a Clone
+// reference, `pin_version_id` set — see `copyThread`/`placeVersionReference`) shares its note with
+// whatever it was cloned from, so writing the new version there alone would silently land the edit
+// on the OTHER (usually live) thread while this message kept showing the stale pinned version. To
+// keep an edit going where it looks like it's going, editing a pinned message re-pins it to the
+// version it just wrote — it stops being frozen the moment it's touched, but the edit lands here,
+// not somewhere else.
 export const editMessage = async (messageId: string, content: string): Promise<void> => {
   const d = await driver();
   const at = now();
-  const [row] = await d.all<{ note_id: string; thread_id: string; author: string }>(
-    `SELECT m.note_id, m.thread_id, v.author FROM messages m
+  const [row] = await d.all<{ note_id: string; thread_id: string; pin_version_id: string | null; author: string }>(
+    `SELECT m.note_id, m.thread_id, m.pin_version_id, v.author FROM messages m
      JOIN note_versions v ON v.note_id = m.note_id
      WHERE m.id = ? ORDER BY v.created_at DESC, v.id DESC LIMIT 1`,
     [messageId],
   );
   if (!row) throw new Error(`message ${messageId} not found`);
   await d.tx(async () => {
+    const versionId = uuid();
     await d.run(
       "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, ?, ?, NULL)",
-      [uuid(), row.note_id, content, row.author, at],
+      [versionId, row.note_id, content, row.author, at],
     );
-    await d.run("UPDATE messages SET updated_at = ? WHERE id = ?", [at, messageId]);
+    if (row.pin_version_id)
+      await d.run("UPDATE messages SET pin_version_id = ?, updated_at = ? WHERE id = ?", [versionId, at, messageId]);
+    else await d.run("UPDATE messages SET updated_at = ? WHERE id = ?", [at, messageId]);
     await touchThread(d, row.thread_id, at);
   });
   emitChange();
