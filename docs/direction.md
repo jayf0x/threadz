@@ -337,6 +337,19 @@ home is a navigation dashboard; link reasons are always optional.
 - **Wave 6 polish, all four:** clickable link chips (via the gutter/peek read path), line-mode arrival scroll +
   highlight, built-in property sets out of `[[` candidates, note candidates beyond the Pool.
 
+## Round 8 (2026-09-28): wave 8 hardening decisions
+
+1. **Index header:** Pool and Map fold into one ⋯ menu ("rarely-used UI is never shown up front"; fixes 375px).
+2. **Map todo filter** includes `/todo` lines, matching the Todos lens (C15).
+3. **Pages `404.html`** is the standard SPA fallback, so `/threadz/map` survives a hard reload.
+4. **Insight cards** that point at the Threadz, Todos or Pool lenses only open that panel; no filter inputs are added
+   ("one tab, one job").
+5. **Performance budgets** at the seeded `real` volume (headless Chromium, iPhone size, 4x CPU throttle): open thread
+   <150ms, search <200ms, Todos <200ms, Home/insight <300ms, Map first paint <500ms, keep-live sync with nothing to
+   send <100ms.
+
+(The user delegated 1-3 to the lead: "most scalable yet pragmatic". The defaults were chosen.)
+
 ## What to resolve, and how
 
 Ordered by what blocks what. Each item says what's unknown, how to settle it, and what it blocks. Nothing below the
