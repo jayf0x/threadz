@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS entities (
   deleted_at INTEGER,
   rev        INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_entities_kind_created ON entities(kind, created_at);
+CREATE INDEX IF NOT EXISTS idx_entities_deleted ON entities(deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE TABLE IF NOT EXISTS note_versions (
   id         TEXT PRIMARY KEY,
   note_id    TEXT NOT NULL ${fk("entities(id)")},
@@ -141,6 +143,7 @@ CREATE TABLE IF NOT EXISTS threads (
   updated_at INTEGER NOT NULL,
   rev        INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at);
 CREATE TABLE IF NOT EXISTS messages (
   id             TEXT PRIMARY KEY ${fk("entities(id)")},
   thread_id      TEXT NOT NULL ${fk("threads(id)")},
@@ -196,6 +199,7 @@ CREATE TABLE IF NOT EXISTS todos (
   updated_at INTEGER NOT NULL,
   rev        INTEGER
 );
+${TABLE_NAMES.map((t) => `CREATE INDEX IF NOT EXISTS idx_pending_${t} ON ${t}(rev) WHERE rev IS NULL;`).join("\n")}
 CREATE TABLE IF NOT EXISTS core_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 `;
 

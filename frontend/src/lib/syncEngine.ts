@@ -1,4 +1,4 @@
-import { applyChanges, type Changes, countChanges, pendingChanges } from "@threadz/core";
+import { applyChanges, type Changes, countChanges, pendingChanges, TABLE_NAMES } from "@threadz/core";
 import { useSyncExternalStore } from "react";
 import { emitChange, onChange } from "./changeSignal";
 import { getBackendUrl } from "./config";
@@ -35,7 +35,7 @@ const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 // Push: this device's pending rows (no `rev` yet). Main returns them stamped, so applying the
 // response is enough to clear them locally — no separate round-trip needed just for that.
-const push = async (): Promise<void> => {
+const push = async (): Promise<number> => {
   const d = await driver();
   const body = await pendingChanges(d);
   const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>("/api/push", {
@@ -44,22 +44,25 @@ const push = async (): Promise<void> => {
   });
   await applyChanges(d, changes);
   setCursor(cursor);
+  return countChanges(body);
 };
 
 // Pull: rows main has that this device's cursor hasn't seen.
-const pull = async (): Promise<void> => {
+const pull = async (): Promise<number> => {
   const d = await driver();
   const since = getCursor();
   const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>(`/api/changes?since=${since}`);
   await applyChanges(d, changes);
   setCursor(cursor);
+  return TABLE_NAMES.reduce((n, t) => n + (changes[t]?.length ?? 0), 0);
 };
 
 // One push-then-pull cycle — "sync now", or the button behind keep-live's timer alike.
+// A cycle that moved nothing doesn't signal a change: every mounted lens would re-read its whole query for no reason.
 export const syncNow = async (): Promise<void> => {
-  await push();
-  await pull();
-  emitChange();
+  const sent = await push();
+  const received = await pull();
+  if (sent + received > 0) emitChange();
 };
 
 // --- status ------------------------------------------------------------------------------------

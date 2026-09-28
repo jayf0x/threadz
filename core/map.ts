@@ -1,5 +1,5 @@
-import { orderedMessageIds } from "./merge";
-import { isPinStale, latestContentSql } from "./queries";
+import { displayOrder } from "./merge";
+import { STALE_PIN_SQL, latestContentSql } from "./queries";
 import type { Driver } from "./schema";
 import { parseTodoGroups, parseTodos } from "./todoLines";
 
@@ -92,6 +92,7 @@ type Loaded = {
   note_id: string;
   pin: string | null;
   created_at: number;
+  placed_at: number;
   title: string;
   content: string | null;
 };
@@ -146,19 +147,21 @@ const linkedTo = async (d: Driver, id: string): Promise<Set<string>> => {
 };
 
 // Ids touched by a pinned reference (a message's own pin, or a link's endpoints) whose note has moved on.
-const stalePinned = async (d: Driver, messages: Loaded[]): Promise<Set<string>> => {
+const stalePinned = async (d: Driver): Promise<Set<string>> => {
   const out = new Set<string>();
-  const stale = (pin: string) => isPinStale(d, pin);
-  for (const m of messages) if (m.pin && (await stale(m.pin))) out.add(m.message_id);
-  const links = await d.all<{ from_id: string; to_id: string; pin: string }>(
-    `SELECT l.from_id, l.to_id, l.pin_version_id AS pin FROM links l JOIN entities e ON e.id = l.id AND e.deleted_at IS NULL
-     WHERE l.pin_version_id IS NOT NULL`,
+  const messages = await d.all<{ id: string }>(
+    `SELECT m.id FROM messages m JOIN note_versions pv ON pv.id = m.pin_version_id WHERE ${STALE_PIN_SQL}`,
   );
-  for (const l of links)
-    if (await stale(l.pin)) {
-      out.add(l.from_id);
-      out.add(l.to_id);
-    }
+  for (const m of messages) out.add(m.id);
+  const links = await d.all<{ from_id: string; to_id: string }>(
+    `SELECT l.from_id, l.to_id FROM links l
+     JOIN entities e ON e.id = l.id AND e.deleted_at IS NULL
+     JOIN note_versions pv ON pv.id = l.pin_version_id WHERE ${STALE_PIN_SQL}`,
+  );
+  for (const l of links) {
+    out.add(l.from_id);
+    out.add(l.to_id);
+  }
   return out;
 };
 
@@ -177,7 +180,7 @@ const lineTodoState = (content: string): "open" | "done" | null => {
 /** Threads as rows, matching messages as cells, shared notes as connectors. Rows: most recently updated first. */
 export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapTracks> => {
   const all = await d.all<Loaded>(
-    `SELECT m.id AS message_id, m.thread_id, m.note_id, m.pin_version_id AS pin, ne.created_at, t.title,
+    `SELECT m.id AS message_id, m.thread_id, m.note_id, m.pin_version_id AS pin, ne.created_at, me.created_at AS placed_at, t.title,
        ${latestContentSql("m.note_id")} AS content
      FROM messages m
      JOIN entities me ON me.id = m.id AND me.deleted_at IS NULL
@@ -185,11 +188,11 @@ export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapT
      JOIN threads t ON t.id = m.thread_id
      JOIN entities te ON te.id = t.id AND te.deleted_at IS NULL
      WHERE m.removed_at IS NULL
-     ORDER BY t.updated_at DESC, t.id`,
+     ORDER BY t.updated_at DESC, t.id, me.created_at, m.id`,
   );
 
   const links = filter.linkedTo !== undefined ? await linkedTo(d, filter.linkedTo) : null;
-  const stale = filter.pinned === "stale" ? await stalePinned(d, all) : null;
+  const stale = filter.pinned === "stale" ? await stalePinned(d) : null;
   const wantsValues = filter.setA !== undefined || filter.setB !== undefined;
   const values = wantsValues ? await propertyIndex(d) : null;
   const todos = await todoState(d);
@@ -228,12 +231,18 @@ export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapT
     threads.set(m.thread_id, entry);
   }
 
+  // Stored orders for the kept threads, read together (a per-thread `orderedMessageIds` was two round trips each).
+  const stored = new Map(
+    (await d.all<{ thread_id: string; message_ids: string }>("SELECT thread_id, message_ids FROM thread_order")).map(
+      (r) => [r.thread_id, r.message_ids],
+    ),
+  );
   const rows: MapRow[] = [];
   for (const [threadId, { title, ids }] of threads) {
-    const order = await orderedMessageIds(d, threadId);
+    const order = displayOrder([...ids], stored.get(threadId));
     const cells: MapCell[] = [];
     for (const id of order) {
-      const m = ids.has(id) ? kept.get(id) : undefined;
+      const m = kept.get(id);
       if (m)
         cells.push({
           messageId: id,

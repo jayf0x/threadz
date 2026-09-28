@@ -1,4 +1,4 @@
-import { isPinStale, latestContentSql } from "./queries";
+import { STALE_PIN_SQL, latestContentSql } from "./queries";
 import type { Driver } from "./schema";
 
 // Insight v1 (docs/direction.md "Round 7"): deterministic, templated sentences over counts and co-occurrences.
@@ -217,17 +217,16 @@ export const coOccurrence: InsightQuery = async (d) => {
 
 // 7. Pinned links and messages whose pinned note has since gained a newer version.
 export const stalePins: InsightQuery = async (d) => {
-  const pins = await d.all<{ pin: string }>(
-    `SELECT l.pin_version_id AS pin FROM links l JOIN entities e ON e.id = l.id
-     WHERE l.pin_version_id IS NOT NULL AND e.deleted_at IS NULL
-     UNION ALL
-     SELECT m.pin_version_id FROM messages m JOIN entities e ON e.id = m.id
-     WHERE m.pin_version_id IS NOT NULL AND m.removed_at IS NULL AND e.deleted_at IS NULL`,
+  const [row] = await d.all<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM (
+       SELECT l.pin_version_id AS pin FROM links l JOIN entities e ON e.id = l.id
+       WHERE l.pin_version_id IS NOT NULL AND e.deleted_at IS NULL
+       UNION ALL
+       SELECT m.pin_version_id FROM messages m JOIN entities e ON e.id = m.id
+       WHERE m.pin_version_id IS NOT NULL AND m.removed_at IS NULL AND e.deleted_at IS NULL
+     ) p JOIN note_versions pv ON pv.id = p.pin WHERE ${STALE_PIN_SQL}`,
   );
-  let n = 0;
-  for (const { pin } of pins) {
-    if (await isPinStale(d, pin)) n++;
-  }
+  const n = row?.n ?? 0;
   if (n === 0) return [];
   return [
     {

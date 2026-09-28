@@ -111,7 +111,7 @@ const PoolRow = ({
             <Send aria-hidden className="size-5 md:size-4" />
           </button>
         }
-        items={[
+        items={() => [
           {
             label: "New thread",
             icon: Plus,

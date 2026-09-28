@@ -36,6 +36,57 @@ _Nothing._
 - **Insight `thread`/`todos`/`pool` cards ignore their filter** (those panels have no filter inputs); only `map`
   cards apply theirs.
 
+## Performance (real seed, headless 4x throttle)
+
+`bun run seed --scale real` (2k threads, 10k notes, 50k versions), imported through Settings > Import into a fresh
+headless Chromium context at iPhone 13 size, CDP 4x CPU throttle, production build (`VITE_LOCAL=1`), cold reload per
+sample. Repeat with `bun frontend/scripts/perf/run.ts --scale real --runs 5` (`--dump`, `--profile`, `--dist <dir>` for
+a before column; header of the script says how it measures). Medians. **Caveat:** CDP cannot throttle a dedicated
+worker, so SQL ran at desktop speed; "est." adds 3x the worker's own exec time (an upper bound). The device run
+should compare against the "after" column.
+
+| lens (budget) | before | after | est. worker 4x | worker round trips before -> after |
+|---|---|---|---|---|
+| open thread, tap to first text (<150ms) | 1151ms | 766ms | 875ms | 954 -> 62 |
+| search, first request to last reply (<200ms) | 31977ms | 37ms | 147ms | 52,728 -> 2 |
+| Todos tab tap to list (<200ms) | never (>30s) | 232ms | 232ms | 50,310 -> 0 |
+| Home tap to rows (<300ms) | 253ms | 231ms | 231ms | 91 -> 0 |
+| Map first paint (<500ms) | 13,436ms | 227ms | 567ms | 15,597 -> 5 |
+| keep-live sync, nothing to send (<100ms) | never (>30s) | 58ms | 88ms | 53,388 -> 22 |
+
+At load (cold reload, time since navigation): index list 2.4s -> 1.6s; Todos data never (within 10s) -> 1.6s; Home
+data 11.7s -> 3.7s. JS heap after load 1046 MB -> 135 MB; import of the 96k-row seed 8.6s -> 3.6s.
+Search excludes the 200ms debounce in `useThreads`, so the visible delay is that plus the number above. "Before" ran
+with the same harness on the base revision; its search/Todos/sync numbers are queue time behind the load-time
+Todos scan (50k worker round trips), which every panel triggers at boot because all panels mount.
+
+What moved the numbers (`core/queries.ts`, `core/map.ts`, `core/insights.ts`, `lib/data.ts`, `lib/phone/worker.ts`):
+one statement per lens instead of a worker round trip per row (thread entries, pool, todos, search hits, stale pins,
+map orders); the search scans each note's newest version, not every version; 64 MB SQLite page cache in the worker
+(the default cache made every scan re-read IndexedDB: Todos scan 2000ms -> 250ms, Pool 1400ms -> 50ms); partial
+`rev IS NULL` indexes for the sync push; a sync that moved no rows no longer emits a change signal (it re-ran every
+lens); concurrent identical reads share one query until the next change signal; the image GC reads only image-bearing
+versions and waits 15s instead of scanning every message at the first editor mount.
+
+Still over budget, and not a query problem:
+- **Open thread (766ms):** data is ready ~50ms after the tap (worker exec 37ms); the rest is main-thread work that
+  scales with the whole page (100k DOM nodes: 5k Todos rows, 2k index rows, all panels mounted). At `small` scale the
+  same tap is 259ms. Virtualize the Todos list (and the index) or unmount hidden panels.
+- **Todos tab tap (232ms):** rendering ~5k rows (3,098 open, 1,981 closed) unvirtualized; the data is already there.
+- `Menu` built every item element eagerly and PoolPanel gave every Pool note a menu of every thread: 700 MB of
+  retained React elements at `real` and a renderer crash at `large` (fixed here: `items` may be a function, called
+  only while the menu is open).
+
+`large` (`--scale large`: 8k threads, 40k notes, 200k versions, 140 MB): with the Menu fix the page loads (383k DOM
+nodes, 483 MB JS heap, index list 7.5s after navigation at 4x, import 14s). Search 1.7s and Map 2.3s of worker time:
+both scan more than the 64 MB page cache holds, so they grow with the database, not the result. Todos and Home
+taps ~1s (DOM). No SQL variable-count risk left: the one `IN (?,?,...)` list (`annotationsFor`, one variable per
+message in the thread) is now a subquery, and every remaining statement binds a fixed few parameters (upsert rows bind
+at most one per column). SQLite here allows 500,000 variables on main (`MAX_VARIABLE_NUMBER`), and the wasm build's
+limit was not read. Safari's "maximum call stack size exceeded" is not reproducible in Chromium (larger stack); the
+spread-into-`push(...)` patterns that could hit it at these sizes are gone from `core`/`lib` (only a 3-element one
+remains in `allInsights`).
+
 ## Device-only verification
 
 Run this on an iPhone with the `real` seed. It is your checklist, not an agent's. Everything else is verified

@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { BUILTIN, initSchema } from "./schema";
 import {
+  allEntries,
   annotationsFor,
   bin,
   counterValue,
@@ -13,7 +14,10 @@ import {
   pool,
   propertySets,
   propertyValuesFor,
+  searchThreadIds,
+  threadEntries,
   threadView,
+  todoScan,
   todos,
 } from "./queries";
 
@@ -402,4 +406,66 @@ test("otherThreadsForNote: a placement on a deleted thread doesn't count either"
 
   await d.run("UPDATE entities SET deleted_at = 30 WHERE id = 't2'");
   expect(await otherThreadsForNote(d, "n1", "m1")).toEqual([]);
+});
+
+test("threadEntries: stored order wins, unlisted messages append, edits and todo ride along", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  for (const [i, id] of ["a", "b", "c"].entries()) {
+    await note(d, `n${id}`, `text ${id}`, 10 + i);
+    await placeMessage(d, `m${id}`, "t1", `n${id}`, 10 + i);
+  }
+  await d.run("INSERT INTO thread_order VALUES ('t1', ?, 50, NULL)", [JSON.stringify(["mb", "gone", "ma"])]);
+  await d.run("INSERT INTO note_versions VALUES ('v-b2', 'nb', NULL, 'text b, edited', 'user', 40, NULL)");
+  await d.run("INSERT INTO todos VALUES ('mb', 0, 45, NULL)");
+
+  const rows = await threadEntries(d, "t1");
+  expect(rows.map((r) => r.message.id)).toEqual(["mb", "ma", "mc"]);
+  const b = rows[0];
+  expect(b?.version.content).toBe("text b, edited");
+  expect(b?.edits).toEqual([{ content: "text b", created_at: 11 }]);
+  expect(b?.edited_at).toBe(40);
+  expect(b?.todo).toEqual({ done: 0, updated_at: 45 });
+  expect(rows[1]?.edited_at).toBeNull();
+  expect(rows[1]?.todo).toBeNull();
+  expect((await allEntries(d)).get("t1")?.map((r) => r.message.id)).toEqual(["mb", "ma", "mc"]);
+});
+
+test("searchThreadIds: a note's threads first, then title hits, each once; latest version only; live only", async () => {
+  const d = await open();
+  await thread(d, "t1", "Garden plan", 1);
+  await thread(d, "t2", "Kitchen", 2);
+  await thread(d, "t3", "Trip", 3);
+  await note(d, "n1", "water the garden", 10);
+  await placeMessage(d, "m1", "t2", "n1", 10);
+  await note(d, "n2", "garden shed", 11);
+  await placeMessage(d, "m2", "t3", "n2", 11);
+  await d.run("INSERT INTO note_versions VALUES ('v-n2b', 'n2', NULL, 'shed only', 'user', 20, NULL)");
+
+  expect(await searchThreadIds(d, "garden")).toEqual(["t2", "t1"]);
+
+  await d.run("UPDATE entities SET deleted_at = 30 WHERE id = 't2'");
+  expect(await searchThreadIds(d, "garden")).toEqual(["t1"]);
+});
+
+test("todoScan: flagged messages and todo-looking text only, in live threads", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await note(d, "n1", "plain words", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await note(d, "n2", "/todo call mom", 11);
+  await placeMessage(d, "m2", "t1", "n2", 11);
+  await note(d, "n3", "- [ ] buy milk", 12);
+  await placeMessage(d, "m3", "t1", "n3", 12);
+  await note(d, "n4", "flagged but plain", 13);
+  await placeMessage(d, "m4", "t1", "n4", 13);
+  await d.run("INSERT INTO todos VALUES ('m4', 1, 50, NULL)");
+  await note(d, "n5", "/todo in a deleted thread", 14);
+  await placeMessage(d, "m5", "t2", "n5", 14);
+  await d.run("UPDATE entities SET deleted_at = 60 WHERE id = 't2'");
+
+  const rows = await todoScan(d);
+  expect(rows.map((r) => r.id)).toEqual(["m2", "m3", "m4"]);
+  expect(rows.find((r) => r.id === "m4")?.todo).toEqual({ done: 1, updated_at: 50 });
 });
