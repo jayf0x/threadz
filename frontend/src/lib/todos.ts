@@ -164,7 +164,22 @@ export type MessageTodo = {
   closedAt: number;
 };
 
-export type Todo = LineTodo | GroupTodo | MessageTodo;
+// A thread itself flagged via its header ⋯ menu's Todo toggle (Round 6: "a todo on a thread is
+// already possible per the schema... status must show in Todos only" — AGENTS.md's "one tab, one
+// job" is why this never shows as filtering on the Threadz index). No `messageId`/`messageContent`:
+// unlike the other three kinds it isn't about any one message, so its row text is the thread's own
+// title (see TodosPanel.tsx).
+export type ThreadTodo = {
+  kind: "thread";
+  id: string;
+  threadId: string;
+  threadTitle: string;
+  done: boolean;
+  createdAt: number;
+  closedAt: number; // `todos.updated_at`, same role as MessageTodo's `metaEditedAt`
+};
+
+export type Todo = LineTodo | GroupTodo | MessageTodo | ThreadTodo;
 
 // The sidebar's closed-todo filter (features/todos/TodosPanel.tsx): show every closed entry,
 // none, or only ones closed recently.

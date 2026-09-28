@@ -27,7 +27,11 @@ const countBy = (todos: Todo[], done: boolean) =>
 // `useTodos.ts`'s `toggle`). The closed-todo filter (default: recently closed) only ever hides flat
 // line/message entries — a `/todos` group always shows every one of its items. Tap the rest of a
 // row to jump to its thread, scrolled and highlighted at the exact message.
-export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, messageId: string) => void }) => {
+export const TodosPanel = ({
+  onOpenThread,
+}: {
+  onOpenThread: (threadId: string, messageId?: string) => void; // no messageId for a thread-level todo (kind "thread")
+}) => {
   const { todos, toggle } = useTodos();
   const [closedFilter, setClosedFilter] = useState<ClosedFilter>("recent");
 
@@ -50,7 +54,10 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
         {visible?.length === 0 && <Empty icon={ListTodo}>{closedFilter === "never" ? "All done" : "No todos"}</Empty>}
         <ul>
           {visible?.map((t) => {
-            const meta = <Meta thread={t.threadTitle} at={t.createdAt} />;
+            // A thread-level todo's row text already IS the thread title, so its meta drops the
+            // (now redundant) thread name and keeps only the date.
+            const meta =
+              t.kind === "thread" ? <Meta at={t.createdAt} /> : <Meta thread={t.threadTitle} at={t.createdAt} />;
             if (t.kind === "group")
               return (
                 <GroupCard
@@ -62,14 +69,15 @@ export const TodosPanel = ({ onOpenThread }: { onOpenThread: (threadId: string, 
                   onOpenThread={() => onOpenThread(t.threadId, t.messageId)}
                 />
               );
-            const text = t.kind === "line" ? stripTodoMarker(t.text) : t.messageContent;
+            const text =
+              t.kind === "line" ? stripTodoMarker(t.text) : t.kind === "thread" ? t.threadTitle : t.messageContent;
             return (
               <TodoRow
                 key={t.id}
                 text={text}
                 done={t.done}
                 onToggle={() => toggle(t)}
-                onOpen={() => onOpenThread(t.threadId, t.messageId)}
+                onOpen={() => onOpenThread(t.threadId, t.kind === "thread" ? undefined : t.messageId)}
                 meta={meta}
               />
             );
@@ -106,11 +114,15 @@ const ClosedFilterSwitcher = ({
   </IconSelect>
 );
 
-// "Thread · 25 Sep": the thread title gives way to the date when it is too long, never the other way round.
-const Meta = ({ thread, at }: { thread: string; at: number }) => (
+// "Thread · 25 Sep": the thread title gives way to the date when it is too long, never the other way
+// round. `thread` is omitted for a thread-level todo row, whose text above already is that title.
+const Meta = ({ thread, at }: { thread?: string; at: number }) => (
   <span className="mt-0.5 flex text-xs text-muted-foreground">
-    <span className="min-w-0 truncate">{thread}</span>
-    <span className="shrink-0 whitespace-pre tabular-nums"> · {format(at, "d MMM")}</span>
+    {thread && <span className="min-w-0 truncate">{thread}</span>}
+    <span className="shrink-0 whitespace-pre tabular-nums">
+      {thread && " · "}
+      {format(at, "d MMM")}
+    </span>
   </span>
 );
 

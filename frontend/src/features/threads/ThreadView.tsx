@@ -1,5 +1,17 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownUp, ArrowLeft, MoreHorizontal, Rows3, SearchX, SquareStack, X } from "lucide-react";
+import { BUILTIN } from "@threadz/core";
+import {
+  ArrowDownUp,
+  ArrowLeft,
+  MoreHorizontal,
+  Rows3,
+  SearchX,
+  Square,
+  SquareCheck,
+  SquareStack,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { AnimatePresence, m as Motion } from "motion/react";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +22,16 @@ import { toast } from "@/components/ui/toast";
 import { Composer } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
 import { onChange } from "@/lib/changeSignal";
-import { copyThread, getThread } from "@/lib/data";
+import {
+  branchThread,
+  copyThread,
+  getThread,
+  isThreadLocalOnly,
+  removePropertyValue,
+  setPropertyValue,
+  setTodo,
+  todoStatus,
+} from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
 import { resolveMessageRange } from "@/lib/references";
 import { useSyncStatus } from "@/lib/syncEngine";
@@ -73,8 +94,12 @@ export const ThreadView = ({
     askAboutMessage,
   } = useThread(threadId);
   // Ask needs main (docs/direction.md "B10"): disabled/greyed out, never queued, while the last sync
-  // attempt failed. Replaces v1's local/live `mode` check.
-  const askUnavailable = useSyncStatus().unreachable;
+  // attempt failed — or (Round 6) while this thread carries the built-in `local-only` flag. Same
+  // treatment either way: Composer just doesn't offer the control (`canAsk`).
+  const unreachable = useSyncStatus().unreachable;
+  const [localOnly, setLocalOnly] = useState(false);
+  const [threadTodo, setThreadTodo] = useState<boolean | null>(null); // null = not a todo at all
+  const askUnavailable = unreachable || localOnly;
   const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
   const lineMode = useThreadLineMode(threadId); // device-local, per-thread, not synced (docs/direction.md "Round 6")
   const [thread, setThread] = useState<Thread | null>(null);
@@ -146,6 +171,41 @@ export const ThreadView = ({
   const askAbout = async (messageId: string) => {
     if (!(await askAboutMessage(messageId))) toast({ title: "Ask failed", description: error ?? undefined });
   };
+
+  // "Branch from here" (Round 6): same as Clone, except B keeps following A's edits from this point
+  // on — `branchThread` is the same mechanism as `copyThread` with its pins left empty.
+  const branchThreadFrom = async (uptoMessageId: string) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      const branch = await branchThread(threadId, uptoMessageId);
+      onCopied(branch.id);
+    } catch (e) {
+      toast({ title: "Branch failed", description: errorMessage(e) }); // nothing was touched
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  // The thread's own `local-only` flag and todo status — read fresh on every change, same pattern
+  // as `EntryRow`'s per-message property chips. Local-only is what disables Ask below; the todo flag
+  // is what puts this thread in the Todos lens (AGENTS.md "one tab, one job": the toggle lives here,
+  // inside the thread, never as filtering on the Threadz index).
+  useEffect(() => {
+    const load = () => {
+      isThreadLocalOnly(threadId).then(setLocalOnly, () => {});
+      todoStatus(threadId).then(setThreadTodo, () => {});
+    };
+    load();
+    return onChange(load);
+  }, [threadId]);
+
+  const toggleLocalOnly = () =>
+    localOnly ? removePropertyValue(BUILTIN.localOnly, threadId) : setPropertyValue(BUILTIN.localOnly, threadId);
+
+  // Same "is this a todo at all" toggle as EntryRow's message-level Todo button: creating one starts
+  // open (`false`); removing clears the flag entirely rather than just marking it done.
+  const toggleThreadTodo = () => setTodo(threadId, threadTodo === null ? false : null);
 
   const onAsk = async (prompt: string, commit: boolean) => {
     setScratch(null);
@@ -290,42 +350,49 @@ export const ThreadView = ({
           >
             {thread?.title ?? "…"}
           </h1>
-          {messages.length > 1 && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="ml-auto shrink-0 aria-pressed:bg-accent aria-pressed:text-foreground"
-              aria-label={
-                reversed
-                  ? "Showing newest first — switch to oldest first"
-                  : "Showing oldest first — switch to newest first"
-              }
-              title={reversed ? "Newest first" : "Oldest first"}
-              aria-pressed={reversed}
-              onClick={() => setThreadReversed(threadId, !reversed)}
-            >
-              <ArrowDownUp className="size-5 md:size-4" />
-            </Button>
-          )}
-          <Menu
-            align="end"
-            trigger={
+          <div className="ml-auto flex shrink-0 items-center gap-1 lg:gap-2">
+            {localOnly && <WifiOff className="size-4 text-muted-foreground" aria-label="Local only — Ask is off" />}
+            {messages.length > 1 && (
               <Button
                 size="icon"
                 variant="ghost"
-                className={messages.length > 1 ? "shrink-0" : "ml-auto shrink-0"}
-                aria-label="Thread actions"
-                title="Thread actions"
+                className="aria-pressed:bg-accent aria-pressed:text-foreground"
+                aria-label={
+                  reversed
+                    ? "Showing newest first — switch to oldest first"
+                    : "Showing oldest first — switch to newest first"
+                }
+                title={reversed ? "Newest first" : "Oldest first"}
+                aria-pressed={reversed}
+                onClick={() => setThreadReversed(threadId, !reversed)}
               >
-                <MoreHorizontal className="size-5 md:size-4" />
+                <ArrowDownUp className="size-5 md:size-4" />
               </Button>
-            }
-            items={[
-              lineMode
-                ? { label: "Chat mode", icon: SquareStack, onClick: () => setThreadLineMode(threadId, false) }
-                : { label: "Line mode", icon: Rows3, onClick: () => setThreadLineMode(threadId, true) },
-            ]}
-          />
+            )}
+            <Menu
+              align="end"
+              trigger={
+                <Button size="icon" variant="ghost" aria-label="Thread actions" title="Thread actions">
+                  <MoreHorizontal className="size-5 md:size-4" />
+                </Button>
+              }
+              items={[
+                lineMode
+                  ? { label: "Chat mode", icon: SquareStack, onClick: () => setThreadLineMode(threadId, false) }
+                  : { label: "Line mode", icon: Rows3, onClick: () => setThreadLineMode(threadId, true) },
+                {
+                  label: threadTodo === null ? "Add to Todos" : "Remove from Todos",
+                  icon: threadTodo === null ? Square : SquareCheck,
+                  onClick: toggleThreadTodo,
+                },
+                {
+                  label: localOnly ? "Allow Ask" : "Local only",
+                  icon: WifiOff,
+                  onClick: toggleLocalOnly,
+                },
+              ]}
+            />
+          </div>
         </div>
       </header>
 
@@ -369,6 +436,7 @@ export const ThreadView = ({
                         onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
                         onEdit={(text) => editMessage(m.id, text)}
                         onCopyThread={() => copyThreadFrom(m.id)}
+                        onBranchThread={() => branchThreadFrom(m.id)}
                         onSetTodo={(done) => setMessageTodo(m.id, done)}
                         note={noteByMessage.get(m.id)}
                         unsyncedAnnotations={unsyncedAnnotations}

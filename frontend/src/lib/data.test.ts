@@ -111,3 +111,44 @@ test("editing a pinned (cloned) message re-pins it, so the edit lands on that me
   expect(originalMsg?.pin_version_id).toBeNull();
   expect(await resolveLiveVersionId(d, "n1", originalMsg?.pin_version_id ?? null)).toBe("v2");
 });
+
+// "Branch from here" (Round 6): the real logic difference from "Clone from here" — a branched
+// reference's `pin_version_id` is left NULL instead of frozen to the version live at branch time,
+// so — unlike the clone test above — it keeps following the original note as it's edited afterward.
+// `copyThread`/`branchThread` themselves are pinned to the worker-backed phone db singleton (see
+// this file's top comment), so this drives the same `placeVersionReference(..., null, ...)` call
+// `cloneOrBranchThread` makes for `pin: false` directly against a real `Driver`.
+test("placeVersionReference(null): a branch stays live, picking up a later edit to the original", async () => {
+  const d = await open();
+  await d.run("INSERT INTO entities VALUES ('src', 'thread', ?, ?, NULL, NULL)", [1, 1]);
+  await d.run("INSERT INTO threads VALUES ('src', 'Original', ?, NULL)", [1]);
+  await note(d, "n1", "v1", "first draft", 10);
+  await d.run("INSERT INTO entities VALUES ('m1', 'message', ?, ?, NULL, NULL)", [10, 10]);
+  await d.run("INSERT INTO messages VALUES ('m1', 'src', 'n1', NULL, ?, NULL, NULL)", [10]);
+  await d.run("INSERT INTO entities VALUES ('branch', 'thread', ?, ?, NULL, NULL)", [20, 20]);
+  await d.run("INSERT INTO threads VALUES ('branch', 'Branch: Original', ?, NULL)", [20]);
+
+  // Same resolve-then-place shape as a clone, but the branch passes `null` where the clone would
+  // pass the resolved version id.
+  const versionsBefore = (await d.all("SELECT id FROM note_versions")).length;
+  await resolveLiveVersionId(d, "n1", null); // existence check, same as `cloneOrBranchThread`
+  await placeVersionReference(d, "branch", "n1", null, 21);
+  expect((await d.all("SELECT id FROM note_versions")).length).toBe(versionsBefore); // no new version, no new note
+
+  const [branchMsg] = await d.all<{ note_id: string; pin_version_id: string | null }>(
+    "SELECT note_id, pin_version_id FROM messages WHERE thread_id = 'branch'",
+  );
+  expect(branchMsg?.pin_version_id).toBeNull();
+
+  // Editing the ORIGINAL message after branching...
+  await d.run("INSERT INTO note_versions VALUES ('v2', 'n1', 'v1', 'edited after branch', 'user', 30, NULL)");
+
+  // ...and the branch (still unpinned) resolves straight to that edit — unlike a clone, which would
+  // stay frozen on 'v1'.
+  const branchNow = await resolveLiveVersionId(d, branchMsg?.note_id ?? "", branchMsg?.pin_version_id ?? null);
+  expect(branchNow).toBe("v2");
+  const [branchVersion] = await d.all<{ content: string }>("SELECT content FROM note_versions WHERE id = ?", [
+    branchNow ?? "",
+  ]);
+  expect(branchVersion?.content).toBe("edited after branch");
+});

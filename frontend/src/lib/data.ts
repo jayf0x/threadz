@@ -5,6 +5,7 @@ import {
   propertySets as corePropertySets,
   propertyValuesFor as corePropertyValuesFor,
   search as coreSearch,
+  todos as coreTodos,
   type Driver,
   orderedMessageIds,
   pool,
@@ -494,6 +495,43 @@ export const setTodo = async (targetId: string, done: boolean | null): Promise<v
   emitChange();
 };
 
+// Whether `targetId` (any entity — a message or a thread alike) carries a live `todos` row, and
+// its done state if so. `null` = not flagged at all, distinct from `false` (flagged, still open) —
+// same distinction the message ⋯ menu's Todo toggle already relies on (`EntryRow`'s `todo` vs
+// `m.meta?.todo?.done`). Generic on purpose: a thread's own id works exactly like a message's.
+export const todoStatus = async (targetId: string): Promise<boolean | null> => {
+  const d = await driver();
+  const [row] = await d.all<{ done: number }>("SELECT done FROM todos WHERE target_id = ?", [targetId]);
+  return row ? !!row.done : null;
+};
+
+export type ThreadTodoItem = {
+  threadId: string;
+  threadTitle: string;
+  done: boolean;
+  createdAt: number;
+  closedAt: number;
+};
+
+// Thread-level todos (Round 6: a todo on a thread's own entity id, not just a message's) for the
+// Todos lens (features/todos/useTodos.ts) — `core.todos` already returns every kind generically,
+// this just resolves the `thread` ones back to a title + creation time via `listThreads`. Per
+// AGENTS.md "one tab, one job", this is Todos-only: the Threadz index never reads it.
+export const threadTodos = async (): Promise<ThreadTodoItem[]> => {
+  const d = await driver();
+  const rows = await coreTodos(d);
+  const threads = await listThreads();
+  const byId = new Map(threads.map((t) => [t.id, t]));
+  const out: ThreadTodoItem[] = [];
+  for (const r of rows) {
+    if (r.kind !== "thread") continue;
+    const t = byId.get(r.target_id);
+    if (!t) continue; // deleted (or otherwise gone) thread — listThreads already excludes it
+    out.push({ threadId: t.id, threadTitle: t.title, done: !!r.done, createdAt: t.createdAt, closedAt: r.updated_at });
+  }
+  return out;
+};
+
 // The live-or-pinned version id for a note right now — same resolution core/queries.ts's private
 // `resolveVersion` does, replicated here because that helper isn't part of core's exported surface
 // (only the query functions built on it are). Only the id is needed by `placeVersionReference`
@@ -518,13 +556,14 @@ export const resolveLiveVersionId = async (
 
 // Places a *version reference* to an existing note (docs/direction.md Decision 9: "Clone and Copy
 // become version references") — no new note, no new note_versions row, just a new `messages`
-// placement whose `pin_version_id` freezes it to the version resolved at clone time, per
-// `resolveLiveVersionId` above. Exported for data.test.ts (see that function's comment).
+// placement. `pinVersionId` freezes it to that exact version (a "Clone"); `null` leaves it live,
+// following the note's newest version as it changes (a "Branch" — see `cloneOrBranchThread` below).
+// Exported for data.test.ts (see that function's comment).
 export const placeVersionReference = async (
   d: Driver,
   threadId: string,
   noteId: string,
-  pinVersionId: string,
+  pinVersionId: string | null,
   at: number,
 ) => {
   const messageId = uuid();
@@ -536,12 +575,18 @@ export const placeVersionReference = async (
   return messageId;
 };
 
-// "Clone from here" (AGENTS.md's Composer/EntryRow ⋯ menu): a new thread holding *version
-// references* to A's messages up to and including `uptoMessageId` (docs/direction.md Decision 9)
-// plus, optionally, one more brand-new note appended after them. A cloned message shares its
-// `note_id` with the original but is pinned to the version live at clone time, so it stays frozen
-// even if the original note is edited later.
-export const copyThread = async (threadId: string, uptoMessageId: string, appendContent?: string): Promise<Thread> => {
+// The shared mechanism behind "Clone from here" and "Branch from here" (AGENTS.md's Composer/
+// EntryRow ⋯ menu; Round 6: "Two separate ⋯ menu items... same mechanism, [branch] pins left
+// empty, so it follows the original's live version"): a new thread holding *version references* to
+// A's messages up to and including `uptoMessageId` (docs/direction.md Decision 9), plus optionally
+// one more brand-new note appended after them. `pin: true` (Clone) freezes each reference to the
+// version live right now, so it stays frozen even if the original note is edited later; `pin: false`
+// (Branch) leaves `pin_version_id` null, so it keeps following the original as it's edited.
+const cloneOrBranchThread = async (
+  threadId: string,
+  uptoMessageId: string,
+  opts: { pin: boolean; titlePrefix: string; appendContent?: string },
+): Promise<Thread> => {
   const d = await driver();
   const ids = await orderedMessageIds(d, threadId);
   const cut = ids.indexOf(uptoMessageId);
@@ -549,13 +594,10 @@ export const copyThread = async (threadId: string, uptoMessageId: string, append
   const [src] = await d.all<{ title: string }>("SELECT title FROM threads WHERE id = ?", [threadId]);
   const newId = uuid();
   const at0 = now();
+  const title = `${opts.titlePrefix}${src?.title ?? "Untitled"}`.slice(0, 200);
   await d.tx(async () => {
     await insertEntity(d, newId, "thread", at0);
-    await d.run("INSERT INTO threads (id, title, updated_at, rev) VALUES (?, ?, ?, NULL)", [
-      newId,
-      `Copy: ${src?.title ?? "Untitled"}`.slice(0, 200),
-      at0,
-    ]);
+    await d.run("INSERT INTO threads (id, title, updated_at, rev) VALUES (?, ?, ?, NULL)", [newId, title, at0]);
     let at = at0;
     for (const id of keep) {
       const [row] = await d.all<{ note_id: string; pin_version_id: string | null }>(
@@ -563,20 +605,30 @@ export const copyThread = async (threadId: string, uptoMessageId: string, append
         [id],
       );
       if (!row) continue;
+      // Resolved (and checked for existence) either way — a branch still needs to know the note has
+      // at least one version before placing a reference to it, it just doesn't pin to what it found.
       const versionId = await resolveLiveVersionId(d, row.note_id, row.pin_version_id);
       if (!versionId) continue;
       at += 1;
-      await placeVersionReference(d, newId, row.note_id, versionId, at);
+      await placeVersionReference(d, newId, row.note_id, opts.pin ? versionId : null, at);
     }
-    const extra = appendContent?.trim();
+    const extra = opts.appendContent?.trim();
     if (extra) {
       at += 1;
       await placeNewNote(d, newId, extra, "user", at);
     }
   });
   emitChange();
-  return { id: newId, title: `Copy: ${src?.title ?? "Untitled"}`.slice(0, 200), createdAt: at0, updatedAt: at0 };
+  return { id: newId, title, createdAt: at0, updatedAt: at0 };
 };
+
+export const copyThread = (threadId: string, uptoMessageId: string, appendContent?: string): Promise<Thread> =>
+  cloneOrBranchThread(threadId, uptoMessageId, { pin: true, titlePrefix: "Copy: ", appendContent });
+
+// "Branch from here" (Round 6): same as `copyThread`, except every reference is left live instead of
+// frozen, so the new thread keeps following the original's edits from this point on.
+export const branchThread = (threadId: string, uptoMessageId: string, appendContent?: string): Promise<Thread> =>
+  cloneOrBranchThread(threadId, uptoMessageId, { pin: false, titlePrefix: "Branch: ", appendContent });
 
 // The live `attached` link for a message, if any (id + its note's id) — used to enforce "one note per
 // message" on write and to find the note/link pair to edit or delete. "Live" means both the link's own
