@@ -25,11 +25,6 @@ _Nothing._
   generated text out of the embedding input, thread score = best/mean note match; judge on real data first. A
   semantic fallback for search would use the same embeddings. A graph version (entity extraction + community
   detection) comes after.
-- **Backup retention by time, not count (direction.md "B8").** `backend/db.ts`'s `backupDb()` still keeps the
-  newest N (`THREADZ_KEEP_BACKUPS`, default 20) backups by count, same as v1. Under "keep live" (a push roughly
-  every 15s per Round 5's B7) that cycles through all 20 in a few minutes. direction.md's answer is an
-  hourly-for-a-day / daily-for-a-month / weekly Time-Machine-style schedule — not implemented, flagged in D2a
-  rather than guessed at.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 

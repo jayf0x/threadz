@@ -1,6 +1,6 @@
 import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives under frontend/
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { existsSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { threadView } from "@threadz/core";
 
@@ -172,12 +172,21 @@ describe("POST /api/push + GET /api/changes (docs/direction.md 'Sync': diffs onl
     const afterEmpty = existsSync(BACKUP_DIR) ? readdirSync(BACKUP_DIR).length : 0;
     expect(afterEmpty).toBe(before);
 
+    // Retention is by time (backend/db.ts's `selectBackupsToKeep`, docs/direction.md "B8"), so a
+    // non-empty push within the same hour as an earlier backup can collapse the directory back to
+    // one file rather than growing it -- that's the whole point (hourly-for-a-day thinning). What a
+    // real push must still guarantee is a *fresh* backup taken just now, so assert on recency
+    // instead of a strictly growing count.
+    const beforeNewest = Math.max(0, ...readdirSync(BACKUP_DIR).map((f) => statSync(`${BACKUP_DIR}/${f}`).mtimeMs));
     const threadId = crypto.randomUUID();
     await push({
       entities: [{ id: threadId, kind: "thread", created_at: 1, updated_at: 1, deleted_at: null, rev: null }],
       threads: [{ id: threadId, title: "backup check", updated_at: 1, rev: null }],
     });
-    expect(readdirSync(BACKUP_DIR).length).toBeGreaterThan(afterEmpty);
+    const files = readdirSync(BACKUP_DIR);
+    expect(files.length).toBeGreaterThan(0);
+    const newest = Math.max(...files.map((f) => statSync(`${BACKUP_DIR}/${f}`).mtimeMs));
+    expect(newest).toBeGreaterThan(beforeNewest);
   });
 
   test("a tombstoned entity travels like any other row, and is undone if newer content lands beneath it ('content wins')", async () => {

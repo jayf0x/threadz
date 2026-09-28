@@ -168,9 +168,10 @@ model, writes the question and the answer as new notes) → pull. It's simply un
 disabled/greyed) while the status pill is Unreachable — there's no "queued, will answer later" state.
 
 **Backups.** Main backs itself up (`VACUUM INTO` a timestamped copy) before applying every push:
-`backups/threadz-<time>.sqlite` next to the database (`THREADZ_BACKUPS` to relocate,
-`THREADZ_KEEP_BACKUPS`, default 20, retained by count — not yet by time, see `backlog.md`). To revert main, stop
-the backend and copy one over `threadz.sqlite`.
+`backups/threadz-<time>.sqlite` next to the database (`THREADZ_BACKUPS` to relocate). Retention is by time,
+Time Machine's schedule (`backend/db.ts`'s `selectBackupsToKeep`): hourly for the last day, daily out to a
+month, weekly beyond that — so "keep live"'s roughly-every-15s pushes don't cycle through the whole window in
+minutes. To revert main, stop the backend and copy one over `threadz.sqlite`.
 
 ## Device storage and export
 
