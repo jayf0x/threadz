@@ -2,7 +2,17 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { BUILTIN, initSchema } from "./schema";
-import { annotationsFor, bin, counterValue, pool, propertySets, propertyValuesFor, threadView, todos } from "./queries";
+import {
+  annotationsFor,
+  bin,
+  counterValue,
+  linksFor,
+  pool,
+  propertySets,
+  propertyValuesFor,
+  threadView,
+  todos,
+} from "./queries";
 
 // The branching logic in the read queries (docs/direction.md, "Lenses"): live-vs-pinned version resolution,
 // pool membership once a message is removed, Bin filtering, and a todo joined to its message's thread.
@@ -145,19 +155,25 @@ const propertySet = async (
   d: Awaited<ReturnType<typeof open>>,
   id: string,
   name: string,
-  opts: { scopeThreadId?: string | null; rule?: "counter" | null } = {},
+  opts: { scopeThreadId?: string | null; rule?: "counter" | null; colorSlot?: number | null } = {},
 ) => {
   await d.run("INSERT INTO entities VALUES (?, 'property_set', 0, 0, NULL, NULL)", [id]);
-  await d.run("INSERT INTO property_sets VALUES (?, ?, 'none', ?, ?, NULL, 0, NULL)", [
+  await d.run("INSERT INTO property_sets VALUES (?, ?, 'none', ?, ?, ?, 0, NULL)", [
     id,
     name,
     opts.scopeThreadId ?? null,
     opts.rule ?? null,
+    opts.colorSlot ?? null,
   ]);
 };
 
 const propertyValue = async (d: Awaited<ReturnType<typeof open>>, id: string, setId: string, targetId: string, at: number) =>
   d.run("INSERT INTO property_values VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)", [id, setId, targetId, at, at]);
+
+const link = async (d: Awaited<ReturnType<typeof open>>, id: string, fromId: string, toId: string, at: number) => {
+  await d.run("INSERT INTO entities VALUES (?, 'link', ?, ?, NULL, NULL)", [id, at, at]);
+  await d.run("INSERT INTO links VALUES (?, ?, ?, NULL, ?, NULL)", [id, fromId, toId, at]);
+};
 
 test("propertyValuesFor: a value under a deleted (tombstoned) set is inert — no row comes back", async () => {
   const d = await open();
@@ -224,4 +240,59 @@ test("counterValue: numbers only counter-set members, by their order in the thre
   await propertySet(d, "ps-plain", "Character");
   await propertyValue(d, "pv2", "ps-plain", "m2", 20);
   expect(await counterValue(d, "ps-plain", "m2")).toBeNull();
+});
+
+// Connections (docs/direction.md Decision 3: "A row between two entities, typed by a property
+// value") — the `links` table has no `kind` column, so a link's type is a property value on the
+// link's own entity id, resolved back to its set's colour for `Chip`.
+
+test("linksFor: an untyped connection comes back with type null; a typed one resolves its set's colour", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await link(d, "l-bare", "t1", "t2", 10);
+
+  const bare = await linksFor(d, "t1");
+  expect(bare.outgoing).toHaveLength(1);
+  expect(bare.outgoing[0]?.link.id).toBe("l-bare");
+  expect(bare.outgoing[0]?.type_value).toBeNull();
+
+  await propertySet(d, "ps-rel", "Relationship", { colorSlot: 3 });
+  await propertyValue(d, "pv-rel", "ps-rel", "l-bare", 20);
+
+  const typed = await linksFor(d, "t1");
+  expect(typed.outgoing[0]?.type_value?.set_id).toBe("ps-rel");
+
+  // The same link shows up as incoming from the other end.
+  const incoming = await linksFor(d, "t2");
+  expect(incoming.incoming).toHaveLength(1);
+  expect(incoming.incoming[0]?.link.id).toBe("l-bare");
+});
+
+test("linksFor: a link's type is the earliest-created live property value on it, ignoring a removed one", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await link(d, "l1", "t1", "t2", 10);
+  await propertySet(d, "ps-a", "First", { colorSlot: 1 });
+  await propertySet(d, "ps-b", "Second", { colorSlot: 2 });
+  await propertyValue(d, "pv-a", "ps-a", "l1", 20);
+  await propertyValue(d, "pv-b", "ps-b", "l1", 30);
+
+  expect((await linksFor(d, "t1")).outgoing[0]?.type_value?.set_id).toBe("ps-a");
+
+  // Removing the earlier value falls through to the next live one.
+  await d.run("UPDATE property_values SET removed_at = 40 WHERE id = 'pv-a'");
+  expect((await linksFor(d, "t1")).outgoing[0]?.type_value?.set_id).toBe("ps-b");
+});
+
+test("linksFor: a link tombstoned itself (deleted) never shows up either direction", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await link(d, "l1", "t1", "t2", 10);
+  await d.run("UPDATE entities SET deleted_at = 20 WHERE id = 'l1'");
+
+  expect((await linksFor(d, "t1")).outgoing).toHaveLength(0);
+  expect((await linksFor(d, "t2")).incoming).toHaveLength(0);
 });

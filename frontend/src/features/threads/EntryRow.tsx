@@ -30,13 +30,13 @@ import {
 } from "@/features/editor";
 import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
-import { propertyValuesFor } from "@/lib/data";
+import { createLink, linksFor, propertyValuesFor } from "@/lib/data";
 import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { holdKeyboard } from "@/lib/keyboard";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
 import { toggleTodoLine } from "@/lib/todos";
-import type { Annotation, Message, PropertyValue } from "@/lib/types";
+import type { Annotation, Link as LinkRow, Message, PropertyValue } from "@/lib/types";
 import { AddPropertyPanel } from "./AddPropertyPanel";
 import { NoteSurface } from "./NoteSurface";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
@@ -89,6 +89,11 @@ export const EntryRow = ({
   const [noteDraft, setNoteDraft] = useState("");
   const [propertyOpen, setPropertyOpen] = useState(false);
   const [properties, setProperties] = useState<PropertyValue[]>([]);
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  // A selection just turned into a connection (`onReferenceInsert` below): the link row already
+  // exists by the time this opens — this is only the optional "type it" step.
+  const [linkTypeOpen, setLinkTypeOpen] = useState(false);
+  const [pendingLinkId, setPendingLinkId] = useState<string | null>(null);
   const editor = useRef<MarkdownEditorHandle>(null);
   const article = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
@@ -132,6 +137,31 @@ export const EntryRow = ({
     load();
     return onChange(load);
   }, [m.id]);
+  // This message's own outgoing connections (docs/direction.md Decision 3) — only the typed ones
+  // render a chip; a bare, untyped link has nothing for `Chip` to show yet.
+  useEffect(() => {
+    const load = () =>
+      linksFor(m.id).then(
+        (r) => setLinks(r.outgoing.filter((l) => l.type)),
+        () => {},
+      );
+    load();
+    return onChange(load);
+  }, [m.id]);
+
+  // A selection was turned into a `tz:` reference (MarkdownEditor's `onReferenceInsert`, via the
+  // floating "Link" trigger a text selection shows): materialize the connection itself as a real
+  // `links` row (the reference in the text is just the rendered, clickable side of it — see
+  // docs/direction.md "Links have no kind column"/Decision 3), then offer the optional typing step.
+  const onReferenceInsert = async (threadId: string, messageId: string | null) => {
+    try {
+      const { id } = await createLink(m.id, messageId ?? threadId);
+      setPendingLinkId(id);
+      setLinkTypeOpen(true);
+    } catch (e) {
+      toast({ title: "Link failed", description: errorMessage(e) });
+    }
+  };
 
   const cancelEdit = () => {
     editor.current?.exitEdit(true);
@@ -245,6 +275,7 @@ export const EntryRow = ({
           onImageFile={editing ? (f) => attach([f]) : undefined}
           onTodoToggle={editing ? undefined : (lineIndex) => onEdit(toggleTodoLine(m.content, lineIndex))}
           onReferenceClick={navigateReference}
+          onReferenceInsert={editing ? onReferenceInsert : undefined}
           error={imageError ?? undefined}
           leading={<ImageButton onFiles={attach} disabled={busy} />}
           trailing={
@@ -301,6 +332,14 @@ export const EntryRow = ({
             {properties.map((p) => (
               <Chip key={p.id} colorSlot={p.colorSlot} label={p.value ?? p.setName} title={p.setName} />
             ))}
+            {links.map((l) => (
+              <Chip
+                key={l.id}
+                colorSlot={l.type?.colorSlot ?? null}
+                label={l.type?.value ?? l.type?.setName}
+                title={l.type?.setName}
+              />
+            ))}
           </div>
           <div className="flex shrink-0 items-center">
             {mine && (
@@ -309,6 +348,22 @@ export const EntryRow = ({
                   <Pencil className="size-5 md:size-4" />
                 </Button>
                 {!note && <ResponsiveOverlay {...overlay}>{noteBody}</ResponsiveOverlay>}
+                <ResponsiveOverlay
+                  open={linkTypeOpen}
+                  onOpenChange={setLinkTypeOpen}
+                  anchor={<span aria-hidden className="sr-only" />}
+                  title="Type this link"
+                  anchorTo={<span aria-hidden className="pointer-events-none absolute inset-x-3 bottom-0 h-0" />}
+                  align="end"
+                >
+                  {linkTypeOpen && pendingLinkId && (
+                    <AddPropertyPanel
+                      threadId={m.threadId}
+                      targetId={pendingLinkId}
+                      onDone={() => setLinkTypeOpen(false)}
+                    />
+                  )}
+                </ResponsiveOverlay>
                 <Button
                   size="icon"
                   variant="ghost"

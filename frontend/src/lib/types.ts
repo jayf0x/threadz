@@ -73,3 +73,17 @@ export type PropertyValue = {
   value: string | null;
   createdAt: number;
 };
+
+// A "connection" (docs/direction.md Decision 3: "A row between two entities, typed by a property
+// value") — a `links` row, joined to its "type" if it has one (the property value with the earliest
+// `created_at` on the link's own entity id, per `core.linksFor`'s comment on why that's a
+// best-effort pick rather than a designated "the type set"). `type` is `null` for an untyped link
+// (a bare connection with no property value on it yet — still valid, just colourless).
+export type Link = {
+  id: string;
+  fromId: string;
+  toId: string;
+  pinVersionId: string | null;
+  updatedAt: number;
+  type: { setId: string; setName: string; colorSlot: number | null; value: string | null } | null;
+};

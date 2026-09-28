@@ -2,10 +2,12 @@ import {
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
+  linksFor as coreLinksFor,
   propertySets as corePropertySets,
   propertyValuesFor as corePropertyValuesFor,
   search as coreSearch,
   type Driver,
+  type LinkWithType,
   orderedMessageIds,
   pool,
   threadView,
@@ -13,7 +15,7 @@ import {
 } from "@threadz/core";
 import { emitChange } from "./changeSignal";
 import { openPhoneDb } from "./phoneDb";
-import type { Annotation, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
+import type { Annotation, Link, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
 
 // The v2 frozen contract (docs/direction.md "Data model" + "Sync"): a thin async facade over one
 // shared `phoneDb` instance and `core`'s query functions, exposing what the app's hooks need.
@@ -270,6 +272,47 @@ export const propertyValuesFor = async (targetId: string): Promise<PropertyValue
     value: r.value.value,
     createdAt: r.value.created_at,
   }));
+};
+
+// Resolve one `LinkWithType` row (core/queries.ts) to the view shape `Link` above — joins the type
+// value's own set (for its colour/name) since `core.linksFor` only resolves as far as the raw
+// `property_values` row. N+1 (one extra lookup per typed link), same "fine at POC scale" pattern as
+// `versionHistory`/`todoFor` above.
+const resolveLink = async (d: Driver, row: LinkWithType): Promise<Link> => {
+  let type: Link["type"] = null;
+  if (row.type_value) {
+    const [set] = await d.all<{ name: string; color_slot: number | null }>(
+      "SELECT name, color_slot FROM property_sets WHERE id = ?",
+      [row.type_value.set_id],
+    );
+    if (set)
+      type = {
+        setId: row.type_value.set_id,
+        setName: set.name,
+        colorSlot: set.color_slot,
+        value: row.type_value.value,
+      };
+  }
+  return {
+    id: row.link.id,
+    fromId: row.link.from_id,
+    toId: row.link.to_id,
+    pinVersionId: row.link.pin_version_id,
+    updatedAt: row.link.updated_at,
+    type,
+  };
+};
+
+// A "connection" (docs/direction.md Decision 3) an entity is either end of — the selection-to-link
+// flow (`features/editor/SelectionMenu.tsx`) reads a message's outgoing links to render type chips;
+// a later "gutter"/peek lens reads both directions of any entity.
+export const linksFor = async (entityId: string): Promise<{ outgoing: Link[]; incoming: Link[] }> => {
+  const d = await driver();
+  const { outgoing, incoming } = await coreLinksFor(d, entityId);
+  return {
+    outgoing: await Promise.all(outgoing.map((r) => resolveLink(d, r))),
+    incoming: await Promise.all(incoming.map((r) => resolveLink(d, r))),
+  };
 };
 
 // The `counter` rule's computed number for a message (docs/direction.md "Rules are computed, not
@@ -757,4 +800,28 @@ export const removePropertyValue = async (setId: string, targetId: string): Prom
   if (!existingId) return;
   await d.run("UPDATE property_values SET removed_at = ?, updated_at = ? WHERE id = ?", [at, at, existingId]);
   emitChange();
+};
+
+// --- connections (links) ------------------------------------------------------------------------
+
+// Create a "connection" (docs/direction.md Decision 3: "A row between two entities, typed by a
+// property value") — a `links` row is itself an entity (`kind = 'link'`, "Links have no kind
+// column"), so a bare connection with no type yet is still a complete, valid row: typing it is a
+// separate `setPropertyValue(setId, linkId, value)` call against the id this returns, same as any
+// other entity ("optional typing" per the selection-menu flow). `pinVersionId` is left unset here —
+// nothing (yet) creates a link pinned to a specific version of its target the way a cloned message
+// pins to a note version.
+export const createLink = async (fromId: string, toId: string): Promise<{ id: string }> => {
+  const d = await driver();
+  const at = now();
+  const id = uuid();
+  await d.tx(async () => {
+    await insertEntity(d, id, "link", at);
+    await d.run(
+      "INSERT INTO links (id, from_id, to_id, pin_version_id, updated_at, rev) VALUES (?, ?, ?, NULL, ?, NULL)",
+      [id, fromId, toId, at],
+    );
+  });
+  emitChange();
+  return { id };
 };
