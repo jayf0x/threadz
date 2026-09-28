@@ -99,6 +99,7 @@ const baseProps = () => ({
   selected: false,
   pulsing: false,
   onCopyThread: () => {},
+  onBranchThread: () => {},
   onSetTodo: () => {},
   note: undefined,
   unsyncedAnnotations: new Set<string>(),

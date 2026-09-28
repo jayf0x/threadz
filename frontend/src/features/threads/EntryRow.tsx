@@ -3,6 +3,7 @@ import {
   Check,
   CloudOff,
   Copy,
+  GitBranch,
   GitBranchPlus,
   Link,
   Mic,
@@ -57,6 +58,7 @@ export const EntryRow = ({
   onSelect,
   onEdit,
   onCopyThread,
+  onBranchThread,
   onSetTodo,
   note,
   unsyncedAnnotations,
@@ -74,6 +76,7 @@ export const EntryRow = ({
   onSelect: () => void; // row clicked: select it, or clear if it's already selected (toggle lives in the caller)
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
+  onBranchThread: () => void; // "Branch from here" (Round 6): same as onCopyThread, but the new thread follows this one's edits
   onSetTodo: (done: boolean | null) => void; // the Todo toggle; null clears the flag
   note: Annotation | undefined; // one per message, DB-enforced
   unsyncedAnnotations: Set<string>;
@@ -339,6 +342,7 @@ export const EntryRow = ({
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 { label: "Add property", icon: Tag, onClick: () => setPropertyOpen(true), keepFocus: true },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
+                { label: "Branch from here", icon: GitBranch, onClick: onBranchThread },
               ]}
             />
           </div>

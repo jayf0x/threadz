@@ -265,7 +265,7 @@ test("a MessageTodo's closedAt is exact — the message's metaEditedAt, falling 
   const edited = message("m2", "t1", "flagged then flipped", 100, { todo: { done: true } }, { metaEditedAt: 300 });
   const todos = collectTodos(threads, [untouched, edited]);
   const closedAtOf = (id: string) => {
-    const t = todos.find((t) => t.messageId === id);
+    const t = todos.find((t) => t.kind !== "thread" && t.messageId === id);
     if (t?.kind !== "message") throw new Error("expected a message todo");
     return t.closedAt;
   };
