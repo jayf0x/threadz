@@ -1,4 +1,5 @@
 import { orderedMessageIds } from "./merge";
+import { BUILTIN } from "./schema";
 import type { Driver, EntityKind, LinkRow, MessageRow, NoteVersionRow, PropertyValueRow, ValueType } from "./schema";
 
 // The read side of "one database, many lenses" (docs/direction.md, "Lenses"). Every function here is a
@@ -209,4 +210,30 @@ export const propertyValuesFor = async (d: Driver, entityId: string): Promise<Pr
     },
     set: { id: r.set_id, name: r.set_name, value_type: r.value_type, color_slot: r.color_slot },
   }));
+};
+
+export type AttachedNoteRow = { link: LinkRow; message_id: string; note_id: string; version: NoteVersionRow };
+
+// Attached notes for a whole thread (docs/direction.md "Links have no kind column"): a note attached to a
+// message is a note plus a link carrying the built-in `attached` property value, replacing v1's dedicated
+// `annotations` table. One flat array across every live message in the thread, each resolved to its note's
+// live-or-pinned version — batched against the thread's live message ids in one query, rather than calling
+// `linksFor` per message (N+1). "Live" here means both the link's own entity and the note's entity have no
+// `deleted_at` (delete tombstones both, per "Round 5 C11").
+export const annotationsFor = async (d: Driver, threadId: string): Promise<AttachedNoteRow[]> => {
+  const messageIds = await orderedMessageIds(d, threadId);
+  if (!messageIds.length) return [];
+  const placeholders = messageIds.map(() => "?").join(",");
+  const rows = await d.all<LinkRow>(
+    `SELECT l.* FROM links l
+     JOIN entities le ON le.id = l.id
+     JOIN entities ne ON ne.id = l.from_id
+     JOIN property_values pv ON pv.target_id = l.id AND pv.set_id = ? AND pv.removed_at IS NULL
+     WHERE l.to_id IN (${placeholders}) AND le.deleted_at IS NULL AND ne.deleted_at IS NULL`,
+    [BUILTIN.attached, ...messageIds],
+  );
+  const out: AttachedNoteRow[] = [];
+  for (const link of rows)
+    out.push({ link, message_id: link.to_id, note_id: link.from_id, version: await resolveVersion(d, link.from_id, link.pin_version_id) });
+  return out;
 };

@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onChange } from "@/lib/changeSignal";
 import {
+  addAnnotation as addAnnotationContent,
+  annotationsFor,
   appendNote,
+  deleteAnnotation as deleteAnnotationContent,
+  editAnnotation as editAnnotationContent,
   editMessage as editMessageContent,
   getThread,
   pendingMessageIds,
   renameThread,
   setTodo,
   threadMessages,
+  unsyncedAnnotationIds,
 } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
 import { getSettings } from "@/lib/settings";
@@ -31,10 +36,9 @@ const autoName = async (thread: Thread, content: string, previous?: string) => {
 
 export const useThread = (threadId: string | null) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  // NOT built yet — see lib/types.ts's `Annotation` comment. Always empty until the `attached`-link
-  // lens exists; kept as state (not a constant) only so the shape stays obviously swappable later.
-  const [annotations] = useState<Annotation[]>([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
+  const [unsyncedAnnotations, setUnsyncedAnnotations] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gone, setGone] = useState(false); // this thread doesn't exist in the phone's own database
@@ -48,10 +52,12 @@ export const useThread = (threadId: string | null) => {
   const load = useCallback(async () => {
     if (!threadId) return;
     const mine = ++loads.current;
-    const [rows, pending, thread] = await Promise.all([
+    const [rows, pending, thread, annotationRows, pendingAnnotations] = await Promise.all([
       threadMessages(threadId),
       pendingMessageIds(threadId),
       getThread(threadId),
+      annotationsFor(threadId),
+      unsyncedAnnotationIds(threadId),
     ]);
     if (mine !== loads.current) return;
     setGone(!thread);
@@ -64,6 +70,8 @@ export const useThread = (threadId: string | null) => {
     hydrated.current = true;
     setMessages(rows);
     setUnsynced(pending);
+    setAnnotations(annotationRows);
+    setUnsyncedAnnotations(pendingAnnotations);
     if (additions.length) {
       setJustAdded((prev) => new Set([...prev, ...additions]));
       setTimeout(() => {
@@ -173,17 +181,69 @@ export const useThread = (threadId: string | null) => {
     [threadId, load],
   );
 
-  // NOT built yet (see lib/types.ts's `Annotation` comment) — every call is a safe no-op until the
-  // `attached`-link lens exists.
-  const addAnnotation = useCallback(async (_messageId: string, _content: string) => false, []);
-  const editAnnotation = useCallback(async (_id: string, _content: string) => false, []);
-  const deleteAnnotation = useCallback(async (_id: string) => false, []);
+  const addAnnotation = useCallback(
+    async (messageId: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await addAnnotationContent(messageId, text);
+        await load();
+        return true;
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  const editAnnotation = useCallback(
+    async (id: string, content: string): Promise<boolean> => {
+      const text = content.trim();
+      if (!text) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        await editAnnotationContent(id, text);
+        await load();
+        return true;
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  const deleteAnnotation = useCallback(
+    async (id: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        await deleteAnnotationContent(id);
+        await load();
+        return true;
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
 
   return {
     messages,
     annotations,
     unsynced,
-    unsyncedAnnotations: EMPTY_SET,
+    unsyncedAnnotations,
     busy,
     error,
     gone,
@@ -198,5 +258,3 @@ export const useThread = (threadId: string | null) => {
     refresh: load,
   };
 };
-
-const EMPTY_SET: Set<string> = new Set();

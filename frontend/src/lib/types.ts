@@ -31,10 +31,10 @@ export type Message = {
   metaEditedAt?: number | null; // todos.updated_at
 };
 
-// NOT built yet: v2's replacement for a one-per-message note is an `attached` link (docs/
-// direction.md "Links have no kind column"), not a dedicated table. `EntryRow`/`NoteSurface` still
-// expect this shape, so the type stays and every call site (`lib/data.ts`) always hands back
-// `undefined`/`[]` for it until that lens is built — never partially faked.
+// v2's replacement for a one-per-message note is an `attached` link (docs/direction.md "Links have
+// no kind column"): a note entity plus a link carrying the built-in `attached` property value, not a
+// dedicated table. `id` is the note's own entity id (mirrors `Message.id` being the placement id).
+// Backed by `core.annotationsFor` (per-thread) via `lib/data.ts`.
 export type Annotation = {
   id: string;
   threadId: string;

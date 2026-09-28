@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
-import { initSchema } from "./schema";
-import { bin, pool, threadView, todos } from "./queries";
+import { BUILTIN, initSchema } from "./schema";
+import { annotationsFor, bin, pool, threadView, todos } from "./queries";
 
 // The branching logic in the read queries (docs/direction.md, "Lenses"): live-vs-pinned version resolution,
 // pool membership once a message is removed, Bin filtering, and a todo joined to its message's thread.
@@ -69,6 +69,62 @@ test("bin: only deleted entities show, newest first", async () => {
 
   const rows = await bin(d);
   expect(rows.map((r) => r.id)).toEqual(["t2", "t1"]);
+});
+
+// Attaches note `noteId` to message `messageId`: a link entity plus a property_values row carrying the
+// built-in `attached` value, exactly what `lib/data.ts`'s `addAnnotation` writes.
+const attach = async (
+  d: Awaited<ReturnType<typeof open>>,
+  linkId: string,
+  noteId: string,
+  messageId: string,
+  at: number,
+) => {
+  await d.run("INSERT INTO entities VALUES (?, 'link', ?, ?, NULL, NULL)", [linkId, at, at]);
+  await d.run("INSERT INTO links VALUES (?, ?, ?, NULL, ?, NULL)", [linkId, noteId, messageId, at]);
+  await d.run("INSERT INTO property_values VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)", [
+    `pv-${linkId}`,
+    BUILTIN.attached,
+    linkId,
+    at,
+    at,
+  ]);
+};
+
+test("annotationsFor: no attached notes in an empty or unattached thread", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "a loose idea", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+
+  expect(await annotationsFor(d, "t1")).toEqual([]);
+});
+
+test("annotationsFor: a live attached note resolves to its note's live version", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "pack for winter", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await note(d, "note-1", "a side thought", 20);
+  await attach(d, "link-1", "note-1", "m1", 20);
+
+  const rows = await annotationsFor(d, "t1");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.message_id).toBe("m1");
+  expect(rows[0]?.note_id).toBe("note-1");
+  expect(rows[0]?.version.content).toBe("a side thought");
+});
+
+test("annotationsFor: a deleted (tombstoned) attached note is excluded", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "pack for winter", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await note(d, "note-1", "a side thought", 20);
+  await attach(d, "link-1", "note-1", "m1", 20);
+  await d.run("UPDATE entities SET deleted_at = 30 WHERE id = 'note-1'");
+
+  expect(await annotationsFor(d, "t1")).toEqual([]);
 });
 
 test("todos: a todo on a message carries its thread and note content", async () => {
