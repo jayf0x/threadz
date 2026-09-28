@@ -208,6 +208,12 @@ html[data-keyboard] .content-field[data-variant="composer"] .threadz-md {
 }
 .threadz-md .milkdown .ProseMirror a:hover { text-decoration-color: var(--primary); }
 
+/* A reference link (`tz:…`, lib/references.ts): no real `href` (see MarkdownEditor.tsx's link-mark
+ * override), so the browser doesn't give it a pointer cursor on its own — everything else about how
+ * it reads is the same as a real link above. Its own colour/icon (direction.md's "chips") isn't
+ * built yet; this is just enough to read as clickable. */
+.threadz-md .milkdown .ProseMirror a.threadz-ref { cursor: pointer; }
+
 /* Photos (`img:` refs, see imageView.ts): a grey box of the right aspect ratio until the bytes arrive. */
 .threadz-md .threadz-img {
   display: inline-block;

@@ -38,9 +38,16 @@ for (const key of Object.getOwnPropertyNames(win)) {
 }
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, mock, test } from "bun:test";
 import { useRef, useState } from "react";
+import * as images from "@/lib/images";
 import type { ReferenceAutocompleteState } from "@/lib/references";
+
+// MarkdownEditor's mount effect calls `housekeeping()`, which chains into `allMessages()` and a
+// real phone-db Worker — pointless here and the wasm it tries to load doesn't exist under Bun's
+// test env (caught, but noisy). Cut at `@/lib/images`, the direct call site — same fix as
+// `editInPlace.test.tsx`/`todoDecoration.test.tsx`.
+mock.module("@/lib/images", () => ({ ...images, housekeeping: () => {} }));
 
 // Stand-in for v1's `localApi` (see the header comment above): every test below is `test.skip`ped,
 // so this never actually runs, but the file still has to typecheck. Shaped just enough to keep the
@@ -177,21 +184,25 @@ test.skip("type a reference, autocomplete it through both stages, click it, land
 
   // completeThread already ran: a real, already-closed markdown link — no forced message id yet, so
   // Esc/outside-click right here would already leave a valid thread-only reference.
-  await waitFor(() => expect(textarea.value).toBe(`see [Groceries](thread=${thread.id})`));
+  await waitFor(() => expect(textarea.value).toBe(`see [Groceries](tz:thread/${thread.id})`));
 
   // Stage 2: continues straight into that thread's own messages.
   type(textarea, `${textarea.value} milk`);
   const messageOption = await screen.findByText("buy oat milk");
   fireEvent.mouseDown(messageOption);
 
-  const completed = `see [Groceries](thread=${thread.id}?message=${message.id})`;
+  const completed = `see [Groceries](tz:message/${thread.id}/${message.id})`;
   await waitFor(() => expect(textarea.value).toBe(completed));
 
   // Render the completed reference the way a saved message actually shows it (readOnly, live Crepe
-  // view) and click it.
+  // view) and click it. A `tz:` reference has no real `href` (MarkdownEditor.tsx's link-mark
+  // override), so it has no implicit `link` ARIA role either — its target lives in `data-ref`
+  // instead, so the sanitizer never blanks it, and the rendered `<a>` is found by text, not role.
   fireEvent.click(screen.getByText("save"));
-  const link = await screen.findByRole("link", { name: "Groceries" });
-  expect(link.getAttribute("href")).toBe(`thread=${thread.id}?message=${message.id}`);
+  const link = (await screen.findByText("Groceries")).closest("a");
+  if (!link) throw new Error("expected the reference to render as an <a>");
+  expect(link.getAttribute("href")).toBeNull();
+  expect(link.getAttribute("data-ref")).toBe(`tz:message/${thread.id}/${message.id}`);
 
   fireEvent.click(link);
   expect(navigated).toEqual([{ threadId: thread.id, messageId: message.id }]);
@@ -216,7 +227,7 @@ test.skip("Esc right after completing the thread stage cancels the autocomplete 
   type(textarea, "[[Widg");
   const threadOption = await screen.findByText("Widgets");
   fireEvent.mouseDown(threadOption);
-  await waitFor(() => expect(textarea.value).toMatch(/^\[Widgets\]\(thread=.+\)$/));
+  await waitFor(() => expect(textarea.value).toMatch(/^\[Widgets\]\(tz:thread\/.+\)$/));
   const completedThreadOnly = textarea.value;
 
   // Now mid-stage-two: typing a query for a message, then bailing out with Esc.
@@ -248,21 +259,58 @@ test.skip("after a first message pick the same popup offers a range end; picking
 
   type(textarea, "[[Recip");
   fireEvent.mouseDown(await screen.findByText("Recipes"));
-  await waitFor(() => expect(textarea.value).toBe(`[Recipes](thread=${thread.id})`));
+  await waitFor(() => expect(textarea.value).toBe(`[Recipes](tz:thread/${thread.id})`));
 
   type(textarea, `${textarea.value} chop`);
   fireEvent.mouseDown(await screen.findByText("step one chop"));
-  await waitFor(() => expect(textarea.value).toBe(`[Recipes](thread=${thread.id}?message=${first.id})`));
+  await waitFor(() => expect(textarea.value).toBe(`[Recipes](tz:message/${thread.id}/${first.id})`));
 
   // Still open, now for the range's end.
   fireEvent.mouseDown(await screen.findByText("step three serve"));
-  const ranged = `[Recipes](thread=${thread.id}?message=${first.id}..${last.id})`;
+  const ranged = `[Recipes](tz:message/${thread.id}/${first.id}..${last.id})`;
   await waitFor(() => expect(textarea.value).toBe(ranged));
   expect(screen.queryByText("step three serve")).toBeNull(); // closed after the second pick
 
+  // No implicit `link` role without a real `href` — see the earlier test's comment.
   fireEvent.click(screen.getByText("save"));
-  const link = await screen.findByRole("link", { name: "Recipes" });
-  expect(link.getAttribute("href")).toBe(`thread=${thread.id}?message=${first.id}..${last.id}`);
+  const link = (await screen.findByText("Recipes")).closest("a");
+  if (!link) throw new Error("expected the reference to render as an <a>");
+  expect(link.getAttribute("href")).toBeNull();
+  expect(link.getAttribute("data-ref")).toBe(`tz:message/${thread.id}/${first.id}..${last.id}`);
   fireEvent.click(link);
   expect(navigated).toEqual([{ threadId: thread.id, messageId: `${first.id}..${last.id}` }]);
+});
+
+// Not skipped (needs no phone db, just the live Crepe view): the sanitizer-conflict fix itself —
+// @milkdown/preset-commonmark's link mark blanks any href whose leading letters are followed by `:`
+// unless it's on an http/https/mailto/tel/ftp allow-list (see lib/references.ts's header comment),
+// so a literal `tz:…` href must never reach the DOM as a real `href` or it would render dead
+// (`<a href="">`). MarkdownEditor.tsx's `commonmark.linkSchema.extendSchema` override is what keeps
+// it alive: a `tz:` reference renders with its target in `data-ref` instead and no `href` at all,
+// while an ordinary `https://` link is completely unaffected (real `href`, no `data-ref`, no
+// `onReferenceClick`).
+test("a tz: reference renders with no real href and no sanitizer damage; a plain https link is untouched", async () => {
+  const navigated: { threadId: string; messageId: string | null }[] = [];
+  const content = "see [Groceries](tz:thread/t1) and also [a real link](https://example.com)";
+  render(
+    <MarkdownEditor
+      readOnly
+      value={content}
+      onReferenceClick={(threadId, messageId) => navigated.push({ threadId, messageId })}
+    />,
+  );
+
+  const refLink = (await screen.findByText("Groceries")).closest("a");
+  if (!refLink) throw new Error("expected the reference to render as an <a>");
+  expect(refLink.getAttribute("href")).toBeNull(); // never a real, dead href
+  expect(refLink.getAttribute("data-ref")).toBe("tz:thread/t1");
+  fireEvent.click(refLink);
+  expect(navigated).toEqual([{ threadId: "t1", messageId: null }]);
+
+  const plainLink = (await screen.findByText("a real link")).closest("a");
+  if (!plainLink) throw new Error("expected the plain link to render as an <a>");
+  expect(plainLink.getAttribute("href")).toBe("https://example.com");
+  expect(plainLink.getAttribute("data-ref")).toBeNull();
+  fireEvent.click(plainLink); // not one of ours — must not trigger navigation
+  expect(navigated).toEqual([{ threadId: "t1", messageId: null }]); // unchanged
 });
