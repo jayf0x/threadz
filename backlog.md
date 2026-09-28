@@ -39,24 +39,36 @@ _Nothing._
 
 ## Device-only verification
 
-Nothing left to build; this is what can only be *observed* on an iPhone (everything else is verified headless in
-Chromium at iPhone size, including offline dictation from the production build). Code for each is in place.
+Run this on an iPhone with the `real` seed. It is your checklist, not an agent's. Everything else is verified
+headless in Chromium at iPhone size.
 
-- **wa-sqlite storage volume at scale (v2, direction.md "A. Foundation" #1):** seed ~10k notes, 50k versions, 2k
-  threads into `IDBBatchAtomicVFS` (now via `@subframe7536/sqlite-wasm`'s `useIdbStorage`) on a real installed PWA
-  and confirm writes/IndexedDB don't choke — the headless spikes (`frontend/scripts/spike-wa-sqlite/`,
-  `frontend/scripts/spike-sqlite-wasm/`) only exercised a handful of rows in desktop Chromium.
-- **Lens query timing at that volume:** time a thread view, full-text search and the Todos query against the seeded
-  10k/50k/2k dataset on real iOS Safari, not desktop Chromium.
-- **Safari's "maximum call stack size exceeded" on large wa-sqlite queries** (PowerSync, May 2026 — already cited in
-  docs/direction.md's "Device storage and export"): the headless spikes above didn't reproduce it at their tiny data
-  volume on desktop Chromium; check whether it shows up on real iOS Safari at the 10k-note volume.
-- **Persistence after a week of the PWA not being opened:** confirm IndexedDB (and the wa-sqlite file inside it)
-  survives Safari's real-world storage eviction after a week of idle time, not just a fresh install.
-- ~~FTS5 trigram search on the phone~~ resolved: the plain `wa-sqlite` npm package has no FTS5 compiled in
-  (`frontend/scripts/spike-wa-sqlite/`), but `@subframe7536/sqlite-wasm`'s bundled async wasm does, and its trigram
-  tokenizer matches main's (`frontend/scripts/spike-sqlite-wasm/`, headless Chromium at iPhone size) — the phone no
-  longer needs a plain-LIKE fallback search.
+**Load the seed**
+1. On the Mac: `bun run seed --scale real` writes `.seed/real.sqlite` (~35 MB, deterministic).
+2. Get the file onto the iPhone (AirDrop / Files).
+3. In the installed PWA: Settings → Data → Import → pick the file. Rows arrive pending; leave them unsent unless
+   you want to push 10k notes to main.
+4. Reload once, so timings are warm-cache and cold-start both.
+
+**Budgets** (headless Chromium, 4x CPU throttle; see "Performance" below for the measured numbers). A real iPhone
+should be at or under these.
+
+| Screen / query | Budget |
+|---|---|
+| Open a thread | < 150ms |
+| Search | < 200ms |
+| Todos | < 200ms |
+| Home and insight | < 300ms |
+| Map, first paint | < 500ms |
+| Keep-live sync, nothing to send | < 100ms |
+
+**Storage**
+- [ ] 10k notes / 50k versions / 2k threads: import finishes, then writes (send a message, edit) stay snappy and
+  IndexedDB doesn't error.
+- [ ] Safari "maximum call stack size exceeded" (PowerSync, May 2026): open Search, Todos, Home, Map and a thread
+  with 100+ messages; none throws. Also try `--scale large` (~140 MB) if the first passes.
+- [ ] Survives a week: leave the installed PWA closed for 7 days, reopen, and check the data is still there
+  (Safari can evict idle storage).
+
 - **Keyboard and viewport:** the shell follows `visualViewport` (`lib/viewport.ts`); composer pin/unpin around the
   keyboard, reachable top/bottom of a long thread while it animates, no rubber-band on tab panels, safe-area padding.
 - **Keyboard from taps:** Edit (`enterEdit()` + `lib/keyboard.ts` proxy), Add/Edit note in the sheet, the dictation tap.

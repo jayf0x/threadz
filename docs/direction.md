@@ -350,6 +350,24 @@ home is a navigation dashboard; link reasons are always optional.
 
 (The user delegated 1-3 to the lead: "most scalable yet pragmatic". The defaults were chosen.)
 
+### Insight tuning constants
+
+Live in `core/insights.ts`; change them there and here together.
+
+| Constant | Value | Used by |
+|---|---|---|
+| `RHYTHM_WINDOW_DAYS` | 30 | writing rhythm: busiest weekday / hour over live notes' `created_at` |
+| `RHYTHM_MIN_NOTES` | 5 | rhythm card needs at least this many notes in the window |
+| `STALE_THREAD_DAYS` | 30 | threads untouched this long |
+| `POOL_OLD_DAYS` / `TODO_OLD_DAYS` | 7 / 7 | Pool notes / open todos older than this |
+| `MOST_LINKED_TOP` | 3 | top-N most-linked notes |
+| `COOCCUR_MIN` / `COOCCUR_TOP` | 3 / 3 | property values co-occurring on at least 3 notes, top 3 |
+
+Rechecked against the `real` seed (2026-09-28): every query fires (12 cards) and each has a source. The seed has
+far more activity than a person (~1,700 notes in 30 days, 65% of threads stale), so the counts read large
+(1,292 stale threads, 398 old todos) and the 5-note minimum is never the limiting factor. The constants stay; the
+device run with real data is the real tuning test. If cards feel noisy there, raise `STALE_THREAD_DAYS` first.
+
 ## What to resolve, and how
 
 Ordered by what blocks what. Each item says what's unknown, how to settle it, and what it blocks. Nothing below the
