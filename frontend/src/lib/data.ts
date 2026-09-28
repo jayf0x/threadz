@@ -1,4 +1,5 @@
 import {
+  allNotes,
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
@@ -187,6 +188,13 @@ export type PoolItem = { entityId: string; createdAt: number; content: string };
 export const listPool = async (): Promise<PoolItem[]> => {
   const d = await driver();
   const rows = await pool(d);
+  return rows.map((r) => ({ entityId: r.entity_id, createdAt: r.created_at, content: r.version.content }));
+};
+
+// Every live note once each (placed or not) — the `[[` autocomplete's note candidates.
+export const listAllNotes = async (): Promise<PoolItem[]> => {
+  const d = await driver();
+  const rows = await allNotes(d);
   return rows.map((r) => ({ entityId: r.entity_id, createdAt: r.created_at, content: r.version.content }));
 };
 

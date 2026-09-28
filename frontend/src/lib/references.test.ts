@@ -353,6 +353,21 @@ test("searchNotes ranks content matches and falls back to newest-first when empt
   expect(searchNotes(notes, "zzz")).toEqual([]);
 });
 
+test("searchNotes offers a note once even if it comes in twice", () => {
+  const notes = [noteCandidate({ entityId: "a", createdAt: 1 }), noteCandidate({ entityId: "a", createdAt: 1 })];
+  expect(searchNotes(notes, "")).toHaveLength(1);
+});
+
+test("searchPropertySets leaves out the built-in sets", () => {
+  const sets = [
+    { id: "ps-attached", name: "Attached" },
+    { id: "ps-local-only", name: "Local only" },
+    { id: "x", name: "Mood" },
+  ];
+  expect(searchPropertySets(sets, "").map((s) => s.id)).toEqual(["x"]);
+  expect(searchPropertySets(sets, "att")).toEqual([]);
+});
+
 test("searchLinks ranks label matches and keeps recency order when empty", () => {
   const links = [
     { id: "a", label: "reference" },

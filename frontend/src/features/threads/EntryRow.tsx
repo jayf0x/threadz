@@ -44,6 +44,7 @@ import type { Annotation, Link as LinkRow, Message, PropertyValue } from "@/lib/
 import { AddPropertyPanel } from "./AddPropertyPanel";
 import { GutterMarksRow } from "./GutterMarks";
 import { NoteSurface } from "./NoteSurface";
+import { Peek } from "./Peek";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 
 // One entry: the content, and — only while it is the selected message — one actions row under it (date and
@@ -357,11 +358,18 @@ export const EntryRow = ({
               <Chip key={p.id} colorSlot={p.colorSlot} label={p.value ?? p.setName} title={p.setName} />
             ))}
             {links.map((l) => (
-              <Chip
+              <Peek
                 key={l.id}
-                colorSlot={l.type?.colorSlot ?? null}
-                label={l.type?.value ?? l.type?.setName}
-                title={l.type?.setName}
+                entityId={l.toId}
+                onOpenThread={onNavigateReference}
+                trigger={
+                  <Chip
+                    colorSlot={l.type?.colorSlot ?? null}
+                    label={l.type?.value ?? l.type?.setName}
+                    title={l.type?.setName}
+                    onClick={() => {}}
+                  />
+                }
               />
             ))}
           </div>

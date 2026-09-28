@@ -433,6 +433,7 @@ export const ThreadView = ({
                       <LineEntry
                         message={m}
                         busy={busy}
+                        pulsing={pulsingIds.includes(m.id)}
                         onEdit={(text) => editMessage(m.id, text)}
                         onReferenceClick={onNavigateReference}
                       />

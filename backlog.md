@@ -28,23 +28,6 @@ _Nothing._
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 
-## Wave 6 polish (flagged during the build, not blocking)
-
-- **Line mode has no arrival treatment.** A `?thread=&msg=` deep link (todo jump, reference click) lands on the
-  thread in line mode but doesn't scroll to or highlight the target paragraph, unlike chat mode's pulse — line
-  mode ships read + edit-in-place only for now (notes, the per-message ⋯ menu, edit history and the Todo button
-  are chat-mode-only). Add a scroll-to-paragraph treatment if it turns out to matter in use.
-- **Link chips aren't clickable.** A typed link created from a selection renders as a `Chip` but has no
-  `onClick` — the `links` schema has no discriminator for whether `to_id` is a thread or a message, so
-  navigating on tap needs an extra read. Add once there's a real "click a link chip" flow to build against
-  (gutter/Peek already read both directions of a link; wiring navigation from there may be the simpler path).
-- **Property sets offered as reference candidates include built-ins** (`attached`, `copied-from`, `source`) —
-  harmless (referencing "Attached" as a property set is odd but not wrong) but likely worth filtering out of the
-  `[[` autocomplete's candidate list.
-- **Note candidates in the `[[` autocomplete are Pool notes only**, not every note entity — a note already
-  placed in a thread is reachable via the existing `message` kind, so offering it again under `note` would
-  duplicate it under two hrefs. Revisit if that reads as a gap once used.
-
 ## Device-only verification
 
 Nothing left to build; this is what can only be *observed* on an iPhone (everything else is verified headless in

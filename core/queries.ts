@@ -76,6 +76,17 @@ export const pool = async (d: Driver): Promise<PoolNoteRow[]> => {
   return out;
 };
 
+// Every live note, one row each however many messages place it (a note in two threads is still one
+// note): the `[[` autocomplete's note candidates. `pool` above is the unplaced subset.
+export const allNotes = async (d: Driver): Promise<PoolNoteRow[]> => {
+  const notes = await d.all<{ id: string; created_at: number }>(
+    "SELECT id, created_at FROM entities WHERE kind = 'note' AND deleted_at IS NULL ORDER BY created_at DESC",
+  );
+  const out: PoolNoteRow[] = [];
+  for (const n of notes) out.push({ entity_id: n.id, created_at: n.created_at, version: await resolveVersion(d, n.id, null) });
+  return out;
+};
+
 export type TodoContext =
   | { kind: "message"; thread_id: string; note_content: string }
   | { kind: Exclude<EntityKind, "message"> };
