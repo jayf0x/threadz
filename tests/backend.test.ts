@@ -2,7 +2,7 @@ import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives un
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { existsSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { threadView } from "@threadz/core";
+import { annotationsFor, threadView } from "@threadz/core";
 
 // v2 (docs/direction.md "Data model" + "Sync"): main is core/'s shared schema, reached only through
 // /api/changes, /api/push, /api/ask and /api/images/:hash. The old threads/messages/annotations
@@ -318,6 +318,71 @@ describe("POST /api/ask (docs/direction.md 'B10': push -> ask -> main writes que
       body: JSON.stringify({ threadId, question: "hi" }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/ask/message (wave 6 phase 2: scoped Ask, answer lands as an attached note, not a reply)", () => {
+  test("writes the answer as a note linked via the built-in `attached` property set, never as a new thread message", async () => {
+    const threadId = crypto.randomUUID();
+    const noteId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    await seedThread(threadId, noteId, versionId, messageId, "the message being asked about");
+
+    const before = await threadView(driver, threadId);
+    expect(before).toHaveLength(1); // sanity: still just the one seeded message
+
+    const res = await fetch(`${BASE}/api/ask/message`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messageId }),
+    }).then((r) => r.json());
+
+    expect(res.answer).toContain("stub answer to: the message being asked about");
+    expect(res.cursor).toBeGreaterThan(0);
+
+    // No new message in the thread — the answer is an attached note, not a reply.
+    const after = await threadView(driver, threadId);
+    expect(after).toHaveLength(1);
+    expect(after[0]?.version.content).toBe("the message being asked about");
+
+    const annotations = await annotationsFor(driver, threadId);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]?.message_id).toBe(messageId);
+    expect(annotations[0]?.version.content).toBe(res.answer);
+    expect(annotations[0]?.version.author).toBe("assistant");
+  });
+
+  test("409s if the message already has an attached note, 404s on an unknown message, 400s on a missing messageId", async () => {
+    const threadId = crypto.randomUUID();
+    const noteId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    await seedThread(threadId, noteId, versionId, messageId, "already annotated");
+
+    const ask = () =>
+      fetch(`${BASE}/api/ask/message`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messageId }),
+      });
+    expect((await ask()).status).toBe(200);
+    expect((await ask()).status).toBe(409); // "one per message, DB-enforced" — same rule `addAnnotation` follows
+
+    const ghost = crypto.randomUUID();
+    const missing = await fetch(`${BASE}/api/ask/message`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messageId: ghost }),
+    });
+    expect(missing.status).toBe(404);
+
+    const noId = await fetch(`${BASE}/api/ask/message`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(noId.status).toBe(400);
   });
 });
 

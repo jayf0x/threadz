@@ -70,6 +70,7 @@ export const ThreadView = ({
     editAnnotation,
     deleteAnnotation,
     ask,
+    askAboutMessage,
   } = useThread(threadId);
   // Ask needs main (docs/direction.md "B10"): disabled/greyed out, never queued, while the last sync
   // attempt failed. Replaces v1's local/live `mode` check.
@@ -138,6 +139,12 @@ export const ThreadView = ({
     } finally {
       setCopying(false);
     }
+  };
+
+  // "Ask about this message" (EntryRow's ⋯ menu): the answer lands as an attached note, so there's
+  // nothing to render here beyond a failure toast -- `useThread`'s own `load()` picks up the note.
+  const askAbout = async (messageId: string) => {
+    if (!(await askAboutMessage(messageId))) toast({ title: "Ask failed", description: error ?? undefined });
   };
 
   const onAsk = async (prompt: string, commit: boolean) => {
@@ -369,6 +376,7 @@ export const ThreadView = ({
                         onEditAnnotation={editAnnotation}
                         onDeleteAnnotation={deleteAnnotation}
                         onNavigateReference={onNavigateReference}
+                        onAskAboutMessage={askUnavailable ? undefined : () => askAbout(m.id)}
                       />
                     )}
                   </div>
