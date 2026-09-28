@@ -1,4 +1,5 @@
 import {
+  allInsights,
   allNotes,
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
@@ -12,12 +13,14 @@ import {
   search as coreSearch,
   todos as coreTodos,
   type Driver,
+  type Insight,
   type LinkWithType,
   orderedMessageIds,
   pool,
   threadView,
   type ValueType,
 } from "@threadz/core";
+
 import { emitChange } from "./changeSignal";
 import { openPhoneDb } from "./phoneDb";
 import type { Annotation, Link, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
@@ -197,6 +200,10 @@ export const listAllNotes = async (): Promise<PoolItem[]> => {
   const rows = await allNotes(d);
   return rows.map((r) => ({ entityId: r.entity_id, createdAt: r.created_at, content: r.version.content }));
 };
+
+export type { Insight };
+
+export const listInsights = async (): Promise<Insight[]> => allInsights(await driver(), Date.now());
 
 export type BinItem = { id: string; kind: "thread" | "note"; title: string; deletedAt: number };
 
