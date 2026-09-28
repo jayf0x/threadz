@@ -1,5 +1,6 @@
 import {
   ArrowDownUp,
+  Ellipsis,
   History,
   List,
   ListTodo,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
+import { Menu } from "@/components/ui/menu";
 import { IconSelect } from "@/components/ui/select";
 import { HomePanel, type HomeTarget } from "@/features/home";
 import { PoolPanel } from "@/features/pool";
@@ -72,13 +74,7 @@ export const ThreadList = ({
   const resurfaced = useResurfacingThread(allThreads);
   const [panel, setPanel] = useState<Panel>(initialPanel);
   useEffect(() => saveLastRoute({ panel }), [panel]);
-  const goHome = useCallback(
-    ({ lens, filter }: HomeTarget) => {
-      setPanel(lens);
-      if (lens === "index") setQuery(typeof filter?.q === "string" ? filter.q : "");
-    },
-    [setQuery],
-  );
+  const goHome = useCallback(({ lens }: HomeTarget) => setPanel(lens), []);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
@@ -159,28 +155,26 @@ export const ThreadList = ({
                   </option>
                 ))}
               </IconSelect>
-              {/* The Pool's only entry point (docs/direction.md "Round 6": reached from the thread
-                  list, not a fifth tab) — SidebarSwitcher's own bar below stays at four items. */}
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Pool"
-                title="Pool"
-                className="shrink-0 rounded-full text-muted-foreground"
-                onClick={() => setPanel("pool")}
-              >
-                <Waves aria-hidden className="size-5 md:size-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Map"
-                title="Map"
-                className="shrink-0 rounded-full text-muted-foreground"
-                onClick={onOpenMap}
-              >
-                <Waypoints aria-hidden className="size-5 md:size-4" />
-              </Button>
+              {/* Pool and Map fold into one menu (docs/direction.md "Round 8"); Pool is reached from
+                  here, not a fifth tab. */}
+              <Menu
+                align="end"
+                trigger={
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="More"
+                    title="More"
+                    className="shrink-0 rounded-full text-muted-foreground"
+                  >
+                    <Ellipsis aria-hidden className="size-5 md:size-4" />
+                  </Button>
+                }
+                items={[
+                  { label: "Pool", icon: Waves, onClick: () => setPanel("pool") },
+                  { label: "Map", icon: Waypoints, onClick: onOpenMap },
+                ]}
+              />
             </div>
           </header>
 
