@@ -35,6 +35,7 @@ export const ContentField = ({
   onCancel,
   onImageFile,
   onReferenceClick,
+  onReferenceInsert,
   onTodoToggle,
   onDirtyChange,
   leading,
@@ -56,6 +57,8 @@ export const ContentField = ({
   onCancel?: () => void;
   onImageFile?: (file: File) => void;
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
+  /** A text selection was turned into a `tz:` reference (see `MarkdownEditor`'s own doc). */
+  onReferenceInsert?: (threadId: string, messageId: string | null) => void;
   onTodoToggle?: (lineIndex: number) => void;
   /** Edit variants: the text differs from (or is back to) what it was when editing began. */
   onDirtyChange?: (dirty: boolean) => void;
@@ -94,6 +97,7 @@ export const ContentField = ({
           autofocus={autofocus}
           onImageFile={onImageFile}
           onReferenceClick={onReferenceClick}
+          onReferenceInsert={onReferenceInsert}
           onTodoToggle={onTodoToggle}
           onDirtyChange={onDirtyChange}
           className={EDITOR_CLASS[bare ? "read" : variant]}

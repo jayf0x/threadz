@@ -39,6 +39,8 @@ import { imageView } from "./imageView";
 import { ReferenceAutocompleteMenu } from "./ReferenceAutocompleteMenu";
 import { handleReferenceKeyDown } from "./referenceKeyboard";
 import { referencePlugin } from "./referencePlugin";
+import { SelectionMenu } from "./SelectionMenu";
+import { type SelectionUpdate, selectionPlugin } from "./selectionPlugin";
 import { staleReferenceDecorationPlugin } from "./staleReferenceDecoration";
 import { todoDecorationPlugin } from "./todoDecoration";
 import { useReferenceAutocomplete } from "./useReferenceAutocomplete";
@@ -148,6 +150,7 @@ export const MarkdownEditor = ({
   onImageFile,
   onTodoToggle,
   onReferenceClick,
+  onReferenceInsert,
   onDirtyChange,
   className,
   style,
@@ -174,6 +177,12 @@ export const MarkdownEditor = ({
    * caller navigates in-app (`App.tsx`'s `openThreadAt`), never a page reload. `messageId` is `<id>`
    * or, for a range, `<from>..<to>` (`lib/references.ts`'s `resolveMessageRange` reads it). */
   onReferenceClick?: (threadId: string, messageId: string | null) => void;
+  /** Editing only (AGENTS.md "Making connections with one thumb"): a text selection was turned into
+   * a `tz:` reference via the floating "Link" trigger (`SelectionMenu`) — the doc edit already
+   * happened (the same `completeReference` the `[[` autocomplete uses); this just reports the target
+   * so the caller can materialize a real `links` row for it (`lib/data.ts`'s `createLink`) and,
+   * optionally, type it. `messageId` is `null` for a thread-only pick. */
+  onReferenceInsert?: (threadId: string, messageId: string | null) => void;
   /** Editing only: the text now differs from (or is back to) what it was when editing began. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Layout knobs are CSS vars, not props: `--md-padding` (default
@@ -200,6 +209,8 @@ export const MarkdownEditor = ({
   onTodoToggleRef.current = onTodoToggle;
   const onReferenceClickRef = useRef(onReferenceClick);
   onReferenceClickRef.current = onReferenceClick;
+  const onReferenceInsertRef = useRef(onReferenceInsert);
+  onReferenceInsertRef.current = onReferenceInsert;
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
   // Latest markdown Crepe emitted — lets the value-sync effect skip the echo
@@ -235,6 +246,12 @@ export const MarkdownEditor = ({
     blockStart: number;
   }>({ state: { stage: "closed" }, rect: null, blockStart: 0 });
   const ac = useReferenceAutocomplete(local.state);
+  // The selection→link trigger's own live state (`selectionPlugin.ts`), separate from `local` above:
+  // a text selection and the `[[` autocomplete's collapsed-caret trigger never overlap (ProseMirror's
+  // selection is either empty or not), but they're two different flows with nothing else in common —
+  // no state machine to share, unlike thread/message stage which `SelectionMenu` re-derives its own
+  // (simpler) version of.
+  const [selection, setSelection] = useState<SelectionUpdate>(null);
 
   const setDirty = (dirty: boolean) => {
     if (dirtyRef.current === dirty) return;
@@ -314,6 +331,19 @@ export const MarkdownEditor = ({
       state: next.stage === "message" ? { ...next, linkEnd: next.anchor + shownText.length } : next,
       rect: next.stage === "closed" ? null : local.rect,
     }));
+
+  // `SelectionMenu` picked a target for the current selection: wrap that selection's own text in a
+  // `tz:` mark, exactly the shape `completeReference` already builds for the `[[` flow — the only
+  // difference is the display text is the selection's own text (never a picked entity's title, the
+  // way a typed `[[thread` link's text is). Report it up so the caller can materialize a real `links`
+  // row for it, then drop the selection state (the doc edit already collapsed the selection).
+  const acceptSelectionLink = (threadId: string, messageId: string | null) => {
+    const loaded = loadedRef.current;
+    if (!selection || !loaded) return;
+    loaded.completeReference(selection.from, selection.to, selection.text, buildReferenceHref(threadId, messageId));
+    setSelection(null);
+    onReferenceInsertRef.current?.(threadId, messageId);
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-time only; everything read here is a ref or a stable setter.
   useEffect(() => {
@@ -444,6 +474,9 @@ export const MarkdownEditor = ({
           }),
         ),
       );
+      // Selection→link (AGENTS.md "Making connections with one thumb"): reports the live text
+      // selection so `SelectionMenu`'s floating "Link" trigger knows where to anchor.
+      crepe.editor.use(utils.$prose(() => selectionPlugin(state, { onSelectionUpdate: (upd) => setSelection(upd) })));
       crepe.on((api: { markdownUpdated: (fn: (ctx: unknown, md: string) => void) => void }) => {
         api.markdownUpdated((_ctx, markdown) => {
           lastEmittedRef.current = markdown;
@@ -542,6 +575,7 @@ export const MarkdownEditor = ({
     if (readOnly) {
       baselineRef.current = null;
       setDirty(false);
+      setSelection(null);
     } else if (baselineRef.current === null) beginEditing();
   }, [readOnly]);
 
@@ -682,6 +716,15 @@ export const MarkdownEditor = ({
           if (!open) closeAutocomplete();
         }}
       />
+      {!readOnly && (
+        <SelectionMenu
+          rect={selection?.rect ?? null}
+          onPick={acceptSelectionLink}
+          onOpenChange={(open) => {
+            if (!open) setSelection(null);
+          }}
+        />
+      )}
     </>
   );
 };

@@ -100,8 +100,9 @@ export const ReferenceAutocompleteMenu = ({
 
 // iOS overlays the keyboard on the layout viewport, and Radix measures collisions against that one, so
 // without this the popup would open "below" the caret, under the keyboard. Padding the boundary by
-// what the keyboard (and a panned visual viewport) covers makes it flip above instead.
-const keyboardInset = () => {
+// what the keyboard (and a panned visual viewport) covers makes it flip above instead. Exported for
+// `SelectionMenu.tsx`, which anchors the same way against a computed rect.
+export const keyboardInset = () => {
   const vv = typeof window === "undefined" ? undefined : window.visualViewport;
   if (!vv) return { top: 0, bottom: 0 };
   return { top: vv.offsetTop, bottom: Math.max(0, window.innerHeight - vv.height - vv.offsetTop) };
