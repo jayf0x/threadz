@@ -2,6 +2,8 @@ import {
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
+  isReferenceStale as coreIsReferenceStale,
+  listLinks as coreListLinks,
   propertySets as corePropertySets,
   propertyValuesFor as corePropertyValuesFor,
   search as coreSearch,
@@ -241,6 +243,21 @@ export const searchThreadIds = async (query: string): Promise<string[]> => {
 // section lists the global ones (filter out `threadId`-scoped and, there, the built-ins too), the
 // message ⋯ menu's "Add property" picker lists all of it. Built-in sets (`BUILTIN`) come back like
 // any other live set; callers that shouldn't offer them for manual attachment filter by id.
+// Link candidates for the `[[` reference autocomplete's "any link" search (lib/references.ts's
+// `searchLinks`) — every live link, labelled by its best-effort type value (`core.listLinks`).
+export const listLinkCandidates = async (): Promise<{ id: string; label: string }[]> => {
+  const d = await driver();
+  const rows = await coreListLinks(d);
+  return rows.map((r) => ({ id: r.id, label: r.label }));
+};
+
+// Whether a pinned `tz:note/<id>@<version>` reference is stale (docs/direction.md "Versions") — the
+// reference autocomplete's staleness chip (`features/editor/staleReferenceDecoration.ts`) reads this.
+export const isReferenceStale = async (noteId: string, pinnedVersionId: string): Promise<boolean> => {
+  const d = await driver();
+  return coreIsReferenceStale(d, noteId, pinnedVersionId);
+};
+
 export const listPropertySets = async (threadId?: string): Promise<PropertySet[]> => {
   const d = await driver();
   const rows = await corePropertySets(d, threadId);
