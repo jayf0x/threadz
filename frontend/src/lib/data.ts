@@ -15,6 +15,9 @@ import {
   type Driver,
   type Insight,
   type LinkWithType,
+  type MapFilter,
+  mapFilterOptions,
+  mapTracks,
   orderedMessageIds,
   pool,
   threadView,
@@ -407,6 +410,10 @@ export const gutterMarksFor = async (messageId: string): Promise<GutterMarks> =>
   }
   return { otherThreads, links: [...links.values()] };
 };
+
+// The computed map (core/map.ts): the same async facade as every other read.
+export const loadMapTracks = async (filter: MapFilter) => mapTracks(await driver(), filter);
+export const loadMapFilterOptions = async () => mapFilterOptions(await driver());
 
 export type PeekAnchor = { threadId: string; messageId: string };
 

@@ -322,6 +322,17 @@ slot (1–8, palette tokens) plus an icon/text, dumb — the caller decides what
   as an assistant-authored attached note (the same `attached`-link mechanism as a manually written one), never
   appended to the thread.
 
+## Insight, Home and the map
+
+- **Insight** (`core/insights.ts`): deterministic queries on the phone (writing rhythm, stale threads, old Pool
+  notes and todos, most-linked notes, co-occurring values, stale pins), templated into sentences. Each carries the
+  lens and filter it came from; nothing with a zero count or no source is shown. No model, works offline.
+- **Home**: tap the title in the Threadz header. Recent threads, open todos, Pool count, insight cards (each opens
+  its lens). The app reopens the last panel/thread per device (`lib/lastRoute.ts`, not synced).
+- **Map** (`core/map.ts`, `features/map/`, `/map?...`): a "tracks" view, one row per thread with its messages left
+  to right, a note in several threads drawn as a vertical connector. Filters (property value, linked-to, todo,
+  time range) live in the URL; saved presets are device-only (`lib/mapPresets.ts`).
+
 ## References and quick jump
 
 Type `[[` in any note (composer, an edit, a note popover) to link another thread or message. A two-stage

@@ -201,6 +201,10 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   working directory: the model sees only the thread text it is sent, never the device's files. Ask itself
   (`lib/syncEngine.ts`'s `ask()`) is push → `POST /api/ask` → main writes the question and the answer as notes →
   pull; it's disabled while the last sync attempt failed (`unreachable`), never queued for later.
+- **Insight, Home, map:** `core/insights.ts` (pure, deterministic, every result has a `source` lens+filter) and
+  `core/map.ts` (`mapTracks`, `MapFilter` ⇄ `/map?` params) are queries; `features/home` and `features/map` are their
+  views. Map presets and the last route are device-only (localStorage), never synced. `derived_*` tables are still
+  spec-only.
 - **Sync** (`lib/syncEngine.ts`, `lib/phoneDb.ts`, `lib/phone/{worker,driver,broker,protocol}.ts`): see "Mental
   model" above for the push/pull/keep-live shape. The phone's database lives in IndexedDB via
   `@subframe7536/sqlite-wasm` (`IDBBatchAtomicVFS`, FTS5 + trigram compiled in), opened inside a dedicated Web

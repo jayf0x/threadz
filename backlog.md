@@ -28,6 +28,15 @@ _Nothing._
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 
+## Wave 7 follow-ups
+
+- **`/threadz/map` hard reload 404s** on the static Pages build (no `404.html` fallback); in-app navigation is fine.
+- **Map todo filter ignores derived `/todo` lines** (only `todos` rows on the message or its note match).
+- **Index header is tight at 375px** (search + Pool + Map + Home title); fold Pool and Map into one menu if it
+  reads crowded on a real phone.
+- **Insight `thread`/`todos`/`pool` cards ignore their filter** (those panels have no filter inputs); only `map`
+  cards apply theirs.
+
 ## Device-only verification
 
 Nothing left to build; this is what can only be *observed* on an iPhone (everything else is verified headless in
@@ -62,3 +71,6 @@ Chromium at iPhone size, including offline dictation from the production build).
 - **Wave 6 touch interactions:** the selection→"Link" floating trigger's anchor/positioning against a real iOS
   text-selection handle (verified headless in Chromium only), and Peek nesting (a peek opened from inside
   another peek) on a real iOS keyboard/viewport.
+- **Wave 7 (only checked headless against tiny/empty data):** Home with real recent threads/todos, and reopening
+  the last thread on launch; the map with a few hundred threads (virtualized rows, connector alignment while rows
+  measure, two-axis scroll feel under touch); insight sentences on a real corpus.

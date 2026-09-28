@@ -431,8 +431,9 @@ first group should be built before that group is answered.
    version references, decision 9). `README.md` and `AGENTS.md` rewritten to match.
 6. ✅ New lenses (wave 6): property sets + the `Chip` primitive, line mode, Pool, links from a selection, gutter
    marks + peek, references to anything (note/link/property_set) + staleness, Branch from here + thread status +
-   local-only, Ask about this message, backup retention by time (B8). Still open: insight, the computed map,
-   customization.
+   local-only, Ask about this message, backup retention by time (B8). Still open: customization.
+7. ✅ Wave 7: insight v1 (`core/insights.ts`, deterministic), Home dashboard (header title tap, last route reopened),
+   computed map v1 (`core/map.ts`, tracks view, device-only presets), wave 6 polish. Round 7 has the calls.
 
 ## Parked
 

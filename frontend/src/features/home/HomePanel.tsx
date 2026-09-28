@@ -2,6 +2,7 @@ import { ArrowLeft, ChevronRight, ListTodo, type LucideIcon, Sparkles, Waves } f
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { mapUrl } from "@/features/map";
 import type { Insight } from "@/lib/data";
 import { stripTodoMarker, type Todo } from "@/lib/todos";
 import { useHome } from "./useHome";
@@ -95,7 +96,8 @@ const followInsight = (i: Insight, onGo: (t: HomeTarget) => void) => {
   if (lens === "map") {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(filter)) params.set(k, typeof v === "string" ? v : JSON.stringify(v));
-    location.assign(`/map?${params}`);
+    history.pushState(null, "", mapUrl(params.toString()));
+    dispatchEvent(new PopStateEvent("popstate")); // App re-reads the URL and opens the map
     return;
   }
   onGo({ lens: LENS_TARGET[lens] ?? "index", filter });
