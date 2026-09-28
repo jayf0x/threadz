@@ -2,15 +2,34 @@
 
 ## What this is
 
-Threadz — personal-brain POC. Read `README.md` (API, local mode, photos, load-bearing decisions) and
+Threadz — personal-brain POC. Read `docs/direction.md` (the data model, sync protocol and lenses
+this rebuild is built from), `README.md` (API, sync, storage, photos, load-bearing decisions) and
 `backlog.md` (open questions) before changing behavior.
 
 ## Mental model
 
-- One backend, one SQLite file, many devices. The frontend keeps a **disposable** mirror of main
-  (`threadz` IndexedDB, wholesale-replaced on fetch) and a **durable** device copy (`threadz-local`,
-  see Local mode below).
-- The backend stores plain threads and messages; nothing in the schema depends on where a note came from.
+- **One normalized model, two databases, one sync protocol.** `core/schema.ts` defines a single
+  schema — `entities`, `note_versions`, `threads`, `messages`, `thread_order`, `links`,
+  `property_sets`, `property_values`, `todos` — that runs unchanged on main (`bun:sqlite`,
+  `backend/db.ts`) and on the phone (SQLite compiled to WASM in a Web Worker, `lib/phoneDb.ts` +
+  `lib/phone/worker.ts`). `core/queries.ts` is the read side (a query per lens); `core/merge.ts` is
+  the sync/merge side (`applyChanges`, `stampRevs`, `orderedMessageIds`). Both sides import the same
+  `core` package — there's no separate backend model to keep in sync by hand.
+- **The phone always reads and writes its own database.** There's no "live" mode that talks to main
+  directly and no auto-detach — `frontend/src/lib/data.ts` is a thin facade over the phone's own
+  `Driver`, and every read/write in the app goes through it. Main (`backend/server.ts`) is a pure
+  sync target and the place heavy work runs (Ask). Moving data between them is **only**
+  `frontend/src/lib/syncEngine.ts`'s `syncNow()`: push this device's pending rows (`rev IS NULL`),
+  then pull whatever main has newer than this device's cursor. It's a button, or the same push/pull
+  on a 15s timer while "keep live" is on (pauses when the tab is hidden, turns itself off after 5
+  consecutive failed polls). Nothing auto-syncs or auto-switches; every row carries its own `rev`
+  (main's write counter, `NULL` = not on main yet), so only diffs ever travel and a retry is
+  harmless — merging is idempotent (`core/merge.ts`: immutable rows insert-if-missing, mutable rows
+  last-write-wins on `updated_at`, a tombstone a newer live row outlives is undone — "content wins").
+- **A feature is a query plus a view, never a new model.** `docs/direction.md`'s "Lenses" table is
+  the checklist: thread view, Todos, Bin, search, references are each a `core/queries.ts` function
+  (or one built from `lib/data.ts` on top of it) plus the component that renders its rows. Extend
+  `core/queries.ts` before reaching for a bespoke SQL string in a feature file.
 
 ## Commands (bun only, never npm/yarn/pnpm)
 
@@ -50,11 +69,11 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   hint/description earns its place only if it says something the label genuinely doesn't (Settings' naming
   toggle's hint, "a title you typed is never replaced," is the bar — a real behavior the label can't carry;
   "leave blank to auto-detect" restating the placeholder is not). **"Main" is backend jargon — never show it to
-  the user.** The user-facing pair is **Local** (this device, works offline — already `getMode() === "local"`
-  internally) and **Live** (backend reachable — already `"live"` internally); a status/dialog says "Local" /
-  "Live" / "Offline" (already `StatusPill`'s three states), never "main is reachable" or "can't reach main."
-  Keep "main" itself for internal code/comments/docs (this file, README, `lib/mode.ts`) — it's accurate
-  shorthand for engineers, just not for the person using the app.
+  the user.** `StatusPill`/`syncEngine.ts`'s four states (docs/direction.md "B9") show as **Synced** (nothing
+  pending, keep-live off), **Keep-live** (the 15s auto-sync loop is on), **Pending** (N changes saved on this
+  device, not yet sent) and **Unreachable** (the last sync attempt failed) — never "main is reachable" or "can't
+  reach main." Keep "main" itself for internal code/comments/docs (this file, README, `lib/syncEngine.ts`) — it's
+  accurate shorthand for engineers, just not for the person using the app.
 
 - **One tab, one job.** Threadz, Todos, Bin and Settings each own their functionality; a control
   belongs to exactly one tab (e.g. the closed-todo filter is Todos-only, the Threadz index has no
@@ -123,7 +142,16 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   the keyboard only for a focus() inside the tap: `lib/keyboard.ts`'s `holdKeyboard()` (a throwaway focused input) bridges
   taps whose real field mounts a beat later (note editor in a sheet); `enterEdit()` uses it too. Editing a row scrolls
   it into view with `revealInScroller` (`scrollTop`, never `scrollIntoView`).
-- **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into the editor): `MarkdownEditor`
+- **References** (`lib/references.ts` is the pure core; `features/editor/` wires it into the editor): the stored
+  grammar is `tz:<kind>/<id>@<version>` (docs/direction.md "C14"; `kind` is `thread` or `message`, `message`'s
+  `id` carries `<threadId>/<from>..<to>`, `@<version>` is omitted for a live/unpinned reference — nothing pins
+  one yet). It is **not** a real `href`: Milkdown's link mark runs every href through `sanitizeLinkHref` (an XSS
+  allow-list of http/https/mailto/tel/ftp) and would blank a literal `tz:…` to `""`, so `MarkdownEditor.tsx`
+  overrides the link mark's schema via Milkdown's public extension API (`commonmark.linkSchema.extendSchema`,
+  the mark equivalent of `imageView.ts`'s node-view override below) — a `tz:` mark renders as
+  `<a data-ref="tz:…">` with no `href` attribute at all, so the sanitizer never touches it and the browser can
+  never navigate away by accident; any other href (a plain `https://` link) falls through to the default
+  `toDOM` unchanged. Click handling reads `data-ref`, not `href`. `MarkdownEditor`
   drives the `nextAutocompleteState` machine off `referencePlugin`. Its offsets are into the *rendered*
   block text (a link's markdown length isn't in it), so after completing a link re-anchor with `continueAfterLink`
   rather than trusting `linkEnd`, and clear stored marks so typing after a link doesn't extend it. A ranged link's
@@ -161,21 +189,24 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty
-  working directory: the model sees only the thread text it is sent, never the device's files.
-- **Local mode** (`lib/local.ts`, `replica.ts`, `handoff.ts`, `mode.ts`, `status.ts`): `threadz-local`
-  is the device's authoritative copy of main. While live it is kept warm by `pullMain()` (hash
-  compare vs `base`, fetch changed threads, union); `api.ts` `via()` auto-detaches to it when main is
-  truly unreachable. Never clear it wholesale, never auto-switch back to live, and move data only
-  through `handoff.syncNow()` (pull → one `/api/sync` push → verify → compare hashes). Merges are
-  unions by message id; delete-vs-edit is "content wins". The `threadz` mirror stays disposable. A delete keeps
-  a copy in the device's `trash` (the Bin tab; `handoff.restoreThread`) — main keeps none, so a live restore
-  re-sends the thread through `syncNow`.
-  Keep `remoteApi` and `localApi` signature-identical. Local mode offers no Ask (Claude lives on main). A
-  legacy `outbox` IndexedDB store is drained once into the device copy by `replica.ts`; nothing writes it.
+  working directory: the model sees only the thread text it is sent, never the device's files. Ask itself
+  (`lib/syncEngine.ts`'s `ask()`) is push → `POST /api/ask` → main writes the question and the answer as notes →
+  pull; it's disabled while the last sync attempt failed (`unreachable`), never queued for later.
+- **Sync** (`lib/syncEngine.ts`, `lib/phoneDb.ts`, `lib/phone/{worker,driver,broker,protocol}.ts`): see "Mental
+  model" above for the push/pull/keep-live shape. The phone's database lives in IndexedDB via
+  `@subframe7536/sqlite-wasm` (`IDBBatchAtomicVFS`, FTS5 + trigram compiled in), opened inside a dedicated Web
+  Worker so the wasm never loads into the main bundle or a `bun test` process — `lib/data.ts`/`lib/images.ts`
+  call `openPhoneDb()` lazily, never at module top level, and a test that mounts `MarkdownEditor` (which calls
+  `housekeeping()` on mount) mocks `@/lib/images`' `housekeeping` rather than let a real Worker spin up under
+  happy-dom (see `editInPlace.test.tsx`/`todoDecoration.test.tsx`/`references.e2e.test.tsx`). Export/Import
+  (`DataSection.tsx`) is the phone's whole `.sqlite` file (`phoneDb.dump()`/`exportFile()`), not a JSON snapshot;
+  import merges a file's rows in with the same rules a sync push uses. A delete keeps a copy in the device's Bin
+  (`core.bin`: entities with `deleted_at` set) — main keeps deleted rows too (tombstones, never a hard delete),
+  so restoring and re-syncing just clears the flag on both sides.
 - **Images** (`lib/images.ts`, `imageSync.ts`; `backend/images.ts`): a note holds only `![](img:<sha256>#WxH)`.
-  Bytes live in their own IndexedDB (`threadz-images`) and, on main, as files in `THREADZ_IMAGES` — never in
-  `exportSnapshot`/`saveBackup`/`mergeSnapshot`/Export, never in SQLite, `backupDb()` or `/api/snapshot`. A `dirty`
-  image is never deleted; it is `PUT` to main before `/api/sync`.
+  Bytes live in their own IndexedDB (`threadz-images`) and, on main, as files in `THREADZ_IMAGES` — never in a
+  `.sqlite` export/import, never in `core`'s synced tables, `backupDb()` or the sync push/pull payload. A `dirty`
+  image is never deleted; it is `PUT` to main before a sync push.
 - **Appearance** (`themes/*.css`, `themes/palettes.ts`, `features/appearance/`, `features/settings/sections/`
   Appearance + Background): light vs dark is **only** the Light/System/Dark toggle (`ThemeToggle`,
   `window._setTheme`); a **palette** (`data-palette` on `<html>`, `window._setPalette`) is a colour *family*
@@ -194,10 +225,12 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   (`styles.css`) over `--pane-alpha`, which `lib/settings.ts` derives from the slider (92% without an image,
   falling as opacity rises; default 80%). Big persistent panes get that alpha only, no blur (cheap); small
   floating chrome (popover, dropdown, toast, sheet) is `surface-float` (fixed 96% gradient + blur).
-- "Related threads" (`/api/threads/:id/related`) is a v2 endpoint and not in the UI; see `backlog.md`.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
-- Metadata generation is fire-and-forget after each append (no queue) — off by default; set `THREADZ_METADATA=1`
-  to turn it on (v1 dropped generated description/tags/embeddings/related from the UI; the code stays for v2).
+- **Generated metadata/embeddings/"related threads" don't exist right now.** `core/schema.ts`'s `threads` table
+  has no description/tags/embedding columns, and `backend/metadata.ts`'s generation pipeline plus
+  `/api/threads/:id/metadata`/`/related` were dropped rather than adapted when main moved onto `core/`
+  (`backlog.md`) — only pure helpers (`looksLikeGarbage`, `stripImages`, `MIN_WORDS`) still live in
+  `metadata.ts`, unused, for whenever this comes back with a real schema location for it.
 - Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
   itself. No per-component suites — the few component tests (`EntryRow`, `todoDecoration`, references e2e) each pin
   one wiring regression; a change that touches none of that needs no new test.

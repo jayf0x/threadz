@@ -386,16 +386,15 @@ first group should be built before that group is answered.
 
 ### D. Then rebuild, in this order
 
-1. `core/`: an async driver, the schema, and the queries for the existing lenses.
-2. Main on `core/` with a fresh database, plus the sync endpoints.
-3. The phone on `core/`: wa-sqlite in a worker, export and import.
-4. Sync v2: the button, keep-live, and the new status UI.
-5. Existing features as lenses on the new data: thread chat view and composer, todos, Bin, search and ⌘K, references,
-   attached notes (today's note overlay), clone.
+1. ✅ `core/`: an async driver, the schema, and the queries for the existing lenses.
+2. ✅ Main on `core/` with a fresh database, plus the sync endpoints.
+3. ✅ The phone on `core/`: wa-sqlite in a worker, export and import.
+4. ✅ Sync v2: the button, keep-live, and the new status UI.
+5. ✅ Existing features as lenses on the new data: thread chat view and composer, todos, Bin, search and ⌘K,
+   references (now `tz:<kind>/<id>@<version>`, C14), attached notes (today's note overlay), clone (now true
+   version references, decision 9). `README.md` and `AGENTS.md` rewritten to match.
 6. New lenses: line mode, pool, links from a selection, chips, gutter marks, peek, property sets. Then insight, the
    computed map, and customization.
-
-`README.md` and `AGENTS.md` describe today's app and are rewritten as each step lands.
 
 ## Parked
 
