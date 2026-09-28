@@ -32,12 +32,6 @@ _Nothing._
   rather than guessed at.
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
-- **Ask on the phone.** Capture-only while local. Options: queue asks until main is reachable, or
-  paste an API key (billed, key lives on the phone).
-- **Local-mode policy, once real use shows the need:** auto-sync/go-live when main returns (needs the
-  two-probe hysteresis in `status.ts` as a flap guard), a "review before sync" list for conflicts
-  (only if "content wins" ever surprises), replicating all/recent photos to the device, in-app restore of
-  `trash` / safety copies / main's backups (today: re-import via Import, or copy a backup over `threadz.sqlite`).
 
 ## Device-only verification
 

@@ -47,3 +47,29 @@ export type Annotation = {
 
 // What `syncEngine.ts` reports: rows pending (not yet stamped with a `rev`) across every core table.
 export type Unsynced = { pending: number };
+
+// A property set (docs/direction.md "Data model"/"C13"): the *definition* of one kind of value —
+// name, value type, scope (null = global, or one thread's id) and an optional computed `rule`.
+// `colorSlot` is the palette slot (1-8) every chip on this set's values renders with.
+export type PropertySet = {
+  id: string;
+  name: string;
+  valueType: "none" | "text" | "number" | "date";
+  scopeThreadId: string | null;
+  rule: "counter" | null;
+  colorSlot: number | null;
+};
+
+// One property value on an entity, joined to enough of its set to render a `Chip` (name + colour)
+// without a second lookup. Backed by `core.propertyValuesFor`, which already excludes values whose
+// set is tombstoned (inert, per "C11") and values that are themselves removed.
+export type PropertyValue = {
+  id: string;
+  setId: string;
+  setName: string;
+  valueType: "none" | "text" | "number" | "date";
+  colorSlot: number | null;
+  targetId: string;
+  value: string | null;
+  createdAt: number;
+};

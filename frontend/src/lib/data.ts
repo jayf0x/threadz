@@ -1,15 +1,19 @@
 import {
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
+  counterValue as coreCounterValue,
+  propertySets as corePropertySets,
+  propertyValuesFor as corePropertyValuesFor,
   search as coreSearch,
   type Driver,
   orderedMessageIds,
   pool,
   threadView,
+  type ValueType,
 } from "@threadz/core";
 import { emitChange } from "./changeSignal";
 import { openPhoneDb } from "./phoneDb";
-import type { Annotation, Message, Thread, Version } from "./types";
+import type { Annotation, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
 
 // The v2 frozen contract (docs/direction.md "Data model" + "Sync"): a thin async facade over one
 // shared `phoneDb` instance and `core`'s query functions, exposing what the app's hooks need.
@@ -231,6 +235,55 @@ export const searchThreadIds = async (query: string): Promise<string[]> => {
     for (const r of rows) ids.push(r.thread_id);
   }
   return [...new Set(ids)];
+};
+
+// Property sets on offer for `threadId` (its own scoped sets plus every global one) — the Settings
+// section lists the global ones (filter out `threadId`-scoped and, there, the built-ins too), the
+// message ⋯ menu's "Add property" picker lists all of it. Built-in sets (`BUILTIN`) come back like
+// any other live set; callers that shouldn't offer them for manual attachment filter by id.
+export const listPropertySets = async (threadId?: string): Promise<PropertySet[]> => {
+  const d = await driver();
+  const rows = await corePropertySets(d, threadId);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    valueType: r.value_type,
+    scopeThreadId: r.scope_thread_id,
+    rule: r.rule,
+    colorSlot: r.color_slot,
+  }));
+};
+
+// Live property values on any entity (note, message, thread or link — `targetId` is generic), joined
+// to enough of their set to render straight into a `Chip`. Already excludes inert values (their set
+// tombstoned) and removed values — see `core.propertyValuesFor`.
+export const propertyValuesFor = async (targetId: string): Promise<PropertyValue[]> => {
+  const d = await driver();
+  const rows = await corePropertyValuesFor(d, targetId);
+  return rows.map((r) => ({
+    id: r.value.id,
+    setId: r.set.id,
+    setName: r.set.name,
+    valueType: r.set.value_type,
+    colorSlot: r.set.color_slot,
+    targetId: r.value.target_id,
+    value: r.value.value,
+    createdAt: r.value.created_at,
+  }));
+};
+
+// The `counter` rule's computed number for a message (docs/direction.md "Rules are computed, not
+// stored") — never stored, recomputed from the thread's live order on every read.
+export const counterValueFor = async (setId: string, messageId: string): Promise<number | null> => {
+  const d = await driver();
+  return coreCounterValue(d, setId, messageId);
+};
+
+// Whether a thread carries the built-in `local-only` flag (Round 6: "Ask is disabled/greyed out for
+// that thread"). Wiring Ask's disabled state to this is a later step; this just exposes the read.
+export const isThreadLocalOnly = async (threadId: string): Promise<boolean> => {
+  const values = await propertyValuesFor(threadId);
+  return values.some((v) => v.setId === BUILTIN.localOnly);
 };
 
 // --- writing ---------------------------------------------------------------------------------
@@ -603,5 +656,105 @@ export const deleteAnnotation = async (noteId: string): Promise<void> => {
     await d.run("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ?", [at, at, noteId]);
     if (link) await d.run("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ?", [at, at, link.id]);
   });
+  emitChange();
+};
+
+// --- property sets & values --------------------------------------------------------------------
+
+// The next colour slot in the round-robin (docs/direction.md "8 colour slots... a new property set
+// gets UI for free"): every set gets a colour by default rather than rendering colourless chips, and
+// a plain count-mod-8 keeps consecutive new sets visually distinct without asking the user to pick.
+const nextColorSlot = async (d: Driver) => {
+  const [row] = await d.all<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM property_sets ps JOIN entities e ON e.id = ps.id WHERE e.deleted_at IS NULL`,
+  );
+  return ((row?.n ?? 0) % 8) + 1;
+};
+
+// Create a property set (docs/direction.md "C13"): global (`scopeThreadId` omitted) or scoped to one
+// thread — thread-scoped sets are created from context (a thread's own UI), never from Settings,
+// which only manages global ones. `colorSlot` defaults to the next free-ish slot if not given.
+export const createPropertySet = async (
+  name: string,
+  valueType: ValueType,
+  opts?: { scopeThreadId?: string; rule?: "counter" | null; colorSlot?: number },
+): Promise<PropertySet> => {
+  const d = await driver();
+  const id = uuid();
+  const at = now();
+  const colorSlot = await d.tx(async () => {
+    const slot = opts?.colorSlot ?? (await nextColorSlot(d));
+    await insertEntity(d, id, "property_set", at);
+    await d.run(
+      "INSERT INTO property_sets (id, name, value_type, scope_thread_id, rule, color_slot, updated_at, rev) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+      [id, name, valueType, opts?.scopeThreadId ?? null, opts?.rule ?? null, slot, at],
+    );
+    return slot;
+  });
+  emitChange();
+  return {
+    id,
+    name,
+    valueType,
+    scopeThreadId: opts?.scopeThreadId ?? null,
+    rule: opts?.rule ?? null,
+    colorSlot,
+  };
+};
+
+export const renamePropertySet = async (id: string, name: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  await d.tx(async () => {
+    await d.run("UPDATE property_sets SET name = ?, updated_at = ? WHERE id = ?", [name, at, id]);
+    await d.run("UPDATE entities SET updated_at = ? WHERE id = ?", [at, id]);
+  });
+  emitChange();
+};
+
+// Delete a property set (C11): tombstone only. Its values become inert (`core.propertyValuesFor`
+// filters them out) rather than being deleted themselves.
+export const deletePropertySet = async (id: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  await d.run("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ?", [at, at, id]);
+  emitChange();
+};
+
+// The live value row for (setId, targetId), if any — a value is "one per set per target" in the UI's
+// usage (a message either carries this thread's "Chapter" value or it doesn't), so writes here upsert
+// on that pair rather than accumulating rows; the schema itself allows more (a fresh `id` each time)
+// for whichever future lens wants many values of the same set on one target.
+const livePropertyValue = async (d: Driver, setId: string, targetId: string) => {
+  const [row] = await d.all<{ id: string }>(
+    "SELECT id FROM property_values WHERE set_id = ? AND target_id = ? AND removed_at IS NULL",
+    [setId, targetId],
+  );
+  return row?.id ?? null;
+};
+
+// Set (create or update) a value on any entity (note, message, thread, link — `targetId` is generic).
+export const setPropertyValue = async (setId: string, targetId: string, value: string | null = null): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const existingId = await livePropertyValue(d, setId, targetId);
+  if (existingId)
+    await d.run("UPDATE property_values SET value = ?, updated_at = ? WHERE id = ?", [value, at, existingId]);
+  else
+    await d.run(
+      "INSERT INTO property_values (id, set_id, target_id, value, created_at, updated_at, removed_at, rev) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
+      [uuid(), setId, targetId, value, at, at],
+    );
+  emitChange();
+};
+
+// Remove a value from an entity (tombstone, per C11 — a value is never hard-deleted by a plain
+// remove). A no-op if there's no live value for this (set, target) pair.
+export const removePropertyValue = async (setId: string, targetId: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const existingId = await livePropertyValue(d, setId, targetId);
+  if (!existingId) return;
+  await d.run("UPDATE property_values SET removed_at = ?, updated_at = ? WHERE id = ?", [at, at, existingId]);
   emitChange();
 };

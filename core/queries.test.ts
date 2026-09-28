@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { BUILTIN, initSchema } from "./schema";
-import { annotationsFor, bin, pool, threadView, todos } from "./queries";
+import { annotationsFor, bin, counterValue, pool, propertySets, propertyValuesFor, threadView, todos } from "./queries";
 
 // The branching logic in the read queries (docs/direction.md, "Lenses"): live-vs-pinned version resolution,
 // pool membership once a message is removed, Bin filtering, and a todo joined to its message's thread.
@@ -137,4 +137,91 @@ test("todos: a todo on a message carries its thread and note content", async () 
   const rows = await todos(d);
   expect(rows).toHaveLength(1);
   expect(rows[0]?.context).toEqual({ kind: "message", thread_id: "t1", note_content: "pack for winter" });
+});
+
+// Property sets, values and the `counter` rule (docs/direction.md "C13"/"Rules are computed, not stored").
+
+const propertySet = async (
+  d: Awaited<ReturnType<typeof open>>,
+  id: string,
+  name: string,
+  opts: { scopeThreadId?: string | null; rule?: "counter" | null } = {},
+) => {
+  await d.run("INSERT INTO entities VALUES (?, 'property_set', 0, 0, NULL, NULL)", [id]);
+  await d.run("INSERT INTO property_sets VALUES (?, ?, 'none', ?, ?, NULL, 0, NULL)", [
+    id,
+    name,
+    opts.scopeThreadId ?? null,
+    opts.rule ?? null,
+  ]);
+};
+
+const propertyValue = async (d: Awaited<ReturnType<typeof open>>, id: string, setId: string, targetId: string, at: number) =>
+  d.run("INSERT INTO property_values VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)", [id, setId, targetId, at, at]);
+
+test("propertyValuesFor: a value under a deleted (tombstoned) set is inert — no row comes back", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "pack for winter", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await propertySet(d, "ps1", "Chapter");
+  await propertyValue(d, "pv1", "ps1", "m1", 10);
+
+  expect(await propertyValuesFor(d, "m1")).toHaveLength(1);
+
+  await d.run("UPDATE entities SET deleted_at = 20 WHERE id = 'ps1'");
+  expect(await propertyValuesFor(d, "m1")).toEqual([]);
+});
+
+test("propertyValuesFor: a removed (tombstoned) value is excluded even if its set is live", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "pack for winter", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await propertySet(d, "ps1", "Chapter");
+  await propertyValue(d, "pv1", "ps1", "m1", 10);
+  await d.run("UPDATE property_values SET removed_at = 20 WHERE id = 'pv1'");
+
+  expect(await propertyValuesFor(d, "m1")).toEqual([]);
+});
+
+test("propertySets: global sets always show; a thread-scoped set only shows for its own thread", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await propertySet(d, "ps-global", "Character");
+  await propertySet(d, "ps-t1", "Chapter", { scopeThreadId: "t1" });
+
+  const builtinCount = 4; // attached, copied-from, source, local-only (core/schema.ts BUILTIN_SETS)
+  expect((await propertySets(d)).map((s) => s.id)).toEqual(
+    expect.arrayContaining(["ps-global"]),
+  );
+  expect(await propertySets(d)).toHaveLength(builtinCount + 1);
+  expect((await propertySets(d, "t1")).map((s) => s.id)).toEqual(
+    expect.arrayContaining(["ps-global", "ps-t1"]),
+  );
+  expect((await propertySets(d, "t2")).map((s) => s.id)).not.toContain("ps-t1");
+});
+
+test("counterValue: numbers only counter-set members, by their order in the thread, skipping non-members", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "one", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await note(d, "n2", "two", 20);
+  await placeMessage(d, "m2", "t1", "n2", 20);
+  await note(d, "n3", "three", 30);
+  await placeMessage(d, "m3", "t1", "n3", 30);
+  await propertySet(d, "ps-counter", "Chapter", { rule: "counter" });
+  await propertyValue(d, "pv1", "ps-counter", "m1", 10);
+  await propertyValue(d, "pv3", "ps-counter", "m3", 30);
+
+  expect(await counterValue(d, "ps-counter", "m1")).toBe(1);
+  expect(await counterValue(d, "ps-counter", "m2")).toBeNull(); // not a member
+  expect(await counterValue(d, "ps-counter", "m3")).toBe(2); // second member, even though it's the third message
+
+  // A non-counter set never numbers anything.
+  await propertySet(d, "ps-plain", "Character");
+  await propertyValue(d, "pv2", "ps-plain", "m2", 20);
+  expect(await counterValue(d, "ps-plain", "m2")).toBeNull();
 });

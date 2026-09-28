@@ -5,6 +5,7 @@ import { DataSection } from "./sections/DataSection";
 import { DictationSection } from "./sections/DictationSection";
 import { LockZoomSection } from "./sections/LockZoomSection";
 import { NamingSection } from "./sections/NamingSection";
+import { PropertySection } from "./sections/PropertySection";
 import { SyncSection } from "./sections/SyncSection";
 
 // The sidebar's Settings view. Everything here is per device: nothing syncs to main. One file per
@@ -19,6 +20,7 @@ export const SettingsPanel = () => (
     <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-8">
       <SyncSection />
       <NamingSection />
+      <PropertySection />
       <LockZoomSection />
       <BackendSection />
       <AppearanceSection />

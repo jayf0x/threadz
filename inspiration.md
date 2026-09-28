@@ -91,17 +91,8 @@ copy of it. Ticking a box in the sidebar rewrites the line and calls the same `e
 uses; typing `~~` by hand does the same thing on the next parse. This is deliberately the GitHub/Logseq model,
 not a new one.
 
-**No backend table for todos**, reversing what was floated in conversation — every device already holds the
-full replica (`lib/local.ts`'s `exportSnapshot`, kept warm by `pullMain`), so a derived index would be a second
-copy of the same truth to keep consistent for no win at today's scale. Revisit only if a backend-only client
-ever exists (none planned — see "main is the brain, phones are shadow clones" in README).
-
 ## Ideas that came out (candidates)
 
-- **Two planes.** Content (notes, edits, images, thread membership; written anywhere; union merge) and derived
-  (embeddings, neighbours, themes, digest, open loops, proposals; written only by main, rebuildable, shipped read-only
-  to the phone the way description/tags were before v1 dropped them). AI features cannot cause merge conflicts, swapping a model is
-  rebuild-compare-discard, and the phone shows precomputed answers with no LLM.
 - **Nightly "dream" pass on main** (Letta calls this sleep-time compute: background agents share memory with the
   primary agent and consolidate, dedupe, find patterns between conversations). Output as one card: filing/merge
   proposals (undoable), themes with counts against last month, stale open loops, one old note resurfaced against
@@ -136,7 +127,6 @@ ever exists (none planned — see "main is the brain, phones are shadow clones" 
   - **Branch as sub-thread.** No new thread: a sub-thread inside A starting from A:N, shown as a toggle on A:N that
     switches branches.
   - Plan so far: Copy first; real branching later instead of duplicating content.
-- Threads never include each other and never share state; only copies.
 
 ## Ideas parked for later
 
@@ -150,9 +140,6 @@ Not in the backlog. Draw from here when picking the next features.
   also hold A), a rule for deleting A (e.g. B turns into a copy at that moment), read-only ancestors, and a parent
   pointer instead of `seq` to define "up to N" (concurrent appends can tie on `seq` and change a prefix). Adding the
   parent pointer later is a migration that fills it from `seq`.
-- **Provenance for Copy.** Inert `copiedFrom` (per message) and `forkedFrom` (per thread), read only by the derived
-  layer to collapse near-duplicates in search and trend detection and to draw a branch tree. They cannot be back-filled
-  for copies made before they exist. Pointer branches would make them unnecessary.
 - **References, the global version (2026-09-24).** If cross-content linking is done, the intent is to do it well
   and make it global — not limited to notes: threads, messages, notes, and whatever else the app eventually holds
   should all be linkable to each other. The blocker is that a real cross-thread/notes/message *browser* (a UI for
@@ -175,11 +162,6 @@ Not in the backlog. Draw from here when picking the next features.
   phones, a side panel on wide screens. A drawer rising from the bottom of the sidebar (the first idea) cannot work on
   phones, because the sidebar is hidden while a thread is open (`App.tsx`). Related threads, themes, copies and an
   annotation index could live there too.
-- **Tags.** Skipped until there are 20+ threads. If revived: one list, each tag with a source (user or AI), looking the
-  same (at most a small icon); AI regeneration replaces only the AI tags. The generator writes the whole `tags`
-  column after each append, so a tag typed into that column would be lost, hence the source flag. User tags are
-  content: they would have to sync up (the sync payload carries no tags), count towards the thread hash (tags and
-  description are excluded now) and merge like the title (newest wins).
 - **Stream-first home.** One feed of every note, newest first, composer at the bottom, a thread chip on each note;
   Threads, Themes and Open become views, not places. A note lands in an Inbox and gets a thread later, or a thread is
   created on the first sent note instead of on `+`.
@@ -192,11 +174,6 @@ Not in the backlog. Draw from here when picking the next features.
 - **One-off import scripts** for an Obsidian vault (folder names could seed theme hints) and for ChatGPT/Claude
   exports; personal scripts, not features.
 - **Undo toast for Copy**, if Copy ever gets an always-visible button.
-- **A gutter, VS Code-style.** Floated 2026-09-23, promoted and built the same day — see `backlog.md`'s "Todo
-  feedback round 2," item 2, for the build (a `Decoration.widget` positioned absolute-left-of-paragraph, not a
-  separate measured DOM column). One rail, several features: a todo checkbox and the note (`StickyNote`) trigger so
-  far (the note icon now exists only once a message has a note), open to whatever else wants a per-message
-  affordance later.
 - **Commands beyond `/todo`.** Multi-line snapshot todos (capture everything until the next blank line or command,
   not just to end-of-line; the built `/todos <title>` group is the list-shaped cousin: a title plus the list items
   right under it, each tickable). Args after the command for alternate interpretation (`@/todo(summarize)` runs the note

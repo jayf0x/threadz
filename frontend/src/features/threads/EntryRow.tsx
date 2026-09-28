@@ -11,11 +11,13 @@ import {
   Square,
   SquareCheck,
   StickyNote,
+  Tag,
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/Chip";
 import { Menu } from "@/components/ui/menu";
 import { ResponsiveOverlay } from "@/components/ui/responsive-overlay";
 import { toast } from "@/components/ui/toast";
@@ -26,13 +28,16 @@ import {
   type MarkdownEditorHandle,
   useImageAttach,
 } from "@/features/editor";
+import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
+import { propertyValuesFor } from "@/lib/data";
 import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { holdKeyboard } from "@/lib/keyboard";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
 import { toggleTodoLine } from "@/lib/todos";
-import type { Annotation, Message } from "@/lib/types";
+import type { Annotation, Message, PropertyValue } from "@/lib/types";
+import { AddPropertyPanel } from "./AddPropertyPanel";
 import { NoteSurface } from "./NoteSurface";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 
@@ -82,6 +87,8 @@ export const EntryRow = ({
   const [history, setHistory] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
+  const [propertyOpen, setPropertyOpen] = useState(false);
+  const [properties, setProperties] = useState<PropertyValue[]>([]);
   const editor = useRef<MarkdownEditorHandle>(null);
   const article = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
@@ -118,6 +125,14 @@ export const EntryRow = ({
       vv?.removeEventListener("resize", reveal);
     };
   }, [editing]);
+  // This message's live property-value chips (docs/direction.md "Chips are the one UI primitive for
+  // attached state") — reloaded on any change so a value added from the ⋯ menu below shows straight away.
+  useEffect(() => {
+    const load = () => propertyValuesFor(m.id).then(setProperties, () => {});
+    load();
+    return onChange(load);
+  }, [m.id]);
+
   const cancelEdit = () => {
     editor.current?.exitEdit(true);
     setEditing(false);
@@ -159,6 +174,18 @@ export const EntryRow = ({
     onOpenChange: setNoteOpen,
     anchor: noteAnchor,
     title: "Note",
+    anchorTo: <span aria-hidden className="pointer-events-none absolute inset-x-3 bottom-0 h-0" />,
+    align: "end" as const,
+  };
+
+  // "Add property" opens from a ⋯ menu item, not a dedicated visible button — the overlay is driven
+  // entirely by `propertyOpen` state, so its `anchor` only needs to exist for Radix's positioning
+  // (same technique as `noteAnchor`/`overlay.anchorTo` above), never clicked directly.
+  const propertyOverlay = {
+    open: propertyOpen,
+    onOpenChange: setPropertyOpen,
+    anchor: <span aria-hidden className="sr-only" />,
+    title: "Add property",
     anchorTo: <span aria-hidden className="pointer-events-none absolute inset-x-3 bottom-0 h-0" />,
     align: "end" as const,
   };
@@ -271,6 +298,9 @@ export const EntryRow = ({
                 </span>
               </button>
             )}
+            {properties.map((p) => (
+              <Chip key={p.id} colorSlot={p.colorSlot} label={p.value ?? p.setName} title={p.setName} />
+            ))}
           </div>
           <div className="flex shrink-0 items-center">
             {mine && (
@@ -292,6 +322,11 @@ export const EntryRow = ({
                 </Button>
               </>
             )}
+            <ResponsiveOverlay {...propertyOverlay}>
+              {propertyOpen && (
+                <AddPropertyPanel threadId={m.threadId} targetId={m.id} onDone={() => setPropertyOpen(false)} />
+              )}
+            </ResponsiveOverlay>
             <Menu
               align="end"
               trigger={
@@ -302,6 +337,7 @@ export const EntryRow = ({
               items={[
                 { label: "Copy", icon: Copy, onClick: copyText },
                 { label: "Copy link", icon: Link, onClick: copyLink },
+                { label: "Add property", icon: Tag, onClick: () => setPropertyOpen(true), keepFocus: true },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
               ]}
             />

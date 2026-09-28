@@ -1,6 +1,15 @@
 import { orderedMessageIds } from "./merge";
 import { BUILTIN } from "./schema";
-import type { Driver, EntityKind, LinkRow, MessageRow, NoteVersionRow, PropertyValueRow, ValueType } from "./schema";
+import type {
+  Driver,
+  EntityKind,
+  LinkRow,
+  MessageRow,
+  NoteVersionRow,
+  PropertySetRow,
+  PropertyValueRow,
+  ValueType,
+} from "./schema";
 
 // The read side of "one database, many lenses" (docs/direction.md, "Lenses"). Every function here is a
 // query, not a view: it returns plain rows (or rows joined just enough to be useful), never a UI view model.
@@ -176,7 +185,10 @@ export type PropertyValueView = {
   set: { id: string; name: string; value_type: ValueType; color_slot: number | null };
 };
 
-// Property values for an entity: its live values joined to their property_set.
+// Property values for an entity: its live values joined to their property_set — skipping any whose set is
+// itself tombstoned (docs/direction.md "Round 5 C11": "property values under a deleted set become inert —
+// no chip renders, not deleted themselves"). A set is a `property_set`-kind entity, so "deleted" means its
+// own `entities.deleted_at`, not `property_values.removed_at` (that's the value's own tombstone).
 export const propertyValuesFor = async (d: Driver, entityId: string): Promise<PropertyValueView[]> => {
   const rows = await d.all<{
     id: string;
@@ -192,8 +204,10 @@ export const propertyValuesFor = async (d: Driver, entityId: string): Promise<Pr
     color_slot: number | null;
   }>(
     `SELECT pv.*, ps.name AS set_name, ps.value_type AS value_type, ps.color_slot AS color_slot
-     FROM property_values pv JOIN property_sets ps ON ps.id = pv.set_id
-     WHERE pv.target_id = ? AND pv.removed_at IS NULL
+     FROM property_values pv
+     JOIN property_sets ps ON ps.id = pv.set_id
+     JOIN entities se ON se.id = ps.id
+     WHERE pv.target_id = ? AND pv.removed_at IS NULL AND se.deleted_at IS NULL
      ORDER BY pv.created_at`,
     [entityId],
   );
@@ -210,6 +224,41 @@ export const propertyValuesFor = async (d: Driver, entityId: string): Promise<Pr
     },
     set: { id: r.set_id, name: r.set_name, value_type: r.value_type, color_slot: r.color_slot },
   }));
+};
+
+// Property sets available to use: every live global set (`scope_thread_id IS NULL`), plus — when a thread
+// is given — that thread's own scoped sets too (docs/direction.md "C13": "scope: global vs one thread").
+// Built-in sets (docs/direction.md "Links have no kind column") come back here like any other live set;
+// callers that don't want to offer them for manual attachment (e.g. the Settings list, the message ⋯
+// menu's "Add property" picker) filter on id against `BUILTIN`.
+export const propertySets = async (d: Driver, threadId?: string): Promise<PropertySetRow[]> =>
+  d.all<PropertySetRow>(
+    `SELECT ps.* FROM property_sets ps
+     JOIN entities e ON e.id = ps.id
+     WHERE e.deleted_at IS NULL AND (ps.scope_thread_id IS NULL${threadId ? " OR ps.scope_thread_id = ?" : ""})
+     ORDER BY ps.name`,
+    threadId ? [threadId] : [],
+  );
+
+// The `counter` rule (docs/direction.md "Rules are computed, not stored"): a set in `counter` mode numbers
+// only the messages that carry a live value under it, by their position in that thread's display order
+// (`orderedMessageIds`) — not the thread's absolute position, so unrelated messages in between don't break
+// the count. Returns null when the set isn't a counter, the message isn't in a thread, or it isn't a member.
+export const counterValue = async (d: Driver, setId: string, messageId: string): Promise<number | null> => {
+  const [set] = await d.all<Pick<PropertySetRow, "rule">>("SELECT rule FROM property_sets WHERE id = ?", [setId]);
+  if (!set || set.rule !== "counter") return null;
+  const [msg] = await d.all<Pick<MessageRow, "thread_id">>("SELECT thread_id FROM messages WHERE id = ?", [
+    messageId,
+  ]);
+  if (!msg) return null;
+  const members = await d.all<{ target_id: string }>(
+    "SELECT target_id FROM property_values WHERE set_id = ? AND removed_at IS NULL",
+    [setId],
+  );
+  const memberIds = new Set(members.map((m) => m.target_id));
+  const ordered = (await orderedMessageIds(d, msg.thread_id)).filter((id) => memberIds.has(id));
+  const index = ordered.indexOf(messageId);
+  return index >= 0 ? index + 1 : null;
 };
 
 export type AttachedNoteRow = { link: LinkRow; message_id: string; note_id: string; version: NoteVersionRow };

@@ -111,6 +111,7 @@ export const BUILTIN = {
   attached: "ps-attached", // on a link: its `from` note is a note attached to its `to` entity
   copiedFrom: "ps-copied-from", // on a link: `from` was copied out of `to`
   source: "ps-source", // on a note: how it was captured, e.g. "voice"
+  localOnly: "ps-local-only", // on a thread: Ask is disabled for it (docs/direction.md "Round 6")
 } as const;
 
 const fk = (target: string) => `REFERENCES ${target} DEFERRABLE INITIALLY DEFERRED`;
@@ -202,6 +203,7 @@ const BUILTIN_SETS: [id: string, name: string, type: ValueType][] = [
   [BUILTIN.attached, "Attached", "none"],
   [BUILTIN.copiedFrom, "Copied from", "none"],
   [BUILTIN.source, "Source", "text"],
+  [BUILTIN.localOnly, "Local only", "none"],
 ];
 
 export const initSchema = (d: Driver) =>

@@ -301,6 +301,28 @@ home is a navigation dashboard; link reasons are always optional.
 - **C15:** confirmed — the Todos lens shows both derived `/todo` lines and explicit `todos`-table toggles together,
   as it does today.
 
+## Round 6 (2026-09-28): wave 6 UI decisions
+
+- **Main-derived data.** A third kind of data, alongside stored and derived: written by main only, synced
+  main → phone only, replaced wholesale (never merged) and rebuildable from scratch at any time. Lives in its
+  own tables (`derived_*`), and the phone treats them as strictly read-only — no local write path, ever. Specced
+  now so embeddings/insight/related-threads (see `backlog.md`) have a schema location when they're built; no
+  `derived_*` table exists yet and none is built this wave.
+- **Pool.** Reached from the Threadz thread list (a link/button), not a fifth tab. Consistent with "not a home
+  screen" (Decision 5) and keeps the tab bar at four.
+- **Line mode.** A per-thread toggle in the thread header's ⋯ menu. The choice is remembered per device (not
+  synced), since it's a view preference, not content.
+- **Property sets UI.** Sets (create, rename, delete) are managed from a Settings section. A value is added to
+  any entity from that entity's ⋯ menu ("Add property"); the message ⋯ menu gets the same action.
+- **Clone vs branch.** Two separate ⋯ menu items: "Clone from here" (today's behavior — pins frozen at the
+  version live when cloned) and "Branch from here" (same mechanism, pins left empty, so it follows the
+  original's live version). Not a toggle on one action — the two are different enough in outcome to name
+  separately.
+- **Local-only flag.** A built-in property set on a thread. No local model exists, so today it does exactly one
+  thing: Ask is disabled/greyed out for that thread. Nothing else reads the flag yet.
+- **Gutter marks.** Off by default, a Settings toggle turns them on — per "never show until wanted" (Principle
+  1).
+
 ## What to resolve, and how
 
 Ordered by what blocks what. Each item says what's unknown, how to settle it, and what it blocks. Nothing below the
