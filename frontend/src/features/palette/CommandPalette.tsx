@@ -4,19 +4,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
-import { listThreads } from "@/lib/data";
+import { listThreads, searchThreadIds } from "@/lib/data";
 import { chordBlocked } from "@/lib/dom";
-import { matchScore } from "@/lib/search";
+import { combineScore, matchScore } from "@/lib/search";
 import type { Thread } from "@/lib/types";
+
+const NO_HITS: ReadonlyMap<string, number> = new Map();
 
 // ⌘K/Ctrl+K, global: type to jump straight to a thread instead of navigating to the sidebar search
 // first. Mounted once at App.tsx's top level (alongside ConnectionDialog) rather than inside
 // ThreadList, so the shortcut works from anywhere — including while a thread is open on mobile,
 // where ThreadList's own pane is off-screen — and survives the mode-keyed Shell remount. A Radix
 // Dialog, not hand-rolled, per AGENTS.md's popover/menu/dialog rule; ships with Radix's instant
-// open/close (no Motion) same as `Menu`. Matching reuses `lib/search.ts`'s `matchScore` — the same
-// typo-tolerant scorer `visibleThreads.ts` already uses — against title only (no note text: that
-// needs an API round-trip, more than a quick switcher needs).
+// open/close (no Motion) same as `Menu`. Matches the same way the sidebar search
+// (`useThreads.ts`/`visibleThreads.ts`) does: instant title matching via `lib/search.ts`'s
+// `matchScore` for the first keystroke, plus a ~200ms-debounced `searchThreadIds` call (full-text
+// over notes, per the Lenses table) merged in with `combineScore` — title hits always outrank
+// content-only ones. `visibleThreads.ts` itself isn't reused (it's `features/threads` internal, not
+// exported from that feature's `index.ts`, and also carries sort/pin concerns the palette doesn't
+// have); the ranking formula is mirrored here from the same exported `lib/search.ts` primitives it's
+// built from.
 export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void }) => {
   const [open, setOpen] = useState(false);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -31,6 +38,29 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
     load();
     return onChange(load);
   }, []);
+
+  // Content (note-text) hits for the current query, debounced the same ~200ms `useThreads.ts` uses.
+  const [content, setContent] = useState<{ q: string; ranks: ReadonlyMap<string, number> }>({
+    q: "",
+    ranks: NO_HITS,
+  });
+  const contentHits = content.q === query.trim() ? content.ranks : NO_HITS;
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      searchThreadIds(q).then(
+        (ids) => !stale && setContent({ q, ranks: new Map(ids.map((id, i) => [id, i])) }),
+        () => {},
+      );
+    }, 200);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -48,16 +78,23 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
     setHighlighted(0);
   }, [open]);
 
+  // Same combine-and-rank as `visibleThreads.ts`: a title match (via `matchScore`) always outranks
+  // a content-only hit; within a bucket, `combineScore` breaks ties by exact-match strength / rank
+  // position. Unlike the sidebar list, there's no `sort`/pinned fallback here — an empty query is
+  // just recency, same as before.
   const results = useMemo(() => {
     const q = query.trim();
     if (!q) return [...threads].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 50);
     return threads
-      .map((t) => ({ t, score: matchScore(t.title, q) }))
+      .map((t) => {
+        const rank = contentHits.get(t.id);
+        return { t, score: combineScore(matchScore(t.title, q), rank == null ? null : -rank) };
+      })
       .filter((r): r is { t: Thread; score: number } => r.score != null)
       .sort((a, b) => b.score - a.score)
       .map((r) => r.t)
       .slice(0, 50);
-  }, [threads, query]);
+  }, [threads, query, contentHits]);
 
   const pick = (t: Thread) => {
     onOpen(t.id);
@@ -71,7 +108,7 @@ export const CommandPalette = ({ onOpen }: { onOpen: (threadId: string) => void 
         {/* Opened by a keyboard chord, so no enter animation. `top` follows the visual viewport (iOS pans it). */}
         <Dialog.Content className="surface-float fixed left-1/2 top-[calc(var(--vv-top,0px)+0.75rem)] z-50 flex max-h-[calc(var(--vv-h,100dvh)-1.5rem)] w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-xl outline-none ring-1 ring-border md:top-[20vh] md:max-h-[60vh]">
           <Dialog.Title className="sr-only">Jump to thread</Dialog.Title>
-          <Dialog.Description className="sr-only">Type to fuzzy-match a thread by title.</Dialog.Description>
+          <Dialog.Description className="sr-only">Type to search threads by title or content.</Dialog.Description>
           <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
             <Search className="size-5 shrink-0 text-muted-foreground md:size-4" aria-hidden />
             <input
