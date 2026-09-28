@@ -1,7 +1,15 @@
 import * as Popover from "@radix-ui/react-popover";
 import { cn } from "@/lib/cn";
 
-export type ReferenceOption = { id: string; label: string };
+/** `kind` says which candidate list `id` came from — the "thread" stage now searches threads, notes,
+ * links and property sets together (`useReferenceAutocomplete.ts`), so `MarkdownEditor.tsx`'s
+ * `acceptReference` needs it to know which `complete*`/`find*` pair to call for a given pick; the
+ * "message" stage is always `kind: "message"`. */
+export type ReferenceOption = {
+  id: string;
+  label: string;
+  kind: "thread" | "message" | "note" | "link" | "property_set";
+};
 
 // The reference autocomplete's dropdown — popover-shaped, so it's Radix (`@radix-ui/react-popover`,
 // the same primitive the note popover uses), not hand-rolled. It's a different anchoring problem

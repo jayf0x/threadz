@@ -261,6 +261,41 @@ export const counterValue = async (d: Driver, setId: string, messageId: string):
   return index >= 0 ? index + 1 : null;
 };
 
+// Whether a *pinned* reference (`tz:note/<id>@<version>`, docs/direction.md "C14") to `noteId` is
+// stale: the note has moved on to a newer version since the reference was pinned ("Versions": "the
+// latest version is the one with the newest `created_at`, ties broken by id"). A note with no
+// versions at all (shouldn't happen for a live note, but nothing here assumes it can't) isn't
+// "stale" — there's nothing to compare the pin against, so this reads false rather than throwing.
+export const isReferenceStale = async (d: Driver, noteId: string, pinnedVersionId: string): Promise<boolean> => {
+  const [latest] = await d.all<{ id: string }>(
+    "SELECT id FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    [noteId],
+  );
+  return latest ? latest.id !== pinnedVersionId : false;
+};
+
+export type LinkCandidate = { id: string; label: string; updated_at: number };
+
+// Every live link, newest-updated first, each labelled with its best-effort "type" property value
+// (same single-lowest-`created_at`-value heuristic `linksFor`'s `typeFor` uses — a link has no name
+// of its own, docs/direction.md "Links have no kind column"). For the `[[` reference autocomplete's
+// "any link" candidates (lib/references.ts); not in the original frozen query set, same "core/queries.ts
+// is yours to extend" note `listThreads` above already leans on.
+export const listLinks = async (d: Driver): Promise<LinkCandidate[]> => {
+  const rows = await d.all<LinkRow>(
+    `SELECT l.* FROM links l JOIN entities e ON e.id = l.id WHERE e.deleted_at IS NULL ORDER BY l.updated_at DESC`,
+  );
+  const out: LinkCandidate[] = [];
+  for (const link of rows) {
+    const [v] = await d.all<PropertyValueRow>(
+      "SELECT * FROM property_values WHERE target_id = ? AND removed_at IS NULL ORDER BY created_at, id LIMIT 1",
+      [link.id],
+    );
+    out.push({ id: link.id, label: v?.value ?? "Link", updated_at: link.updated_at });
+  }
+  return out;
+};
+
 export type AttachedNoteRow = { link: LinkRow; message_id: string; note_id: string; version: NoteVersionRow };
 
 // Attached notes for a whole thread (docs/direction.md "Links have no kind column"): a note attached to a

@@ -2,7 +2,18 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { BUILTIN, initSchema } from "./schema";
-import { annotationsFor, bin, counterValue, pool, propertySets, propertyValuesFor, threadView, todos } from "./queries";
+import {
+  annotationsFor,
+  bin,
+  counterValue,
+  isReferenceStale,
+  listLinks,
+  pool,
+  propertySets,
+  propertyValuesFor,
+  threadView,
+  todos,
+} from "./queries";
 
 // The branching logic in the read queries (docs/direction.md, "Lenses"): live-vs-pinned version resolution,
 // pool membership once a message is removed, Bin filtering, and a todo joined to its message's thread.
@@ -251,4 +262,49 @@ test("counterValue: numbers only counter-set members, by their order in the thre
   await propertySet(d, "ps-plain", "Character");
   await propertyValue(d, "pv2", "ps-plain", "m2", 20);
   expect(await counterValue(d, "ps-plain", "m2")).toBeNull();
+});
+
+// References + staleness (docs/direction.md "C14"/"Versions": a pinned `tz:note/<id>@<version>`
+// reference is stale once the note has moved past the version it points at).
+
+test("isReferenceStale: false when the pin matches the latest version, true once a newer one lands", async () => {
+  const d = await open();
+  await note(d, "n1", "first draft", 10);
+  const [v1] = await d.all<{ id: string }>("SELECT id FROM note_versions WHERE note_id = 'n1'");
+  if (!v1) throw new Error("expected a version");
+
+  expect(await isReferenceStale(d, "n1", v1.id)).toBe(false);
+
+  await d.run("INSERT INTO note_versions VALUES ('v2', 'n1', ?, 'second draft', 'user', 20, NULL)", [v1.id]);
+  expect(await isReferenceStale(d, "n1", v1.id)).toBe(true);
+  expect(await isReferenceStale(d, "n1", "v2")).toBe(false);
+});
+
+test("isReferenceStale: a note with no versions at all is never stale", async () => {
+  const d = await open();
+  await d.run("INSERT INTO entities VALUES ('n-empty', 'note', 0, 0, NULL, NULL)");
+  expect(await isReferenceStale(d, "n-empty", "some-version")).toBe(false);
+});
+
+test("listLinks: newest first, labelled by its type value or a plain fallback", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await note(d, "n1", "pack for winter", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await note(d, "n2", "a side thought", 20);
+  await d.run("INSERT INTO entities VALUES ('link-1', 'link', 20, 20, NULL, NULL)", []);
+  await d.run("INSERT INTO links VALUES ('link-1', 'n2', 'm1', NULL, 20, NULL)");
+  await d.run("INSERT INTO entities VALUES ('link-2', 'link', 30, 30, NULL, NULL)", []);
+  await d.run("INSERT INTO links VALUES ('link-2', 'n1', 'm1', NULL, 30, NULL)");
+  await propertySet(d, "ps-type", "Type");
+  await propertyValue(d, "pv-type", "ps-type", "link-1", 20);
+  await d.run("UPDATE property_values SET value = 'reference' WHERE id = 'pv-type'");
+
+  const rows = await listLinks(d);
+  expect(rows.map((r) => r.id)).toEqual(["link-2", "link-1"]); // newest updated_at first
+  expect(rows.find((r) => r.id === "link-1")?.label).toBe("reference");
+  expect(rows.find((r) => r.id === "link-2")?.label).toBe("Link"); // no property value at all
+
+  await d.run("UPDATE entities SET deleted_at = 40 WHERE id = 'link-2'");
+  expect((await listLinks(d)).map((r) => r.id)).toEqual(["link-1"]);
 });

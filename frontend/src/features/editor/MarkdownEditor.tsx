@@ -16,11 +16,16 @@ import type { Ctx } from "@milkdown/kit/ctx";
 import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
 import { type CSSProperties, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { isReferenceStale } from "@/lib/data";
 import { housekeeping } from "@/lib/images";
 import { holdKeyboard, releaseKeyboard } from "@/lib/keyboard";
 import {
+  buildLinkReferenceHref,
+  buildNoteReferenceHref,
+  buildPropertySetReferenceHref,
   buildReferenceHref,
   completeMessage,
+  completeSimpleReference,
   completeThread,
   isReferenceHref,
   messageRangeParam,
@@ -34,6 +39,7 @@ import { imageView } from "./imageView";
 import { ReferenceAutocompleteMenu } from "./ReferenceAutocompleteMenu";
 import { handleReferenceKeyDown } from "./referenceKeyboard";
 import { referencePlugin } from "./referencePlugin";
+import { staleReferenceDecorationPlugin } from "./staleReferenceDecoration";
 import { todoDecorationPlugin } from "./todoDecoration";
 import { useReferenceAutocomplete } from "./useReferenceAutocomplete";
 import "./markdown-editor.css";
@@ -212,6 +218,11 @@ export const MarkdownEditor = ({
   // `dirty.ts` and the handle contract above.
   const baselineRef = useRef<string | null>(null);
   const dirtyRef = useRef(false);
+  // Staleness chip cache (staleReferenceDecoration.ts): `noteId@versionId` -> known stale or not.
+  // A ref, not state — filling it in never needs a React re-render, the plugin's own
+  // `view.dispatch(view.state.tr)` (mount effect below) re-runs decorations directly once it's set.
+  const staleCacheRef = useRef(new Map<string, boolean>());
+  const stalePendingRef = useRef(new Set<string>());
   // The reference autocomplete's live state, reported by `referencePlugin.ts`'s `onLocalUpdate` on
   // every selection/doc change and advanced through `nextAutocompleteState` (see that file's own
   // comment for why "message" stage can't just be re-derived from arbitrary rendered text the way
@@ -240,22 +251,48 @@ export const MarkdownEditor = ({
 
   const closeAutocomplete = () => setLocal((l) => ({ ...l, state: { stage: "closed" }, rect: null }));
 
+  // A note/link/property-set pick (opt.kind !== "thread") at the "thread" stage: same shape as a
+  // thread pick's own branch below, but `completeSimpleReference` closes immediately — there's no
+  // second stage to offer, unlike a thread's messages.
+  const acceptSimpleReference = (
+    st: Extract<ReferenceAutocompleteState, { stage: "thread" }>,
+    label: string,
+    href: string,
+  ) => {
+    const loaded = loadedRef.current;
+    if (!loaded) return;
+    const { edit, next } = completeSimpleReference(st, label, href);
+    loaded.completeReference(local.blockStart + edit.from, local.blockStart + edit.to, label, href);
+    continueAfterLink(next, label);
+  };
+
   const acceptReference = (index: number) => {
     const opt = ac.options[index];
     const loaded = loadedRef.current;
     const st = local.state;
     if (!opt || !loaded) return;
     if (st.stage === "thread") {
-      const thread = ac.findThread(opt.id);
-      if (!thread) return;
-      const { edit, next } = completeThread(st, thread);
-      loaded.completeReference(
-        local.blockStart + edit.from,
-        local.blockStart + edit.to,
-        thread.title,
-        buildReferenceHref(thread.id),
-      );
-      continueAfterLink(next, thread.title);
+      if (opt.kind === "thread") {
+        const thread = ac.findThread(opt.id);
+        if (!thread) return;
+        const { edit, next } = completeThread(st, thread);
+        loaded.completeReference(
+          local.blockStart + edit.from,
+          local.blockStart + edit.to,
+          thread.title,
+          buildReferenceHref(thread.id),
+        );
+        continueAfterLink(next, thread.title);
+      } else if (opt.kind === "note") {
+        const note = ac.findNote(opt.id);
+        if (note) acceptSimpleReference(st, opt.label, buildNoteReferenceHref(note.entityId));
+      } else if (opt.kind === "link") {
+        const link = ac.findLink(opt.id);
+        if (link) acceptSimpleReference(st, opt.label, buildLinkReferenceHref(link.id));
+      } else if (opt.kind === "property_set") {
+        const set = ac.findPropertySet(opt.id);
+        if (set) acceptSimpleReference(st, opt.label, buildPropertySetReferenceHref(set.id));
+      }
     } else if (st.stage === "message") {
       const message = ac.findMessage(opt.id);
       if (!message) return;
@@ -376,6 +413,34 @@ export const MarkdownEditor = ({
                 };
               });
             },
+          }),
+        ),
+      );
+      // The staleness chip (staleReferenceDecoration.ts): a pinned `tz:note/…@…` reference whose
+      // version is no longer the note's latest. The plugin's own `decorations()` can't await
+      // anything, so an unseen pin's check happens out here — `core.isReferenceStale` via
+      // `lib/data.ts` — and, once known, forces a redraw the same way `setPlaceholder` above does
+      // (`view.dispatch(view.state.tr)`, a no-op transaction that just re-runs every plugin's
+      // `decorations()`), never a `setState` (nothing here is React-owned data).
+      const requestStaleCheck = (noteId: string, versionId: string) => {
+        const key = `${noteId}@${versionId}`;
+        if (stalePendingRef.current.has(key)) return;
+        stalePendingRef.current.add(key);
+        isReferenceStale(noteId, versionId).then((stale) => {
+          stalePendingRef.current.delete(key);
+          if (destroyed) return;
+          staleCacheRef.current.set(key, stale);
+          crepe.editor.action((ctx: Ctx) => {
+            const view = viewOf(ctx);
+            view.dispatch(view.state.tr);
+          });
+        });
+      };
+      crepe.editor.use(
+        utils.$prose(() =>
+          staleReferenceDecorationPlugin(state, proseView, {
+            isStale: (noteId, versionId) => staleCacheRef.current.get(`${noteId}@${versionId}`),
+            onUnknown: requestStaleCheck,
           }),
         ),
       );
@@ -596,10 +661,16 @@ export const MarkdownEditor = ({
           const ref = a ? parseReferenceHref(a.getAttribute("data-ref")) : null;
           if (!ref) return;
           e.preventDefault();
-          onReferenceClickRef.current?.(
-            ref.threadId,
-            ref.messageId && messageRangeParam(ref.messageId, ref.toMessageId),
-          );
+          // A thread/message reference navigates in-app (the only kind with a destination screen
+          // today); note/link/property-set references render (and, for a pinned note, get a
+          // staleness chip) but have no destination screen yet — see the header comment on
+          // `ReferenceOption`'s `kind` in `useReferenceAutocomplete.ts`.
+          if ("threadId" in ref) {
+            onReferenceClickRef.current?.(
+              ref.threadId,
+              ref.messageId && messageRangeParam(ref.messageId, ref.toMessageId),
+            );
+          }
         }}
       />
       <ReferenceAutocompleteMenu

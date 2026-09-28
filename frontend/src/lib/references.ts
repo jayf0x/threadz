@@ -27,8 +27,10 @@ export const REF_SCHEME = "tz";
 // A message reference's `id` is `<threadId>/<from>..<to>` (a range is `<from>..<to>`, double-dot,
 // not `<from>-<to>`: message ids are UUIDs, which already contain hyphens, so a hyphen separator
 // would be ambiguous; `..` isn't a character `crypto.randomUUID()` ever produces) — a thread
-// reference's `id` is just the thread id. `kind` says which shape `id` is.
-const HREF_RE = /^tz:(thread|message)\/([^@]+)(?:@(.+))?$/;
+// reference's `id` is just the thread id. A note/link/property-set reference's `id` is just its
+// entity id (`core/schema.ts`'s `ENTITY_KINDS`, minus thread/message which get the richer shapes
+// above). `kind` says which shape `id` is.
+const HREF_RE = /^tz:(thread|message|note|link|property_set)\/([^@]+)(?:@(.+))?$/;
 const RANGE_SEP = "..";
 
 export const isReferenceHref = (href: string | null | undefined): boolean =>
@@ -43,9 +45,27 @@ export const buildReferenceHref = (threadId: string, messageId?: string | null, 
     ? `${REF_SCHEME}:message/${threadId}/${messageRangeParam(messageId, toMessageId)}`
     : `${REF_SCHEME}:thread/${threadId}`;
 
-/** `toMessageId` is present only for a range (absent, not null, otherwise). `version` is present
- * only for a pinned reference (nothing writes one yet — see the header comment). */
-export type ParsedReference = { threadId: string; messageId: string | null; toMessageId?: string; version?: string };
+/** A note isn't versioned by `buildReferenceHref`'s caller yet (nothing pins one — see the header
+ * comment), but the grammar already carries the suffix for whenever a pin does get written. */
+export const buildNoteReferenceHref = (noteId: string, pinnedVersionId?: string | null): string =>
+  pinnedVersionId ? `${REF_SCHEME}:note/${noteId}@${pinnedVersionId}` : `${REF_SCHEME}:note/${noteId}`;
+
+export const buildLinkReferenceHref = (linkId: string): string => `${REF_SCHEME}:link/${linkId}`;
+
+export const buildPropertySetReferenceHref = (setId: string): string => `${REF_SCHEME}:property_set/${setId}`;
+
+/** The thread/message shape (unchanged from before this kind broadened — every existing caller of
+ * `parseReferenceHref` keeps working against it untouched) or one of the new flat-id kinds. `version`
+ * on the thread/message shape is present only for a pinned reference (nothing writes one yet — see
+ * the header comment); a note's own `version`, once something does pin one, is what the staleness
+ * chip (`core.isReferenceStale`) compares against its latest version. A link/property-set reference
+ * is never pinned (neither has a `note_versions`-style history), so those two variants carry no
+ * `version` at all. */
+export type ParsedReference =
+  | { threadId: string; messageId: string | null; toMessageId?: string; version?: string }
+  | { kind: "note"; id: string; version?: string }
+  | { kind: "link"; id: string }
+  | { kind: "property_set"; id: string };
 
 export const parseReferenceHref = (href: string | null | undefined): ParsedReference | null => {
   if (!href) return null;
@@ -55,14 +75,19 @@ export const parseReferenceHref = (href: string | null | undefined): ParsedRefer
   if (!id) return null;
   const versionPart = version ? { version } : {};
   if (kind === "thread") return { threadId: id, messageId: null, ...versionPart };
-  const sep = id.indexOf("/");
-  if (sep === -1) return null;
-  const threadId = id.slice(0, sep);
-  const rangeParam = id.slice(sep + 1);
-  if (!threadId || !rangeParam) return null;
-  const [from, to] = rangeParam.split(RANGE_SEP);
-  if (!from) return null;
-  return { threadId, messageId: from, ...(to && to !== from ? { toMessageId: to } : {}), ...versionPart };
+  if (kind === "message") {
+    const sep = id.indexOf("/");
+    if (sep === -1) return null;
+    const threadId = id.slice(0, sep);
+    const rangeParam = id.slice(sep + 1);
+    if (!threadId || !rangeParam) return null;
+    const [from, to] = rangeParam.split(RANGE_SEP);
+    if (!from) return null;
+    return { threadId, messageId: from, ...(to && to !== from ? { toMessageId: to } : {}), ...versionPart };
+  }
+  if (kind === "note") return { kind: "note", id, ...versionPart };
+  if (kind === "link") return { kind: "link", id };
+  return { kind: "property_set", id };
 };
 
 /** The messages a `message=`/`?msg=` segment names, out of `ordered` (the thread as it's shown, in
@@ -84,15 +109,10 @@ export const resolveMessageRange = <T extends { id: string }>(ordered: T[], para
 // anchored to our own href shape so an ordinary `[text](https://…)` link never matches.
 const REFERENCE_MD_RE = /\[([^\]\n]*)\]\((tz:[^)\s]+)\)/g;
 
-export type CompletedReference = {
-  text: string;
-  href: string;
-  threadId: string;
-  messageId: string | null;
-  toMessageId?: string;
-  start: number; // index into the source string where `[` sits
-  end: number; // index right after the closing `)`
-};
+/** `text`/`href`/`start`/`end` plus whichever `ParsedReference` shape `href` parses to — spreading
+ * `ref` rather than re-listing its fields keeps this in lockstep with `parseReferenceHref` as new
+ * kinds are added there. */
+export type CompletedReference = { text: string; href: string; start: number; end: number } & ParsedReference;
 
 /** Every completed reference link in `content`, in source order. The pure "detect a completed
  * reference in text" parser the groundwork item calls for — used by tests, and available to a
@@ -104,15 +124,7 @@ export const findReferences = (content: string): CompletedReference[] => {
     const href = m[2] ?? "";
     const ref = parseReferenceHref(href);
     if (!ref || m.index == null) continue;
-    found.push({
-      text,
-      href,
-      threadId: ref.threadId,
-      messageId: ref.messageId,
-      ...(ref.toMessageId ? { toMessageId: ref.toMessageId } : {}),
-      start: m.index,
-      end: m.index + m[0].length,
-    });
+    found.push({ text, href, ...ref, start: m.index, end: m.index + m[0].length });
   }
   return found;
 };
@@ -231,6 +243,21 @@ export const completeMessage = (
   };
 };
 
+/** Tab/Enter at the trigger stage for a note/link/property-set pick: unlike `completeThread`, this
+ * closes the autocomplete immediately — a note/link/property-set has no second "narrow further"
+ * stage the way a thread's messages do (nothing to pick after picking a link). `href` is built by
+ * the caller (`buildNoteReferenceHref`/`buildLinkReferenceHref`/`buildPropertySetReferenceHref`),
+ * same "hand back `href` for the WYSIWYG adapter" contract as `completeMessage`. */
+export const completeSimpleReference = (
+  state: Extract<ReferenceAutocompleteState, { stage: "thread" }>,
+  displayText: string,
+  href: string,
+): { edit: TextEdit; next: ReferenceAutocompleteState } => {
+  const linkText = `[${displayText}](${href})`;
+  const to = state.anchor + TRIGGER.length + state.query.length;
+  return { edit: { from: state.anchor, to, text: linkText }, next: { stage: "closed" } };
+};
+
 // --- local-only search (decision 4) ---------------------------------------------------------
 
 const RESULT_LIMIT = 8;
@@ -287,4 +314,58 @@ export const messageSnippet = (content: string): string => {
     .replace(/!\[\]\(img:[^)]*\)/g, "a photo")
     .replace(/[#>*_`~]/g, "")
     .trim();
+};
+
+// --- note/link/property-set candidates (wave 6 phase 2: references to anything) -------------
+
+/** A Pool note (`lib/data.ts`'s `listPool`/`core.pool`) offered as a `tz:note/<id>` candidate. Only
+ * Pool notes — a note already placed in a thread is reachable through the existing `message` kind,
+ * so offering it a second time under `note` would just be the same content twice in one list; this
+ * is the simplest reasonable reading of "reference a note" for content that has no other reference
+ * kind yet. */
+export type NoteRefCandidate = { entityId: string; content: string; createdAt: number };
+
+export const searchNotes = (notes: NoteRefCandidate[], query: string, limit = RESULT_LIMIT): NoteRefCandidate[] => {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...notes].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+  return notes
+    .map((n) => ({ n, score: matchScore(messageSnippet(n.content), q) }))
+    .filter((r): r is { n: NoteRefCandidate; score: number } => r.score != null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((r) => r.n);
+};
+
+/** A link (`lib/data.ts`'s `listLinkCandidates`/`core.listLinks`) offered as a `tz:link/<id>`
+ * candidate, labelled by its best-effort type value. */
+export type LinkRefCandidate = { id: string; label: string };
+
+export const searchLinks = (links: LinkRefCandidate[], query: string, limit = RESULT_LIMIT): LinkRefCandidate[] => {
+  const q = query.trim().toLowerCase();
+  if (!q) return links.slice(0, limit); // already newest-updated first (core.listLinks)
+  return links
+    .map((l) => ({ l, score: matchScore(l.label, q) }))
+    .filter((r): r is { l: LinkRefCandidate; score: number } => r.score != null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((r) => r.l);
+};
+
+/** A property set (`lib/data.ts`'s `listPropertySets`/`core.propertySets`) offered as a
+ * `tz:property_set/<id>` candidate. */
+export type PropertySetRefCandidate = { id: string; name: string };
+
+export const searchPropertySets = (
+  sets: PropertySetRefCandidate[],
+  query: string,
+  limit = RESULT_LIMIT,
+): PropertySetRefCandidate[] => {
+  const q = query.trim().toLowerCase();
+  if (!q) return sets.slice(0, limit);
+  return sets
+    .map((s) => ({ s, score: matchScore(s.name, q) }))
+    .filter((r): r is { s: PropertySetRefCandidate; score: number } => r.score != null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((r) => r.s);
 };
