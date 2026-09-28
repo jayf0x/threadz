@@ -72,6 +72,18 @@ test("a thread with no annotations and no messages still produces a valid docume
   expect(exportThreadMarkdown(thread, messages)).not.toContain("Note");
 });
 
+test("a `tz:` reference link is unwrapped to its own display text, since the id resolves to nothing outside the app", () => {
+  const withRef: Message[] = [
+    {
+      ...(messages[0] as Message),
+      content: "See [the Lisbon thread](tz:thread/abc123) for details.",
+    },
+  ];
+  const md = exportThreadMarkdown(thread, withRef);
+  expect(md).toContain("See the Lisbon thread for details.");
+  expect(md).not.toContain("tz:thread/abc123");
+});
+
 test("messages are ordered by seq, not array order, and multiple notes on one message stay in creation order", () => {
   const reversed = [messages[1] as Message, messages[0] as Message];
   const twoNotes: Annotation[] = [

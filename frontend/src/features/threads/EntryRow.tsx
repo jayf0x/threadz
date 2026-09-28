@@ -14,6 +14,7 @@ import {
   SquareCheck,
   StickyNote,
   Tag,
+  Waves,
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
@@ -62,6 +63,7 @@ export const EntryRow = ({
   onEdit,
   onCopyThread,
   onBranchThread,
+  onRemoveFromThread,
   onSetTodo,
   note,
   unsyncedAnnotations,
@@ -81,6 +83,7 @@ export const EntryRow = ({
   onEdit: (text: string) => Promise<boolean>;
   onCopyThread: () => void;
   onBranchThread: () => void; // "Branch from here" (Round 6): same as onCopyThread, but the new thread follows this one's edits
+  onRemoveFromThread: () => void; // C11: tombstones the placement only — the note surfaces in the Pool if this was its last one
   onSetTodo: (done: boolean | null) => void; // the Todo toggle; null clears the flag
   note: Annotation | undefined; // one per message, DB-enforced
   unsyncedAnnotations: Set<string>;
@@ -419,6 +422,7 @@ export const EntryRow = ({
                 ...(onAskAboutMessage
                   ? [{ label: "Ask about this message", icon: Sparkles, onClick: onAskAboutMessage }]
                   : []),
+                { label: "Remove from thread", icon: Waves, onClick: onRemoveFromThread },
               ]}
             />
           </div>

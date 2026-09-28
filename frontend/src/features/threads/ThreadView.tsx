@@ -27,6 +27,7 @@ import {
   copyThread,
   getThread,
   isThreadLocalOnly,
+  removeMessage,
   removePropertyValue,
   setPropertyValue,
   setTodo,
@@ -163,6 +164,16 @@ export const ThreadView = ({
       toast({ title: "Clone failed", description: errorMessage(e) }); // nothing was touched
     } finally {
       setCopying(false);
+    }
+  };
+
+  // "Remove from thread" (docs/direction.md "C11"): tombstones the placement only, never the note —
+  // it surfaces in the Pool if this was its only placement, or stays right where it is otherwise.
+  const removeFromThread = async (messageId: string) => {
+    try {
+      await removeMessage(messageId);
+    } catch (e) {
+      toast({ title: "Remove failed", description: errorMessage(e) });
     }
   };
 
@@ -437,6 +448,7 @@ export const ThreadView = ({
                         onEdit={(text) => editMessage(m.id, text)}
                         onCopyThread={() => copyThreadFrom(m.id)}
                         onBranchThread={() => branchThreadFrom(m.id)}
+                        onRemoveFromThread={() => removeFromThread(m.id)}
                         onSetTodo={(done) => setMessageTodo(m.id, done)}
                         note={noteByMessage.get(m.id)}
                         unsyncedAnnotations={unsyncedAnnotations}
