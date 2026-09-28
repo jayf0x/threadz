@@ -11,8 +11,8 @@ import { useTrash } from "./useTrash";
 // The sidebar's Bin view: every deleted thread or note (`lib/data.ts`'s `listBin`, entities with
 // `deleted_at` set), newest deletion first, one restore action per row — same list/row shape as
 // TodosPanel, a button instead of a checkbox. A restored thread reopens (`onRestored`); a restored
-// note has nowhere to jump to yet (it lands back in the Pool, which has no view built yet — see
-// docs/direction.md's Lenses table), so it just disappears from this list. A restored row disappears
+// note (with no other live placement) lands back in the Pool (`features/pool/`), reachable from the
+// thread list — this panel doesn't jump there, it just disappears from this list. A restored row disappears
 // on its own either way — `useTrash`'s `onChange` subscription re-reads once the write lands.
 export const TrashPanel = ({ onRestored }: { onRestored: (threadId: string) => void }) => {
   const { trash, restore } = useTrash();

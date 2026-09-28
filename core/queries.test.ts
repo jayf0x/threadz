@@ -60,6 +60,33 @@ test("pool: a note joins the pool once its only message is removed", async () =>
   expect((await pool(d)).map((p) => p.entity_id)).toContain("n1");
 });
 
+test("pool: a note placed in two threads only joins once every placement is removed", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await note(d, "n1", "a loose idea", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await placeMessage(d, "m2", "t2", "n1", 11);
+
+  await d.run("UPDATE messages SET removed_at = 20 WHERE id = 'm1'");
+  expect((await pool(d)).map((p) => p.entity_id)).not.toContain("n1"); // still live in t2
+
+  await d.run("UPDATE messages SET removed_at = 21 WHERE id = 'm2'");
+  expect((await pool(d)).map((p) => p.entity_id)).toContain("n1"); // now unplaced everywhere
+
+  await placeMessage(d, "m3", "t1", "n1", 30);
+  expect((await pool(d)).map((p) => p.entity_id)).not.toContain("n1"); // re-placed, leaves the pool
+});
+
+test("pool: a note is never surfaced once its own entity is deleted", async () => {
+  const d = await open();
+  await note(d, "n1", "a loose idea", 10);
+  expect((await pool(d)).map((p) => p.entity_id)).toContain("n1");
+
+  await d.run("UPDATE entities SET deleted_at = 20 WHERE id = 'n1'");
+  expect((await pool(d)).map((p) => p.entity_id)).not.toContain("n1");
+});
+
 test("bin: only deleted entities show, newest first", async () => {
   const d = await open();
   await thread(d, "t1", "Arya", 1);
