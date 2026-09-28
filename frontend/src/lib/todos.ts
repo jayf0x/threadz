@@ -2,9 +2,15 @@ import type { Message, Thread } from "./types";
 
 // Legacy checkbox syntax. Loose, anywhere in the line, not anchored — so "note to self: - [ ] call
 // mom" still counts. Open and done are two separate patterns (not `[xX ]?`) so each can be tested on
-// its own. Loose on purpose; a false positive here just adds a stray row, never loses data.
-const LEGACY_OPEN = /-\s?\[\s*\]/;
-const LEGACY_DONE = /-\s?\[\s*[xX]\s*\]/;
+// its own. Loose on purpose; a false positive here just adds a stray row, never loses data. Bullet is
+// `[-*+]`, not a literal `-`: Crepe's markdown serializer doesn't always emit `-` (observed emitting
+// `*`), and `LIST_ITEM_DONE`/`LIST_ITEM_OPEN_CHECKBOX` below already accept any of the three — these
+// must match the same set, or `toggleLine` fails to recognize an already-checked `*`/`+` item as
+// having a checkbox at all, falls through to the "plain item" branch, and stacks a new `[x] ` onto it
+// every toggle instead of flipping the one that's there (bug: repeated unchecking on a `*`-bulleted
+// `/todos` item produced `* [x] [x] [x] text`).
+const LEGACY_OPEN = /[-*+]\s?\[\s*\]/;
+const LEGACY_DONE = /[-*+]\s?\[\s*[xX]\s*\]/;
 
 // `/todo <text>` command syntax (a bare `/` — `@/` was awkward to type on a phone; the old `@/todo`
 // still parses so existing notes keep working, and a toggle preserves whichever prefix was written).

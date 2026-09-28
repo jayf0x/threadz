@@ -202,6 +202,21 @@ test("toggleTodoLine on a plain list item (no checkbox) ADDS the checkbox syntax
   expect(toggleTodoLine("* buy milk", 0)).toBe("* [x] buy milk");
 });
 
+// Regression: Crepe's markdown serializer doesn't always emit `-` (observed emitting `*`), and
+// toggleLine's legacy-checkbox detection used to be hardcoded to `-` only — so an already-checked
+// `*`/`+` item was never recognized as having a checkbox, fell through to the "plain item" branch,
+// and stacked a new `[x] ` onto it every toggle instead of flipping the one that's there.
+test("toggleTodoLine flips an already-checked *-bulleted or +-bulleted item back and forth cleanly", () => {
+  expect(toggleTodoLine("* [x] buy milk", 0)).toBe("* [ ] buy milk");
+  expect(toggleTodoLine("* [ ] buy milk", 0)).toBe("* [x] buy milk");
+  expect(toggleTodoLine("+ [x] buy milk", 0)).toBe("+ [ ] buy milk");
+  // Once a plain item gets its first checkbox it keeps one from then on (toggling never strips it
+  // back to bare); what matters here is there's never more than one `[x]`/`[ ]` after N toggles.
+  let line = "* buy milk";
+  for (let i = 0; i < 4; i++) line = toggleTodoLine(line, 0);
+  expect(line).toBe("* [ ] buy milk");
+});
+
 test("collectTodos surfaces a @/todos group as one entry carrying its items", () => {
   const threads = [thread("t1", "List")];
   const messages = [message("m1", "t1", "@/todos Groceries\n- milk\n- [x] eggs", 100)];
