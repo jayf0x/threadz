@@ -37,9 +37,11 @@ import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { holdKeyboard } from "@/lib/keyboard";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
+import { useSettings } from "@/lib/settings";
 import { toggleTodoLine } from "@/lib/todos";
 import type { Annotation, Link as LinkRow, Message, PropertyValue } from "@/lib/types";
 import { AddPropertyPanel } from "./AddPropertyPanel";
+import { GutterMarksRow } from "./GutterMarks";
 import { NoteSurface } from "./NoteSurface";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 
@@ -107,6 +109,7 @@ export const EntryRow = ({
   const article = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
+  const { gutterMarks } = useSettings();
   const mine = m.role === "user";
   const todo = !!m.meta?.todo;
   const navigateReference = (threadId: string, messageId: string | null) =>
@@ -305,6 +308,15 @@ export const EntryRow = ({
       {note && !editing && (
         <div className="-mb-1.5 mt-0.5">
           <ResponsiveOverlay {...overlay}>{noteBody}</ResponsiveOverlay>
+        </div>
+      )}
+
+      {/* Gutter marks (docs/direction.md "Gutter"): off by default (Settings), and only on the rows
+          that aren't already showing this in their own selected-message actions row below. Row-select-ignore
+          (rowSelect.ts): a mark opens its own Peek popover, it must not also select/deselect the row. */}
+      {gutterMarks && !editing && !selected && (
+        <div className="mt-1" {...{ [ROW_SELECT_IGNORE]: "" }}>
+          <GutterMarksRow messageId={m.id} onOpenThread={onNavigateReference} />
         </div>
       )}
 

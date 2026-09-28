@@ -5,6 +5,7 @@ import {
   isReferenceStale as coreIsReferenceStale,
   linksFor as coreLinksFor,
   listLinks as coreListLinks,
+  otherThreadsForNote as coreOtherThreadsForNote,
   propertySets as corePropertySets,
   propertyValuesFor as corePropertyValuesFor,
   search as coreSearch,
@@ -345,6 +346,119 @@ export const counterValueFor = async (setId: string, messageId: string): Promise
 export const isThreadLocalOnly = async (threadId: string): Promise<boolean> => {
   const values = await propertyValuesFor(threadId);
   return values.some((v) => v.setId === BUILTIN.localOnly);
+};
+
+// --- gutter marks + peek (docs/direction.md "Lenses": Gutter, Peek) ------------------------------
+
+export type GutterOtherThread = { messageId: string; threadId: string; threadTitle: string };
+export type GutterLink = { linkId: string; direction: "in" | "out"; otherId: string; typeLabel: string | null };
+export type GutterMarks = { otherThreads: GutterOtherThread[]; links: GutterLink[] };
+
+// A message's gutter marks: the other live threads its note is also placed in, and its links in/out
+// — the note's own links count too (docs/direction.md "Gutter": "links in/out"), since a link can be
+// made from either the placement or the underlying note. Values and todo are already available via
+// `propertyValuesFor`/`Message.meta.todo`, so this only covers the two marks that need a fresh query.
+export const gutterMarksFor = async (messageId: string): Promise<GutterMarks> => {
+  const d = await driver();
+  const [msg] = await d.all<{ note_id: string }>("SELECT note_id FROM messages WHERE id = ?", [messageId]);
+  if (!msg) return { otherThreads: [], links: [] };
+
+  const others = await coreOtherThreadsForNote(d, msg.note_id, messageId);
+  const otherThreads = others.map((o) => ({
+    messageId: o.message_id,
+    threadId: o.thread_id,
+    threadTitle: o.thread_title,
+  }));
+
+  // A link can be made from the message's placement or from its note directly — dedupe by link id
+  // so a link touching both (unusual, but not ruled out) isn't shown twice.
+  const links = new Map<string, GutterLink>();
+  for (const entityId of [messageId, msg.note_id]) {
+    const { outgoing, incoming } = await coreLinksFor(d, entityId);
+    for (const l of outgoing)
+      links.set(l.link.id, {
+        linkId: l.link.id,
+        direction: "out",
+        otherId: l.link.to_id,
+        typeLabel: l.type_value?.value ?? null,
+      });
+    for (const l of incoming)
+      links.set(l.link.id, {
+        linkId: l.link.id,
+        direction: "in",
+        otherId: l.link.from_id,
+        typeLabel: l.type_value?.value ?? null,
+      });
+  }
+  return { otherThreads, links: [...links.values()] };
+};
+
+export type PeekAnchor = { threadId: string; messageId: string };
+
+// Resolves whatever a gutter mark points at (a message, a note, or a thread — the entity kinds a
+// link or an "other thread" mark can realistically name) down to "a thread plus the message to
+// centre the peek window on". A note with no live placement (Pool) or an entity kind with no
+// sensible thread context (a link, a property set) has nothing to peek at — `null`.
+export const resolvePeekAnchor = async (entityId: string): Promise<PeekAnchor | null> => {
+  const d = await driver();
+  const [message] = await d.all<{ id: string; thread_id: string }>(
+    "SELECT m.id, m.thread_id FROM messages m JOIN entities e ON e.id = m.id WHERE m.id = ? AND m.removed_at IS NULL AND e.deleted_at IS NULL",
+    [entityId],
+  );
+  if (message) return { threadId: message.thread_id, messageId: message.id };
+
+  const [entity] = await d.all<{ kind: string }>("SELECT kind FROM entities WHERE id = ? AND deleted_at IS NULL", [
+    entityId,
+  ]);
+  if (!entity) return null;
+
+  if (entity.kind === "thread") {
+    const ids = await orderedMessageIds(d, entityId);
+    const first = ids[0];
+    return first ? { threadId: entityId, messageId: first } : null;
+  }
+  if (entity.kind === "note") {
+    const [placement] = await coreOtherThreadsForNote(d, entityId);
+    return placement ? { threadId: placement.thread_id, messageId: placement.message_id } : null;
+  }
+  return null;
+};
+
+// The "todo" gutter mark: whether this message carries a `todos` row, and its done state — `null`
+// when it isn't a todo at all (nothing to mark).
+export const todoStatusFor = async (messageId: string): Promise<{ done: boolean } | null> => {
+  const d = await driver();
+  const [row] = await d.all<{ done: number }>("SELECT done FROM todos WHERE target_id = ?", [messageId]);
+  return row ? { done: !!row.done } : null;
+};
+
+export type PeekMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: number };
+
+// A thread's messages in a small window around `aroundMessageId` (docs/direction.md "Peek": "one
+// linked entity plus its neighbours in its own thread") — reuses the frozen `threadView` query
+// (display order + live/pinned content) rather than a bespoke SQL string, then slices to `radius` on
+// each side instead of loading the whole thread. Deliberately skips edit history/todo enrichment
+// (`threadMessages`'s N+1 joins) since a peek is a quick glance, not the full thread view.
+export const peekWindow = async (threadId: string, aroundMessageId: string, radius = 2): Promise<PeekMessage[]> => {
+  const d = await driver();
+  const rows = await threadView(d, threadId);
+  const index = rows.findIndex((r) => r.message.id === aroundMessageId);
+  if (index < 0) return [];
+  const start = Math.max(0, index - radius);
+  const slice = rows.slice(start, index + radius + 1);
+  const out: PeekMessage[] = [];
+  for (const r of slice) {
+    const [entity] = await d.all<{ created_at: number }>("SELECT created_at FROM entities WHERE id = ?", [
+      r.message.id,
+    ]);
+    out.push({
+      id: r.message.id,
+      role: r.version.author,
+      content: r.version.content,
+      createdAt: entity?.created_at ?? r.version.created_at,
+    });
+  }
+  return out;
 };
 
 // --- writing ---------------------------------------------------------------------------------
