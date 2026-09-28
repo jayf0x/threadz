@@ -11,6 +11,7 @@ import {
   Settings,
   Trash2,
   Waves,
+  Waypoints,
   X,
 } from "lucide-react";
 import { type CSSProperties, type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
@@ -54,11 +55,14 @@ const useResurfacingThread = (threads: Thread[]): Thread | undefined => {
 // flips to. Also owns the "/" and "n" shortcuts.
 export const ThreadList = ({
   onOpen,
+  onOpenMap,
   onDeleted,
   selectedId,
 }: {
   /** Open a thread — optionally jumping straight to one message in it (a todo row's click). */
   onOpen: (threadId: string, messageId?: string) => void;
+  /** The computed map (`/map`) — a screen of its own, reached from here rather than a tab. */
+  onOpenMap: () => void;
   onDeleted: (id: string) => void;
   selectedId?: string | null;
 }) => {
@@ -147,6 +151,16 @@ export const ThreadList = ({
                 onClick={() => setPanel("pool")}
               >
                 <Waves aria-hidden className="size-5 md:size-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Map"
+                title="Map"
+                className="shrink-0 rounded-full text-muted-foreground"
+                onClick={onOpenMap}
+              >
+                <Waypoints aria-hidden className="size-5 md:size-4" />
               </Button>
             </div>
           </header>

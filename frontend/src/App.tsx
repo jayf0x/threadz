@@ -5,6 +5,7 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { ToastProvider } from "@/components/ui/toast";
 import { BackgroundLayer } from "@/features/appearance";
 import { ConnectionDialog } from "@/features/connection";
+import { homeUrl, isMapPath, MapView, mapUrl } from "@/features/map";
 import { CommandPalette } from "@/features/palette";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
@@ -65,6 +66,29 @@ export const App = () => {
     setSelectedMessageIdRaw(id);
   }, []);
 
+  // The computed map (`/map?...`, features/map): `null` = closed, otherwise the query string it opened with.
+  // It lives above the shell as its own screen; leaving it for a thread first puts the URL back to the root,
+  // so the thread's `?thread=` link isn't written under `/map`.
+  const [mapSearch, setMapSearch] = useState<string | null>(() =>
+    isMapPath(location.pathname) ? location.search : null,
+  );
+  const openMap = useCallback(() => {
+    history.pushState(null, "", mapUrl(""));
+    setMapSearch("");
+  }, []);
+  const closeMap = useCallback(() => {
+    history.pushState(null, "", homeUrl());
+    setMapSearch(null);
+  }, []);
+  const openThreadFromMap = useCallback(
+    (threadId: string, messageId?: string) => {
+      history.replaceState(null, "", homeUrl());
+      setMapSearch(null);
+      openThreadAt(threadId, messageId);
+    },
+    [openThreadAt],
+  );
+
   useEffect(() => trackViewport(), []);
 
   useEffect(() => {
@@ -97,6 +121,7 @@ export const App = () => {
   // right back on top of the one the user just stepped off of.
   useEffect(() => {
     const onPopState = () => {
+      setMapSearch(isMapPath(location.pathname) ? location.search : null);
       const { threadId, messageId } = parseDeepLink(location.search);
       lastSyncedThread.current = threadId;
       if (threadId) openThreadAt(threadId, messageId ?? undefined);
@@ -133,10 +158,19 @@ export const App = () => {
           closeThread={closeThread}
           autofocus={!!selected && selected === captureId}
           openThreadAt={openThreadAt}
+          openMap={openMap}
           selectedMessageId={selectedMessageId}
           onSelectMessage={onSelectMessage}
           pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
         />
+        {mapSearch !== null && (
+          <div
+            className="fixed left-0 top-0 z-20 w-full bg-background"
+            style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
+          >
+            <MapView search={mapSearch} onBack={closeMap} onOpenThread={openThreadFromMap} />
+          </div>
+        )}
         <ConnectionDialog />
         <CommandPalette onOpen={openThreadAt} />
       </LazyMotion>
@@ -149,6 +183,7 @@ const Shell = ({
   closeThread,
   autofocus,
   openThreadAt,
+  openMap,
   selectedMessageId,
   onSelectMessage,
   pulseMessageId,
@@ -157,6 +192,7 @@ const Shell = ({
   closeThread: () => void;
   autofocus: boolean;
   openThreadAt: (threadId: string, messageId?: string) => void;
+  openMap: () => void;
   selectedMessageId: string | null;
   onSelectMessage: (id: string | null) => void;
   pulseMessageId: string | undefined;
@@ -187,7 +223,12 @@ const Shell = ({
       <aside
         className={cn("surface-sheen-pane min-h-0 min-w-0 lg:border-r lg:border-border", selected && "hidden lg:block")}
       >
-        <ThreadList onOpen={openThreadAt} selectedId={selected} onDeleted={(id) => id === selected && closeThread()} />
+        <ThreadList
+          onOpen={openThreadAt}
+          onOpenMap={openMap}
+          selectedId={selected}
+          onDeleted={(id) => id === selected && closeThread()}
+        />
       </aside>
       {/* Keyed by thread so the phone entrance (`pane-in`; nothing animates out) replays on every open. The
           wide layout already has both panes on screen and doesn't slide. */}
