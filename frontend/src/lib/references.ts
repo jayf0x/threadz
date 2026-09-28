@@ -8,42 +8,61 @@ import type { Message, Thread } from "./types";
 
 // --- format --------------------------------------------------------------------------------
 
-// The scheme deliberately has NO `word:` prefix. @milkdown/preset-commonmark's link mark runs
-// every href through `sanitizeLinkHref` before it reaches the DOM (XSS guard): a destination whose
-// leading run of letters is immediately followed by `:` is checked against an allow-list
-// (http/https/mailto/tel/ftp) and blanked to `""` if it isn't one of those — so the originally
-// floated `link:{thread_id}/{message_id}` spelling (confirmed against the installed package's
-// source, not assumed) would render as `<a href="">`, breaking click-to-navigate entirely. A bare
-// `key=value` destination has no such leading `scheme:`, so `sanitizeLinkHref` returns it
-// unchanged — this is the other spelling decision 1 floated (`thread={id}?message={id}`), used
-// here verbatim for that reason.
+// C14 ("Round 5" of docs/direction.md): one literal grammar for every kind of internal reference,
+// `tz:<kind>/<id>@<version>` (version suffix omitted for a live/unpinned reference — nothing writes
+// a pinned one yet, C12's version retention isn't wired to references). `REF_SCHEME` is the one
+// place any future internal scheme (not just `tz:`) gets registered, per the lead's brief.
 //
-// A range is `?message=<from>..<to>` (double-dot, not `<from>-<to>`: message ids are UUIDs, which
-// already contain hyphens, so a hyphen separator would be ambiguous; `..` isn't a character
-// `crypto.randomUUID()` ever produces). The href shape is unchanged — `message=` still holds one
-// opaque segment that only `parseReferenceHref` splits — so an old single-message link parses
-// exactly as before. The same `from..to` segment is what travels through `?msg=` and App.tsx's
-// `openThreadAt` (both stay opaque strings); `resolveMessageRange` is where it finally means something.
-const HREF_RE = /^thread=([^?]+)(?:\?message=(.+))?$/;
+// @milkdown/preset-commonmark's link mark runs every href through `sanitizeLinkHref` before it
+// reaches the DOM (XSS guard): a destination whose leading run of letters is immediately followed
+// by `:` is checked against an allow-list (http/https/mailto/tel/ftp) and blanked to `""` if it
+// isn't one of those — so a literal `tz:…` href would render as `<a href="">`, breaking
+// click-to-navigate entirely. That's resolved in `features/editor/MarkdownEditor.tsx`, not here:
+// `commonmark.linkSchema.extendSchema` renders a `tz:` href as `<a data-ref="tz:…">` with no real
+// `href` attribute at all, so the sanitizer never runs on it and the browser can never navigate away
+// by accident — any other href (a plain `https://` link) goes through the untouched default path.
+// This module only owns the string grammar; `isReferenceHref` is what that override keys off.
+export const REF_SCHEME = "tz";
+
+// A message reference's `id` is `<threadId>/<from>..<to>` (a range is `<from>..<to>`, double-dot,
+// not `<from>-<to>`: message ids are UUIDs, which already contain hyphens, so a hyphen separator
+// would be ambiguous; `..` isn't a character `crypto.randomUUID()` ever produces) — a thread
+// reference's `id` is just the thread id. `kind` says which shape `id` is.
+const HREF_RE = /^tz:(thread|message)\/([^@]+)(?:@(.+))?$/;
 const RANGE_SEP = "..";
+
+export const isReferenceHref = (href: string | null | undefined): boolean =>
+  !!href && href.startsWith(`${REF_SCHEME}:`);
 
 /** The `message=` segment for a target: `from`, or `from..to` when `to` is a different message. */
 export const messageRangeParam = (from: string, to?: string | null): string =>
   to && to !== from ? `${from}${RANGE_SEP}${to}` : from;
 
 export const buildReferenceHref = (threadId: string, messageId?: string | null, toMessageId?: string | null): string =>
-  messageId ? `thread=${threadId}?message=${messageRangeParam(messageId, toMessageId)}` : `thread=${threadId}`;
+  messageId
+    ? `${REF_SCHEME}:message/${threadId}/${messageRangeParam(messageId, toMessageId)}`
+    : `${REF_SCHEME}:thread/${threadId}`;
 
-/** `toMessageId` is present only for a range (absent, not null, otherwise). */
-export type ParsedReference = { threadId: string; messageId: string | null; toMessageId?: string };
+/** `toMessageId` is present only for a range (absent, not null, otherwise). `version` is present
+ * only for a pinned reference (nothing writes one yet — see the header comment). */
+export type ParsedReference = { threadId: string; messageId: string | null; toMessageId?: string; version?: string };
 
 export const parseReferenceHref = (href: string | null | undefined): ParsedReference | null => {
   if (!href) return null;
   const m = HREF_RE.exec(href);
-  const threadId = m?.[1];
-  if (!threadId) return null;
-  const [from, to] = (m?.[2] ?? "").split(RANGE_SEP);
-  return { threadId, messageId: from || null, ...(from && to ? { toMessageId: to } : {}) };
+  if (!m) return null;
+  const [, kind, id, version] = m;
+  if (!id) return null;
+  const versionPart = version ? { version } : {};
+  if (kind === "thread") return { threadId: id, messageId: null, ...versionPart };
+  const sep = id.indexOf("/");
+  if (sep === -1) return null;
+  const threadId = id.slice(0, sep);
+  const rangeParam = id.slice(sep + 1);
+  if (!threadId || !rangeParam) return null;
+  const [from, to] = rangeParam.split(RANGE_SEP);
+  if (!from) return null;
+  return { threadId, messageId: from, ...(to && to !== from ? { toMessageId: to } : {}), ...versionPart };
 };
 
 /** The messages a `message=`/`?msg=` segment names, out of `ordered` (the thread as it's shown, in
@@ -59,11 +78,11 @@ export const resolveMessageRange = <T extends { id: string }>(ordered: T[], para
   return lo === -1 ? [] : ordered.slice(lo, Math.max(a, b) + 1);
 };
 
-// A completed reference sitting in markdown text: `[display text](thread=…)`. Loose on the display
+// A completed reference sitting in markdown text: `[display text](tz:…)`. Loose on the display
 // text (anything but `]`/newline, same discipline as `lib/todos.ts`'s line matchers — a false
 // negative here just leaves a link unrecognized as "one of ours," it never corrupts anything) but
 // anchored to our own href shape so an ordinary `[text](https://…)` link never matches.
-const REFERENCE_MD_RE = /\[([^\]\n]*)\]\((thread=[^)\s]+)\)/g;
+const REFERENCE_MD_RE = /\[([^\]\n]*)\]\((tz:[^)\s]+)\)/g;
 
 export type CompletedReference = {
   text: string;
@@ -133,7 +152,7 @@ export type ReferenceAutocompleteState =
  * own comment for why re-deriving it from content instead would be ambiguous. Esc/outside-click
  * (handled by the caller, not this function) always drops straight to `{ stage: "closed" }` without
  * touching any text — which is exactly what leaves a thread-only reference behind afterward: the
- * link itself was already a complete, valid `[text](thread=…)` the moment `completeThread` ran. */
+ * link itself was already a complete, valid `[text](tz:thread/…)` the moment `completeThread` ran. */
 export const nextAutocompleteState = (
   prev: ReferenceAutocompleteState,
   text: string,

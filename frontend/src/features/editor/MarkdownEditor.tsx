@@ -22,6 +22,7 @@ import {
   buildReferenceHref,
   completeMessage,
   completeThread,
+  isReferenceHref,
   messageRangeParam,
   nextAutocompleteState,
   parseReferenceHref,
@@ -316,6 +317,31 @@ export const MarkdownEditor = ({
         .addFeature(placeholderFeature, { text, mode: "doc" });
       // Photos: `img:` refs render as lazy grey boxes (./imageView.ts).
       crepe.editor.use(utils.$view(commonmark.imageSchema.node, () => imageView));
+      // References (lib/references.ts): a `tz:` href must never reach `sanitizeLinkHref` as a real
+      // `href` (it would blank to `""` — see that file's header comment), so this overrides the
+      // link MARK's own schema via Milkdown's public extension API (`$markSchema.extendSchema`,
+      // same "extend via the public API, don't patch Milkdown" rule `imageView.ts` follows for
+      // nodes) — a `tz:` mark renders as `<a data-ref="tz:…" class="threadz-ref">` with no `href`
+      // attribute at all, so the browser can never navigate away by accident; anything else (a
+      // plain `https://` link) falls through to the original `toDOM` unchanged. This is also the
+      // intended long-term home for the reference chip's colour/icon (direction.md's "chips" idea)
+      // — not built yet. `extendSchema` returns a NEW plugin with the SAME mark id ("link"), so
+      // `.use()`-ing it after the base `commonmark` preset (already `.use()`d in the CrepeBuilder
+      // constructor) overrides that one entry instead of adding a second "link" mark.
+      crepe.editor.use(
+        commonmark.linkSchema.extendSchema((prev) => (ctx) => {
+          const spec = prev(ctx);
+          return {
+            ...spec,
+            toDOM: (mark, inline) => {
+              const href = String(mark.attrs.href ?? "");
+              // The link mark's own toDOM is always defined; MarkSchema's type just makes it optional generically.
+              if (!isReferenceHref(href)) return spec.toDOM!(mark, inline);
+              return ["a", { "data-ref": href, class: "threadz-ref" }];
+            },
+          };
+        }),
+      );
       // `/todo`/`/todos` lines: gutter checkbox + highlight decoration, no new node type
       // (./todoDecoration.ts). `getValue`/`hasToggle`/`onToggle` all read through the latest-refs
       // above so this one-time plugin instance never acts on stale props — `hasToggle` is what
@@ -559,13 +585,15 @@ export const MarkdownEditor = ({
           touchedRef.current = true;
         }}
         onBlur={closeAutocomplete}
-        // Click-to-navigate for a completed reference: Crepe already renders `[text](thread=…)` as
-        // a plain `<a>` (decision 1 — no new node type), so this is a plain click delegation, not a
-        // ProseMirror `handleClickOn` (see referencePlugin.ts's comment for why that hook — which
-        // resolves a click through `posAtCoords` — isn't the reliable choice here).
+        // Click-to-navigate for a completed reference: Crepe already renders `[text](tz:…)` as a
+        // plain `<a>` (no new node type), so this is a plain click delegation, not a ProseMirror
+        // `handleClickOn` (see referencePlugin.ts's comment for why that hook — which resolves a
+        // click through `posAtCoords` — isn't the reliable choice here). A reference link carries
+        // its href in `data-ref` (not `href` — see the link-mark override above), so a plain
+        // `https://…` link (real `href`, no `data-ref`) is untouched and left to the browser.
         onClickCapture={(e) => {
           const a = (e.target as HTMLElement).closest?.("a");
-          const ref = a ? parseReferenceHref(a.getAttribute("href")) : null;
+          const ref = a ? parseReferenceHref(a.getAttribute("data-ref")) : null;
           if (!ref) return;
           e.preventDefault();
           onReferenceClickRef.current?.(
