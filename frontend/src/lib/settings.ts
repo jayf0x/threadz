@@ -19,6 +19,9 @@ export type Settings = {
   backendUrl: string | null;
   background: BackgroundSettings;
   lockZoom: boolean;
+  // Gutter marks (docs/direction.md "Lenses"/"Gutter", Decision #2, Round 6): per-message marks for
+  // other threads, links in/out and values — "off until wanted", default false.
+  gutterMarks: boolean;
 };
 
 const KEY = "threadz.settings";
@@ -31,6 +34,7 @@ const DEFAULTS: Settings = {
   backendUrl: null,
   background: DEFAULT_BACKGROUND,
   lockZoom: isTouch(),
+  gutterMarks: false,
 };
 
 const readBackground = (stored: object): BackgroundSettings => ({
@@ -56,6 +60,8 @@ const read = (): Settings => {
           ? readBackground(stored.background)
           : DEFAULT_BACKGROUND,
       lockZoom: "lockZoom" in stored && typeof stored.lockZoom === "boolean" ? stored.lockZoom : DEFAULTS.lockZoom,
+      gutterMarks:
+        "gutterMarks" in stored && typeof stored.gutterMarks === "boolean" ? stored.gutterMarks : DEFAULTS.gutterMarks,
     };
   } catch {
     return DEFAULTS;

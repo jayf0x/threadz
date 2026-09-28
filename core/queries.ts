@@ -146,6 +146,30 @@ export const search = async (d: Driver, query: string): Promise<SearchHit[]> => 
   return [...notes, ...threads];
 };
 
+export type OtherThreadRow = { message_id: string; thread_id: string; thread_title: string };
+
+// Gutter mark "other threads" (docs/direction.md "Lenses": "per message: other threads its note is
+// in"): every other live message placing the same note, resolved to its thread — a note can be
+// placed in more than one thread (docs/direction.md "One home or many": "A message is that note
+// placed in a thread"), so this is what makes those other placements visible from any one of them.
+// `excludeMessageId` drops the message the caller is already looking at.
+export const otherThreadsForNote = async (
+  d: Driver,
+  noteId: string,
+  excludeMessageId?: string,
+): Promise<OtherThreadRow[]> =>
+  d.all<OtherThreadRow>(
+    `SELECT m.id AS message_id, m.thread_id AS thread_id, t.title AS thread_title
+     FROM messages m
+     JOIN entities me ON me.id = m.id
+     JOIN threads t ON t.id = m.thread_id
+     JOIN entities te ON te.id = t.id
+     WHERE m.note_id = ? AND m.removed_at IS NULL AND me.deleted_at IS NULL AND te.deleted_at IS NULL
+       ${excludeMessageId ? "AND m.id != ?" : ""}
+     ORDER BY m.updated_at DESC`,
+    excludeMessageId ? [noteId, excludeMessageId] : [noteId],
+  );
+
 export type LinkWithType = { link: LinkRow; type_value: PropertyValueRow | null };
 
 // Links for an entity: its outgoing and incoming links (not deleted — a link is a `link`-kind entity, so

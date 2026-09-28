@@ -2,7 +2,17 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { BUILTIN, initSchema } from "./schema";
-import { annotationsFor, bin, counterValue, pool, propertySets, propertyValuesFor, threadView, todos } from "./queries";
+import {
+  annotationsFor,
+  bin,
+  counterValue,
+  otherThreadsForNote,
+  pool,
+  propertySets,
+  propertyValuesFor,
+  threadView,
+  todos,
+} from "./queries";
 
 // The branching logic in the read queries (docs/direction.md, "Lenses"): live-vs-pinned version resolution,
 // pool membership once a message is removed, Bin filtering, and a todo joined to its message's thread.
@@ -224,4 +234,36 @@ test("counterValue: numbers only counter-set members, by their order in the thre
   await propertySet(d, "ps-plain", "Character");
   await propertyValue(d, "pv2", "ps-plain", "m2", 20);
   expect(await counterValue(d, "ps-plain", "m2")).toBeNull();
+});
+
+test("otherThreadsForNote: finds a note's other live placements, excludes the caller's own message, and a removed placement", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await note(d, "n1", "shared idea", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await placeMessage(d, "m2", "t2", "n1", 20);
+
+  const others = await otherThreadsForNote(d, "n1", "m1");
+  expect(others.map((o) => o.thread_id)).toEqual(["t2"]);
+  expect(others[0]?.thread_title).toBe("Sansa");
+
+  // With no excluded id, every live placement comes back, including the caller's own.
+  expect((await otherThreadsForNote(d, "n1")).map((o) => o.message_id).sort()).toEqual(["m1", "m2"]);
+
+  // A removed placement doesn't count as "other threads".
+  await d.run("UPDATE messages SET removed_at = 30 WHERE id = 'm2'");
+  expect(await otherThreadsForNote(d, "n1", "m1")).toEqual([]);
+});
+
+test("otherThreadsForNote: a placement on a deleted thread doesn't count either", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await note(d, "n1", "shared idea", 10);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await placeMessage(d, "m2", "t2", "n1", 20);
+
+  await d.run("UPDATE entities SET deleted_at = 30 WHERE id = 't2'");
+  expect(await otherThreadsForNote(d, "n1", "m1")).toEqual([]);
 });
