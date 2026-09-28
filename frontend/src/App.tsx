@@ -8,8 +8,10 @@ import { ConnectionDialog } from "@/features/connection";
 import { CommandPalette } from "@/features/palette";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
+import { getThread } from "@/lib/data";
 import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
 import { shortcutBlocked } from "@/lib/dom";
+import { readLastRoute, saveLastRoute } from "@/lib/lastRoute";
 import { trackViewport } from "@/lib/viewport";
 
 // Two panes: the index (left rail) and the open thread. On a phone one at a time.
@@ -85,7 +87,18 @@ export const App = () => {
   // this deep link or any later navigation) is the URL-sync effect below's job alone.
   useEffect(() => {
     const { threadId, messageId } = parseDeepLink(location.search);
-    if (!threadId) return;
+    if (!threadId) {
+      // No deep link (and not a capture launch): reopen where this device left off. A thread deleted
+      // or never synced here just doesn't reopen.
+      const remembered = readLastRoute().threadId;
+      if (!remembered || new URLSearchParams(location.search).has("capture")) return;
+      getThread(remembered).then((t) => {
+        if (!t) return;
+        lastSyncedThread.current = t.id;
+        openThreadAt(t.id);
+      });
+      return;
+    }
     lastSyncedThread.current = threadId; // seed: same reasoning as the capture effect above
     openThreadAt(threadId, messageId ?? undefined);
   }, [openThreadAt]);
@@ -122,6 +135,7 @@ export const App = () => {
     if (selected === lastSyncedThread.current) history.replaceState(null, "", url);
     else history.pushState(null, "", url);
     lastSyncedThread.current = selected;
+    saveLastRoute({ threadId: selected });
   }, [selected, selectedMessageId]);
 
   return (

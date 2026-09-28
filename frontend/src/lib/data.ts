@@ -1,4 +1,5 @@
 import {
+  allInsights,
   BUILTIN,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
@@ -11,6 +12,7 @@ import {
   search as coreSearch,
   todos as coreTodos,
   type Driver,
+  type Insight,
   type LinkWithType,
   orderedMessageIds,
   pool,
@@ -189,6 +191,10 @@ export const listPool = async (): Promise<PoolItem[]> => {
   const rows = await pool(d);
   return rows.map((r) => ({ entityId: r.entity_id, createdAt: r.created_at, content: r.version.content }));
 };
+
+export type { Insight };
+
+export const listInsights = async (): Promise<Insight[]> => allInsights(await driver(), Date.now());
 
 export type BinItem = { id: string; kind: "thread" | "note"; title: string; deletedAt: number };
 

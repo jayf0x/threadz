@@ -19,6 +19,7 @@ import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { IconSelect } from "@/components/ui/select";
+import { HomePanel, type HomeTarget } from "@/features/home";
 import { PoolPanel } from "@/features/pool";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
@@ -26,6 +27,7 @@ import { TrashPanel } from "@/features/trash";
 import { cn } from "@/lib/cn";
 import { isTouch, shortcutBlocked } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
+import { readLastRoute, saveLastRoute } from "@/lib/lastRoute";
 import { pickResurfacingThread } from "@/lib/resurfacing";
 import type { Thread } from "@/lib/types";
 import { createOrReuseThread } from "./createOrReuseThread";
@@ -64,7 +66,15 @@ export const ThreadList = ({
 }) => {
   const { threads, allThreads, query, setQuery, sort, setSort, syncing, error } = useThreads();
   const resurfaced = useResurfacingThread(allThreads);
-  const [panel, setPanel] = useState<Panel>("index");
+  const [panel, setPanel] = useState<Panel>(initialPanel);
+  useEffect(() => saveLastRoute({ panel }), [panel]);
+  const goHome = useCallback(
+    ({ lens, filter }: HomeTarget) => {
+      setPanel(lens);
+      if (lens === "index") setQuery(typeof filter?.q === "string" ? filter.q : "");
+    },
+    [setQuery],
+  );
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
@@ -109,7 +119,16 @@ export const ThreadList = ({
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <View shown={panel === "index"} from="left">
           <header className="px-5 pb-3 pt-6">
-            <h1 className="font-serif text-[32px] leading-none tracking-tight">Threadz</h1>
+            {/* The app mark is Home's only entry point (no fifth tab). */}
+            <button
+              type="button"
+              aria-label="Home"
+              title="Home"
+              onClick={() => setPanel("home")}
+              className="press -ml-2 flex min-h-11 items-center rounded-full px-2 md:min-h-0"
+            >
+              <h1 className="font-serif text-[32px] leading-none tracking-tight">Threadz</h1>
+            </button>
             <Eyebrow className="mt-2">
               Index · {threads.length} thread{threads.length === 1 ? "" : "s"}
             </Eyebrow>
@@ -213,6 +232,10 @@ export const ThreadList = ({
           <SettingsPanel />
         </View>
 
+        <View shown={panel === "home"} from="left">
+          <HomePanel onBack={() => setPanel("index")} onGo={goHome} onOpenThread={onOpen} />
+        </View>
+
         <View shown={panel === "pool"} from="right">
           {/* Same `onOpen` reasoning as Todos/Bin above: it navigates without switching this panel
               back to Index, since sending a note here is a detour from wherever you were, not a
@@ -278,7 +301,16 @@ const SearchField = ({
   </div>
 );
 
-type Panel = "index" | "settings" | "todos" | "trash" | "pool";
+type Panel = "index" | "settings" | "todos" | "trash" | "pool" | "home";
+
+const PANEL_IDS: readonly string[] = ["index", "settings", "todos", "trash", "pool", "home"];
+
+// Reopens the panel this device left on, unless a `?thread=` deep link says where to be.
+const initialPanel = (): Panel => {
+  const { panel } = readLastRoute();
+  const known = PANEL_IDS.find((p): p is Panel => p === panel);
+  return known && !new URLSearchParams(location.search).has("thread") ? known : "index";
+};
 
 const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "index", label: "Threads", icon: List },
