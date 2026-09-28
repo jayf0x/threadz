@@ -408,9 +408,53 @@ export const setTodo = async (targetId: string, done: boolean | null): Promise<v
   emitChange();
 };
 
-// "Clone from here" (AGENTS.md's Composer/EntryRow ⋯ menu): a new thread holding a *copy* of A's
-// messages up to and including `uptoMessageId` (docs/direction.md "Versions": a copy is a new note,
-// never a reference) plus, optionally, one more note appended after them.
+// The live-or-pinned version id for a note right now — same resolution core/queries.ts's private
+// `resolveVersion` does, replicated here because that helper isn't part of core's exported surface
+// (only the query functions built on it are). Only the id is needed by `placeVersionReference`
+// below, not the full row. Exported for data.test.ts, which drives it against a real `Driver`
+// (`@threadz/core/bun`) since `copyThread` itself is pinned to the worker-backed phone db singleton
+// (see phone/driver.test.ts's comment on why that boundary isn't exercised by `bun test`).
+export const resolveLiveVersionId = async (
+  d: Driver,
+  noteId: string,
+  pinVersionId: string | null,
+): Promise<string | null> => {
+  if (pinVersionId) {
+    const [v] = await d.all<{ id: string }>("SELECT id FROM note_versions WHERE id = ?", [pinVersionId]);
+    if (v) return v.id;
+  }
+  const [v] = await d.all<{ id: string }>(
+    "SELECT id FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    [noteId],
+  );
+  return v?.id ?? null;
+};
+
+// Places a *version reference* to an existing note (docs/direction.md Decision 9: "Clone and Copy
+// become version references") — no new note, no new note_versions row, just a new `messages`
+// placement whose `pin_version_id` freezes it to the version resolved at clone time, per
+// `resolveLiveVersionId` above. Exported for data.test.ts (see that function's comment).
+export const placeVersionReference = async (
+  d: Driver,
+  threadId: string,
+  noteId: string,
+  pinVersionId: string,
+  at: number,
+) => {
+  const messageId = uuid();
+  await insertEntity(d, messageId, "message", at);
+  await d.run(
+    "INSERT INTO messages (id, thread_id, note_id, pin_version_id, updated_at, removed_at, rev) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+    [messageId, threadId, noteId, pinVersionId, at],
+  );
+  return messageId;
+};
+
+// "Clone from here" (AGENTS.md's Composer/EntryRow ⋯ menu): a new thread holding *version
+// references* to A's messages up to and including `uptoMessageId` (docs/direction.md Decision 9)
+// plus, optionally, one more brand-new note appended after them. A cloned message shares its
+// `note_id` with the original but is pinned to the version live at clone time, so it stays frozen
+// even if the original note is edited later.
 export const copyThread = async (threadId: string, uptoMessageId: string, appendContent?: string): Promise<Thread> => {
   const d = await driver();
   const ids = await orderedMessageIds(d, threadId);
@@ -428,14 +472,15 @@ export const copyThread = async (threadId: string, uptoMessageId: string, append
     ]);
     let at = at0;
     for (const id of keep) {
-      const [row] = await d.all<{ content: string; author: "user" | "assistant" }>(
-        `SELECT v.content, v.author FROM messages m JOIN note_versions v ON v.note_id = m.note_id
-         WHERE m.id = ? ORDER BY v.created_at DESC, v.id DESC LIMIT 1`,
+      const [row] = await d.all<{ note_id: string; pin_version_id: string | null }>(
+        "SELECT note_id, pin_version_id FROM messages WHERE id = ?",
         [id],
       );
       if (!row) continue;
+      const versionId = await resolveLiveVersionId(d, row.note_id, row.pin_version_id);
+      if (!versionId) continue;
       at += 1;
-      await placeNewNote(d, newId, row.content, row.author, at);
+      await placeVersionReference(d, newId, row.note_id, versionId, at);
     }
     const extra = appendContent?.trim();
     if (extra) {
