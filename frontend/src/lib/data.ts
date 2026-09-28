@@ -1,4 +1,12 @@
-import { search as coreSearch, type Driver, orderedMessageIds, pool, threadView } from "@threadz/core";
+import {
+  BUILTIN,
+  annotationsFor as coreAnnotationsFor,
+  search as coreSearch,
+  type Driver,
+  orderedMessageIds,
+  pool,
+  threadView,
+} from "@threadz/core";
 import { emitChange } from "./changeSignal";
 import { openPhoneDb } from "./phoneDb";
 import type { Annotation, Message, Thread, Version } from "./types";
@@ -125,6 +133,43 @@ export const pendingMessageIds = async (threadId: string): Promise<Set<string>> 
     [threadId],
   );
   return new Set(rows.map((r) => r.id));
+};
+
+// A thread's attached notes (docs/direction.md "Links have no kind column": a note plus a link
+// carrying the built-in `attached` property value, replacing v1's `annotations` table), one flat
+// array across every message — `ThreadView.tsx` builds its own `messageId → note` lookup from this.
+// `id` is the note's own entity id (mirrors `Message.id` being the placement id, content pulled from
+// versions); `edits`/`editedAt` come from that note's version history, same as `Message`'s.
+export const annotationsFor = async (threadId: string): Promise<Annotation[]> => {
+  const d = await driver();
+  const rows = await coreAnnotationsFor(d, threadId);
+  const out: Annotation[] = [];
+  for (const r of rows) {
+    const [entity] = await d.all<{ created_at: number }>("SELECT created_at FROM entities WHERE id = ?", [r.note_id]);
+    const { edits, editedAt } = await versionHistory(d, r.note_id, r.version.id);
+    out.push({
+      id: r.note_id,
+      threadId,
+      messageId: r.message_id,
+      content: r.version.content,
+      createdAt: entity?.created_at ?? r.version.created_at,
+      editedAt,
+      edits,
+    });
+  }
+  return out;
+};
+
+// The `unsyncedAnnotations` analogue of `pendingMessageIds`, keyed by the note's own id (matches
+// `Annotation.id`, what `NoteSurface`/`EntryRow` check): an attached note is pending if its link or
+// its newest version hasn't been stamped with a `rev` yet, same two rows `pendingMessageIds` checks
+// for a plain message (the placement row and its note's newest version).
+export const unsyncedAnnotationIds = async (threadId: string): Promise<Set<string>> => {
+  const d = await driver();
+  const rows = await coreAnnotationsFor(d, threadId);
+  const out = new Set<string>();
+  for (const r of rows) if (r.link.rev == null || r.version.rev == null) out.add(r.note_id);
+  return out;
 };
 
 export type PoolItem = { entityId: string; createdAt: number; content: string };
@@ -402,6 +447,107 @@ export const copyThread = async (threadId: string, uptoMessageId: string, append
   return { id: newId, title: `Copy: ${src?.title ?? "Untitled"}`.slice(0, 200), createdAt: at0, updatedAt: at0 };
 };
 
-// NOT built yet (see lib/types.ts's `Annotation` comment): the `attached`-link lens that would back
-// a real note-on-a-message. Every call site gets back "nothing", not a partial fake.
-export const annotationsFor = async (_messageId: string): Promise<Annotation[]> => [];
+// The live `attached` link for a message, if any (id + its note's id) — used to enforce "one note per
+// message" on write and to find the note/link pair to edit or delete. "Live" means both the link's own
+// entity and the note's entity have no `deleted_at` (a delete tombstones both, per "Round 5 C11").
+const attachedLinkFor = async (d: Driver, messageId: string) => {
+  const [row] = await d.all<{ id: string; note_id: string }>(
+    `SELECT l.id, l.from_id AS note_id FROM links l
+     JOIN entities le ON le.id = l.id
+     JOIN entities ne ON ne.id = l.from_id
+     JOIN property_values pv ON pv.target_id = l.id AND pv.set_id = ? AND pv.removed_at IS NULL
+     WHERE l.to_id = ? AND le.deleted_at IS NULL AND ne.deleted_at IS NULL`,
+    [BUILTIN.attached, messageId],
+  );
+  return row ?? null;
+};
+
+// The live `attached` link that points *from* a note (the inverse of `attachedLinkFor`) — used by
+// edit/delete, which are only ever called with the note's own id (`Annotation.id`).
+const attachedLinkFrom = async (d: Driver, noteId: string) => {
+  const [row] = await d.all<{ id: string; message_id: string }>(
+    `SELECT l.id, l.to_id AS message_id FROM links l
+     JOIN entities le ON le.id = l.id
+     JOIN property_values pv ON pv.target_id = l.id AND pv.set_id = ? AND pv.removed_at IS NULL
+     WHERE l.from_id = ? AND le.deleted_at IS NULL`,
+    [BUILTIN.attached, noteId],
+  );
+  return row ?? null;
+};
+
+// Attach a new note to a message (docs/direction.md "Links have no kind column"): a new note +
+// its first version, then a link (`from` = the note, `to` = the message) carrying the built-in
+// `attached` property value. "One per message, DB-enforced" (EntryRow's own comment) has no schema-
+// level unique constraint, so this write path enforces it itself: it refuses (throws) rather than
+// silently upserting, since the UI only ever calls this when it believes there's no note yet
+// (`EntryRow`'s "Add note" only renders with none) — a throw here means a stale read, worth surfacing
+// as an error rather than quietly overwriting.
+export const addAnnotation = async (messageId: string, content: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const [msg] = await d.all<{ thread_id: string }>("SELECT thread_id FROM messages WHERE id = ?", [messageId]);
+  if (!msg) throw new Error(`message ${messageId} not found`);
+  await d.tx(async () => {
+    if (await attachedLinkFor(d, messageId)) throw new Error(`message ${messageId} already has an attached note`);
+    const noteId = uuid();
+    const linkId = uuid();
+    await insertEntity(d, noteId, "note", at);
+    await d.run(
+      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, 'user', ?, NULL)",
+      [uuid(), noteId, content, at],
+    );
+    await insertEntity(d, linkId, "link", at);
+    await d.run(
+      "INSERT INTO links (id, from_id, to_id, pin_version_id, updated_at, rev) VALUES (?, ?, ?, NULL, ?, NULL)",
+      [linkId, noteId, messageId, at],
+    );
+    await d.run(
+      "INSERT INTO property_values (id, set_id, target_id, value, created_at, updated_at, removed_at, rev) VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)",
+      [uuid(), BUILTIN.attached, linkId, at, at],
+    );
+    await touchThread(d, msg.thread_id, at);
+  });
+  emitChange();
+};
+
+// An edit is a new `note_versions` row on the same note (docs/direction.md "Versions"), never an
+// update to an existing one — same pattern as `editMessage`. `noteId` is the note's own id
+// (`Annotation.id`), not the message id.
+export const editAnnotation = async (noteId: string, content: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const [row] = await d.all<{ author: "user" | "assistant" }>(
+    "SELECT author FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    [noteId],
+  );
+  if (!row) throw new Error(`note ${noteId} not found`);
+  await d.tx(async () => {
+    await d.run(
+      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, ?, ?, NULL)",
+      [uuid(), noteId, content, row.author, at],
+    );
+    const link = await attachedLinkFrom(d, noteId);
+    if (link) {
+      const [msg] = await d.all<{ thread_id: string }>("SELECT thread_id FROM messages WHERE id = ?", [
+        link.message_id,
+      ]);
+      if (msg) await touchThread(d, msg.thread_id, at);
+    }
+  });
+  emitChange();
+};
+
+// Delete an attached note (docs/direction.md "Round 5 C11": "Delete a link... tombstone only
+// (`deleted_at`)"): tombstones both the note entity and the link entity, never a hard delete. Either
+// one's `deleted_at` is enough for `core.annotationsFor` to exclude it (it checks both); tombstoning
+// both keeps the note out of the Pool too (`core.pool` only surfaces live notes).
+export const deleteAnnotation = async (noteId: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const link = await attachedLinkFrom(d, noteId);
+  await d.tx(async () => {
+    await d.run("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ?", [at, at, noteId]);
+    if (link) await d.run("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ?", [at, at, link.id]);
+  });
+  emitChange();
+};
