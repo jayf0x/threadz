@@ -1,10 +1,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownUp, ArrowLeft, SearchX, X } from "lucide-react";
+import { ArrowDownUp, ArrowLeft, MoreHorizontal, Rows3, SearchX, SquareStack, X } from "lucide-react";
 import { AnimatePresence, m as Motion } from "motion/react";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
 import { Composer } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
@@ -14,8 +15,10 @@ import { errorMessage } from "@/lib/errors";
 import { resolveMessageRange } from "@/lib/references";
 import { useSyncStatus } from "@/lib/syncEngine";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
+import { setThreadLineMode, useThreadLineMode } from "@/lib/threadViewMode";
 import type { Thread } from "@/lib/types";
 import { EntryRow } from "./EntryRow";
+import { LineEntry } from "./LineEntry";
 import { useThread } from "./useThread";
 
 export const ThreadView = ({
@@ -72,6 +75,7 @@ export const ThreadView = ({
   // attempt failed. Replaces v1's local/live `mode` check.
   const askUnavailable = useSyncStatus().unreachable;
   const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
+  const lineMode = useThreadLineMode(threadId); // device-local, per-thread, not synced (docs/direction.md "Round 6")
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
@@ -296,6 +300,25 @@ export const ThreadView = ({
               <ArrowDownUp className="size-5 md:size-4" />
             </Button>
           )}
+          <Menu
+            align="end"
+            trigger={
+              <Button
+                size="icon"
+                variant="ghost"
+                className={messages.length > 1 ? "shrink-0" : "ml-auto shrink-0"}
+                aria-label="Thread actions"
+                title="Thread actions"
+              >
+                <MoreHorizontal className="size-5 md:size-4" />
+              </Button>
+            }
+            items={[
+              lineMode
+                ? { label: "Chat mode", icon: SquareStack, onClick: () => setThreadLineMode(threadId, false) }
+                : { label: "Line mode", icon: Rows3, onClick: () => setThreadLineMode(threadId, true) },
+            ]}
+          />
         </div>
       </header>
 
@@ -321,24 +344,33 @@ export const ThreadView = ({
                       transform: `translateY(${row.start}px)`,
                     }}
                   >
-                    <EntryRow
-                      message={m}
-                      pending={unsynced.has(m.id)}
-                      busy={busy}
-                      isNew={justAdded.has(m.id)}
-                      selected={selectedIds.has(m.id)}
-                      pulsing={pulsingIds.includes(m.id)}
-                      onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
-                      onEdit={(text) => editMessage(m.id, text)}
-                      onCopyThread={() => copyThreadFrom(m.id)}
-                      onSetTodo={(done) => setMessageTodo(m.id, done)}
-                      note={noteByMessage.get(m.id)}
-                      unsyncedAnnotations={unsyncedAnnotations}
-                      onAddAnnotation={(text) => addAnnotation(m.id, text)}
-                      onEditAnnotation={editAnnotation}
-                      onDeleteAnnotation={deleteAnnotation}
-                      onNavigateReference={onNavigateReference}
-                    />
+                    {lineMode ? (
+                      <LineEntry
+                        message={m}
+                        busy={busy}
+                        onEdit={(text) => editMessage(m.id, text)}
+                        onReferenceClick={onNavigateReference}
+                      />
+                    ) : (
+                      <EntryRow
+                        message={m}
+                        pending={unsynced.has(m.id)}
+                        busy={busy}
+                        isNew={justAdded.has(m.id)}
+                        selected={selectedIds.has(m.id)}
+                        pulsing={pulsingIds.includes(m.id)}
+                        onSelect={() => onSelectMessage(selectedMessageId === m.id ? null : m.id)}
+                        onEdit={(text) => editMessage(m.id, text)}
+                        onCopyThread={() => copyThreadFrom(m.id)}
+                        onSetTodo={(done) => setMessageTodo(m.id, done)}
+                        note={noteByMessage.get(m.id)}
+                        unsyncedAnnotations={unsyncedAnnotations}
+                        onAddAnnotation={(text) => addAnnotation(m.id, text)}
+                        onEditAnnotation={editAnnotation}
+                        onDeleteAnnotation={deleteAnnotation}
+                        onNavigateReference={onNavigateReference}
+                      />
+                    )}
                   </div>
                 );
               })}
