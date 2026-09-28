@@ -311,6 +311,30 @@ export const appendNote = async (
   return messageId;
 };
 
+// Places an *existing* note (typically a Pool note, docs/direction.md "Round 6": "Pool... a note
+// belongs to no thread") as a new, live message in `threadId` — unlike `copyThread`'s version
+// references, `pin_version_id` stays NULL so the placement tracks the note's live content, same as
+// any other freshly-composed message. This is the write that removes a note from the Pool: the
+// query (`core.pool`) is "no live message points at this note", and this is what makes one point at
+// it. Reused by anything else that ever needs to re-place a loose note (a future gutter/reference
+// action), not just the Pool view.
+export const placeExistingNote = async (threadId: string, noteId: string): Promise<string> => {
+  const d = await driver();
+  const at = now();
+  const messageId = await d.tx(async () => {
+    const id = uuid();
+    await insertEntity(d, id, "message", at);
+    await d.run(
+      "INSERT INTO messages (id, thread_id, note_id, pin_version_id, updated_at, removed_at, rev) VALUES (?, ?, ?, NULL, ?, NULL, NULL)",
+      [id, threadId, noteId, at],
+    );
+    await touchThread(d, threadId, at);
+    return id;
+  });
+  emitChange();
+  return messageId;
+};
+
 // An edit is a new `note_versions` row (docs/direction.md "Versions"), never an update to an
 // existing one — immutable rows are insert-if-missing on sync. A pinned message (a Clone
 // reference, `pin_version_id` set — see `copyThread`/`placeVersionReference`) shares its note with

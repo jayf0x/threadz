@@ -10,6 +10,7 @@ import {
   SearchX,
   Settings,
   Trash2,
+  Waves,
   X,
 } from "lucide-react";
 import { type CSSProperties, type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
@@ -18,6 +19,7 @@ import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { IconSelect } from "@/components/ui/select";
+import { PoolPanel } from "@/features/pool";
 import { SettingsPanel } from "@/features/settings";
 import { TodosPanel } from "@/features/todos";
 import { TrashPanel } from "@/features/trash";
@@ -134,6 +136,18 @@ export const ThreadList = ({
                   </option>
                 ))}
               </IconSelect>
+              {/* The Pool's only entry point (docs/direction.md "Round 6": reached from the thread
+                  list, not a fifth tab) — SidebarSwitcher's own bar below stays at four items. */}
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Pool"
+                title="Pool"
+                className="shrink-0 rounded-full text-muted-foreground"
+                onClick={() => setPanel("pool")}
+              >
+                <Waves aria-hidden className="size-5 md:size-4" />
+              </Button>
             </div>
           </header>
 
@@ -198,6 +212,14 @@ export const ThreadList = ({
         <View shown={panel === "settings"} from="right">
           <SettingsPanel />
         </View>
+
+        <View shown={panel === "pool"} from="right">
+          {/* Same `onOpen` reasoning as Todos/Bin above: it navigates without switching this panel
+              back to Index, since sending a note here is a detour from wherever you were, not a
+              return to the list. Unlike those three, Pool isn't in SidebarSwitcher's bar (it stays
+              at four items per docs/direction.md "Round 6"), so it needs its own way back. */}
+          <PoolPanel onBack={() => setPanel("index")} onOpenThread={onOpen} />
+        </View>
       </div>
       {/* Bottom tab bar, the phone convention (and where the thumb already is). `pb-safe` clears the
           home indicator, and drops away while the keyboard is up (see lib/viewport.ts). */}
@@ -256,7 +278,7 @@ const SearchField = ({
   </div>
 );
 
-type Panel = "index" | "settings" | "todos" | "trash";
+type Panel = "index" | "settings" | "todos" | "trash" | "pool";
 
 const PANELS: { value: Panel; label: string; icon: LucideIcon }[] = [
   { value: "index", label: "Threads", icon: List },
