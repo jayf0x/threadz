@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { type Driver, initSchema } from "@threadz/core";
+import { BUILTIN, type Driver, initSchema } from "@threadz/core";
 import { bunDriver } from "@threadz/core/bun";
+import { HttpError } from "./model";
 
 // v2 (docs/direction.md "Data model" + "Sync"): main is core/'s shared schema over bun:sqlite --
 // no v1 threads/messages/annotations tables, no per-thread hashes/`base`. `core/schema.ts` and
@@ -80,6 +81,86 @@ export const appendNoteMessage = async (
     [messageId, threadId, noteId, at],
   );
   return { noteId, versionId, messageId };
+};
+
+// A live message's thread and its note's live-or-pinned content -- what "Ask about this message"
+// (wave 6 phase 2) needs to build the model's context. Not exported from core/queries.ts (its
+// `resolveVersion` is private), so this is the same two-step lookup `resolveLiveVersionId` does on
+// the frontend, replicated here for the same reason that one is: it's not part of core's query surface.
+export const getMessageContent = async (
+  d: Driver,
+  messageId: string,
+): Promise<{ threadId: string; content: string } | null> => {
+  const [row] = await d.all<{ thread_id: string; note_id: string; pin_version_id: string | null }>(
+    `SELECT m.thread_id, m.note_id, m.pin_version_id FROM messages m
+     JOIN entities e ON e.id = m.id
+     WHERE m.id = ? AND m.removed_at IS NULL AND e.deleted_at IS NULL`,
+    [messageId],
+  );
+  if (!row) return null;
+  const [v] = row.pin_version_id
+    ? await d.all<{ content: string }>("SELECT content FROM note_versions WHERE id = ?", [row.pin_version_id])
+    : await d.all<{ content: string }>(
+        "SELECT content FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [row.note_id],
+      );
+  if (!v) return null;
+  return { threadId: row.thread_id, content: v.content };
+};
+
+// The live `attached` link for a message, if any -- same "one per message, DB-enforced" check
+// `frontend/src/lib/data.ts`'s `addAnnotation` makes before writing, replicated here since this is
+// the exact same write mechanism (a note + a link carrying the built-in `attached` property value),
+// just triggered by an AI answer instead of user typing (AGENTS.md: "Links have no kind column").
+const attachedLinkForMessage = async (d: Driver, messageId: string) => {
+  const [row] = await d.all<{ id: string }>(
+    `SELECT l.id FROM links l
+     JOIN entities le ON le.id = l.id
+     JOIN entities ne ON ne.id = l.from_id
+     JOIN property_values pv ON pv.target_id = l.id AND pv.set_id = ? AND pv.removed_at IS NULL
+     WHERE l.to_id = ? AND le.deleted_at IS NULL AND ne.deleted_at IS NULL`,
+    [BUILTIN.attached, messageId],
+  );
+  return row ?? null;
+};
+
+// Attach a new assistant-authored note to a message: entity(note) + note_versions(one row) +
+// entity(link) + links(from=note,to=message) + property_values(the built-in `attached` value) --
+// the same four/five-row shape `addAnnotation` writes on the phone, run here on main instead so
+// "Ask about this message"'s answer becomes an attached note rather than a reply appended to the
+// thread (see AGENTS.md's Ask description and the `attached` built-in property set in core/schema.ts).
+// Throws (never silently overwrites) if the message already has one, same as `addAnnotation`.
+export const attachNoteToMessage = async (
+  d: Driver,
+  messageId: string,
+  content: string,
+  at: number,
+): Promise<{ noteId: string }> => {
+  if (await attachedLinkForMessage(d, messageId))
+    throw new HttpError(409, `message ${messageId} already has an attached note`);
+  const noteId = crypto.randomUUID();
+  const linkId = crypto.randomUUID();
+  await d.run(
+    "INSERT INTO entities (id, kind, created_at, updated_at, deleted_at, rev) VALUES (?, 'note', ?, ?, NULL, NULL)",
+    [noteId, at, at],
+  );
+  await d.run(
+    "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, 'assistant', ?, NULL)",
+    [crypto.randomUUID(), noteId, content, at],
+  );
+  await d.run(
+    "INSERT INTO entities (id, kind, created_at, updated_at, deleted_at, rev) VALUES (?, 'link', ?, ?, NULL, NULL)",
+    [linkId, at, at],
+  );
+  await d.run(
+    "INSERT INTO links (id, from_id, to_id, pin_version_id, updated_at, rev) VALUES (?, ?, ?, NULL, ?, NULL)",
+    [linkId, noteId, messageId, at],
+  );
+  await d.run(
+    "INSERT INTO property_values (id, set_id, target_id, value, created_at, updated_at, removed_at, rev) VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)",
+    [crypto.randomUUID(), BUILTIN.attached, linkId, at, at],
+  );
+  return { noteId };
 };
 
 // --- backups -----------------------------------------------------------------------------------

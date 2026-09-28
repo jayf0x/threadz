@@ -197,3 +197,20 @@ export const ask = async (threadId: string, question: string): Promise<string> =
   emitChange();
   return answer;
 };
+
+// "Ask about this message" (wave 6 phase 2): same push -> POST -> apply shape as `ask` above, but
+// scoped to one message and with no user-typed question -- the message's own content is the context.
+// The answer isn't returned as a scratch string; it lands on the device as a new attached note (main
+// writes it via `attachNoteToMessage`), so the caller has nothing left to do but let the applied
+// changes flow into the usual `annotationsFor` read. Same unreachable/no-queue rule as `ask`.
+export const askAboutMessage = async (messageId: string): Promise<void> => {
+  const d = await driver();
+  await push();
+  const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>("/api/ask/message", {
+    method: "POST",
+    body: JSON.stringify({ messageId }),
+  });
+  await applyChanges(d, changes);
+  setCursor(cursor);
+  emitChange();
+};

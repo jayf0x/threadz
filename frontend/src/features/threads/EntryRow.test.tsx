@@ -106,6 +106,7 @@ const baseProps = () => ({
   onEditAnnotation: async () => true,
   onDeleteAnnotation: async () => true,
   onNavigateReference: () => {},
+  onAskAboutMessage: undefined,
 });
 
 test("clicking the plain message content selects the row", () => {
@@ -134,6 +135,35 @@ test("the actions row's buttons and ⋯ trigger do not select the row", () => {
   fireEvent.click(getByLabelText("Todo"));
   expect(todos).toEqual([false]);
   expect(selectCount).toBe(0);
+});
+
+// Radix's DropdownMenuTrigger opens on pointerdown, not click (see @radix-ui/react-dropdown-menu) --
+// this only pins that the trigger itself still toggles correctly with `onAskAboutMessage` wired in;
+// the menu's own portalled content isn't exercised by any test in this file (Copy/Copy link/Clone
+// from here aren't either — Menu, not EntryRow, owns rendering the open item list).
+test("the ⋯ trigger still opens with onAskAboutMessage wired in, whether or not it's offered", () => {
+  const { getByLabelText, rerender } = render(
+    <EntryRow message={message()} {...baseProps()} selected onEdit={async () => true} onSelect={() => {}} />,
+  );
+  const trigger = () => getByLabelText("Message actions");
+  fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
+
+  fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false }); // close it again before the rerender
+  expect(trigger().getAttribute("aria-expanded")).toBe("false");
+
+  rerender(
+    <EntryRow
+      message={message()}
+      {...baseProps()}
+      selected
+      onEdit={async () => true}
+      onSelect={() => {}}
+      onAskAboutMessage={() => {}}
+    />,
+  );
+  fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
 });
 
 test("the Todo toggle reports its state and clears a set flag", () => {

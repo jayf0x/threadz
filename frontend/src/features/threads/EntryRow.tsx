@@ -8,6 +8,7 @@ import {
   Mic,
   MoreHorizontal,
   Pencil,
+  Sparkles,
   Square,
   SquareCheck,
   StickyNote,
@@ -59,6 +60,7 @@ export const EntryRow = ({
   onEditAnnotation,
   onDeleteAnnotation,
   onNavigateReference,
+  onAskAboutMessage,
 }: {
   message: Message;
   pending: boolean;
@@ -76,6 +78,10 @@ export const EntryRow = ({
   onEditAnnotation: (id: string, text: string) => Promise<boolean>;
   onDeleteAnnotation: (id: string) => Promise<boolean>;
   onNavigateReference: (threadId: string, messageId?: string) => void;
+  // "Ask about this message" (⋯ menu). Undefined — not just a no-op — while Ask is unavailable
+  // (main unreachable, per docs/direction.md "B10"), so the item is left out of the menu entirely
+  // rather than shown disabled: same "not offered" rule the Composer's Ask toggle already follows.
+  onAskAboutMessage: (() => void) | undefined;
 }) => {
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -303,6 +309,9 @@ export const EntryRow = ({
                 { label: "Copy", icon: Copy, onClick: copyText },
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
+                ...(onAskAboutMessage
+                  ? [{ label: "Ask about this message", icon: Sparkles, onClick: onAskAboutMessage }]
+                  : []),
               ]}
             />
           </div>

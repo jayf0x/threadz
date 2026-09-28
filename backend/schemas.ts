@@ -33,3 +33,10 @@ export const AskBody = z.object({
   question: z.string().optional(),
 });
 export type AskBody = z.infer<typeof AskBody>;
+
+// Ask about this message (wave 6 phase 2): scoped to one message instead of the whole thread. No
+// user-typed question -- the message's own content is the context -- so this only ever needs the id.
+export const AskMessageBody = z.object({
+  messageId: z.string().optional(),
+});
+export type AskMessageBody = z.infer<typeof AskMessageBody>;

@@ -1,10 +1,20 @@
 import { applyChanges, type Changes, changesSince, stampRevs, TABLE_NAMES, threadView } from "@threadz/core";
 import type { BunRequest } from "bun";
 import type { z } from "zod";
-import { appendNoteMessage, backupDb, currentRev, driver, ensureSchema, getThread, now } from "./db";
+import {
+  appendNoteMessage,
+  attachNoteToMessage,
+  backupDb,
+  currentRev,
+  driver,
+  ensureSchema,
+  getMessageContent,
+  getThread,
+  now,
+} from "./db";
 import { collectOrphanImages, imageFile, saveImage } from "./images";
 import { askModel, type ChatMessage, CLAUDE_MODEL, HttpError } from "./model";
-import { AskBody, PushBody } from "./schemas";
+import { AskBody, AskMessageBody, PushBody } from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -156,6 +166,33 @@ const server = Bun.serve({
         // +1 so the answer is never mis-ordered before its question (orderedMessageIds sorts by
         // created_at, then id -- see core/merge.ts).
         await appendNoteMessage(driver, body.threadId, answer, "assistant", askedAt + 1);
+        const cursor = await stampRevs(driver);
+        const changes = await changesSince(driver, since);
+        return json({ answer, changes, cursor });
+      }),
+    },
+
+    // Ask about this message (wave 6 phase 2): the same push -> ask -> pull shape as `/api/ask`
+    // above, but scoped to one message and with no user-typed question -- the message's own content
+    // is the context, and the answer lands as a new *attached* note (`attachNoteToMessage`, the
+    // built-in `attached` property set) rather than a reply appended to the thread.
+    "/api/ask/message": {
+      OPTIONS: () => new Response(null, { headers: CORS }),
+      POST: wrap(async (req) => {
+        const body = await readBody(req, AskMessageBody);
+        if (!body.messageId) throw new HttpError(400, "messageId is required");
+        const message = await getMessageContent(driver, body.messageId);
+        if (!message) throw new HttpError(404, "message not found");
+
+        const { text: answer } = await askModel({
+          system:
+            "You are a thinking partner inside a personal knowledge system. The user picked out one message and " +
+            "wants your take on it. Respond directly to it -- an answer, a reaction, a next step. Be concise and concrete.",
+          messages: [{ role: "user", content: message.content }],
+        });
+
+        const since = await currentRev();
+        await attachNoteToMessage(driver, body.messageId, answer, now());
         const cursor = await stampRevs(driver);
         const changes = await changesSince(driver, since);
         return json({ answer, changes, cursor });
