@@ -185,7 +185,16 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
 - **Overlays**: `Menu` (anchored ⋯ actions, `side`, per-item `keepFocus`), `ResponsiveOverlay` (Radix Popover from
   768px, bottom `Sheet` below — same children; its `anchor` is the trigger; `anchorTo` opens the popover against another element) and `Sheet` (Radix Dialog, sits on the
   visual viewport so it clears the iOS keyboard) live in `components/ui/`; `lib/useMedia.ts` is the media hook.
-  Toasts drop from the top on a phone (bottom-right from `md`).
+  Toasts drop from the top on a phone (bottom-right from `md`). **Peek** (`features/threads/Peek.tsx`) is a
+  `ResponsiveOverlay` that can open another `ResponsiveOverlay` from inside itself — nesting is expected, not a
+  bug to route around.
+- **`Chip`** (`components/ui/Chip.tsx`) is the one primitive for a value/link/todo/version marker: a `colorSlot`
+  (1–8, palette tokens — never a hex literal) plus an icon and/or text as a second cue. It is dumb —
+  `onClick` (optional; omit it for a static, non-interactive chip) is the caller's to define, never built into
+  `Chip` itself. Property sets (`core/schema.ts`'s `property_sets`/`property_values`, any entity as
+  `target_id`) are the one typed-value primitive behind it, behind "attached" (note-on-message), "local-only"
+  (Ask-disabling flag on a thread), and a link's type; built-in sets have fixed ids on `core.BUILTIN`. Reach for
+  a property set before inventing a new column for "one more typed thing on an entity."
 - `frontend/src/lib/**` holds the sync, merge and image logic the rules below depend on: change it with care.
 - All Claude calls go through `askModel()` in `backend/model.ts` (via the Claude Code
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty

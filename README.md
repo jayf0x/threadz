@@ -290,6 +290,38 @@ thread), which also means it stops being frozen the moment you touch it. There's
 the source thread (nothing reads one yet); Clone's own `⋯` menu item and the composer's "Clone from here" both
 call the same `copyThread` in `lib/data.ts`.
 
+## Property sets, chips and wave 6 lenses
+
+**Property sets** (`core/schema.ts`'s `property_sets`/`property_values`) are the one typed-value primitive
+behind chips, links, "attached", "local-only" and any future tag/status/date field — created and managed from
+Settings (global sets) or from context (thread-scoped ones), with values set from any entity's ⋯ menu ("Add
+property"). **Chip** (`components/ui/Chip.tsx`) is the one presentational primitive for rendering one: a colour
+slot (1–8, palette tokens) plus an icon/text, dumb — the caller decides what a click does.
+
+- **Line mode.** The thread header's ⋯ menu toggles a thread between chat bubbles and one continuous document
+  (`LineEntry.tsx`); the choice is remembered per device, per thread (not synced — it's a view preference).
+- **Pool.** Notes with no live placement anywhere, reached from the Threadz thread list (not a fifth tab) —
+  "Send to thread" places a loose note as a new live message, which is exactly what removes it from the Pool.
+  "Remove from thread" (a message's ⋯ menu) is the everyday way a note lands there.
+- **Links from a selection.** Select text in the editor → the floating "Link" trigger → pick a thread or
+  message, optionally typed by a property value afterward (the type's colour renders the link as a `Chip`).
+- **Gutter marks + Peek.** Off by default (a Settings toggle turns them on): per-message marks for other threads
+  the same note lives in, links in/out, property values and todo state. Clicking a link/other-thread mark opens
+  Peek, a `ResponsiveOverlay` showing that entity plus its immediate neighbours — nestable, so a peek can open
+  another peek.
+- **References to anything.** The `[[` autocomplete now also offers notes, links and property sets (not just
+  threads/messages) under the same `tz:<kind>/<id>@<version>` grammar. A pinned reference to a note shows a
+  staleness marker once the note has moved past the version it points at.
+- **Branch from here.** The ⋯ menu's second clone-shaped action: identical to Clone from here except its new
+  references are left live (`pin_version_id` null) instead of frozen, so the branch keeps following the
+  original's edits.
+- **Thread status and local-only.** A thread can be flagged as a todo from its own header ⋯ menu (shows up in
+  the Todos tab, never as filtering on the Threadz index — "one tab, one job"); "Local only" is a built-in
+  property set that disables the Ask control for that thread.
+- **Ask about this message.** A message's ⋯ menu can ask Claude to react to just that message; the answer lands
+  as an assistant-authored attached note (the same `attached`-link mechanism as a manually written one), never
+  appended to the thread.
+
 ## References and quick jump
 
 Type `[[` in any note (composer, an edit, a note popover) to link another thread or message. A two-stage

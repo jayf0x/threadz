@@ -415,8 +415,10 @@ first group should be built before that group is answered.
 5. ✅ Existing features as lenses on the new data: thread chat view and composer, todos, Bin, search and ⌘K,
    references (now `tz:<kind>/<id>@<version>`, C14), attached notes (today's note overlay), clone (now true
    version references, decision 9). `README.md` and `AGENTS.md` rewritten to match.
-6. New lenses: line mode, pool, links from a selection, chips, gutter marks, peek, property sets. Then insight, the
-   computed map, and customization.
+6. ✅ New lenses (wave 6): property sets + the `Chip` primitive, line mode, Pool, links from a selection, gutter
+   marks + peek, references to anything (note/link/property_set) + staleness, Branch from here + thread status +
+   local-only, Ask about this message, backup retention by time (B8). Still open: insight, the computed map,
+   customization.
 
 ## Parked
 
