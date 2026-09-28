@@ -39,6 +39,7 @@ this rebuild is built from), `README.md` (API, sync, storage, photos, load-beari
 | `bun test` | invariant + e2e tests |
 | `bun run smoke <url>` | curl e2e against a live backend |
 | `bun run pages:build` / `pages:deploy` / `pages` | build the local-only PWA for `/threadz/` / trigger the manual Pages workflow / both |
+| `bun run seed [--scale small\|real\|large] [--out path] [--stamp]` | deterministic sample `.sqlite` in `.seed/<scale>.sqlite` (README "Seed data") |
 | `bun run clean:worktrees` | remove leftover `.claude/worktrees/agent-*` and their branches (only if clean and already in main) |
 | `bun run typecheck` | both packages |
 | `bun run lint` | Biome (warnings fail) + token lint |

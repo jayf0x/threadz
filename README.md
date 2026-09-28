@@ -92,6 +92,16 @@ photos are not in it). Voice dictation works: the voice-activity files are serve
 Install: on iOS open the URL in Safari, Share → **Add to Home Screen** (use the installed app, not a Safari tab, so
 storage is not evicted after 7 days). On Chrome/Edge use the install icon in the address bar, or menu → Install Threadz.
 
+## Seed data
+
+`bun run seed [--scale small|real|large] [--out path] [--stamp]` writes a deterministic sample database to
+`.seed/<scale>.sqlite` (gitignored): small ~50 threads / 250 notes / 1.2k versions, real ~2k / 10k / 50k, large 4x
+real (real takes ~1s). It covers every table (Bin, Pool, `/todo` lines and todo rows, pinned and stale `tz:` refs,
+multi-thread notes, attached/copied-from links, counter sets) with two years of clustered activity relative to a
+fixed "now" (2026-09-28), so recent-window insights only make sense against that date. Same scale, same rows.
+Import it in Settings, or point `THREADZ_DB` at it. Rows have `rev` NULL so an import keeps them pending and the
+next sync pushes them; for main pass `--stamp` (runs `stampRevs`) so a phone can pull them.
+
 ## Test
 
 ```bash

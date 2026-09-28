@@ -32,3 +32,6 @@ __pycache__/
 
 # main-side backups taken before each device sync
 backups/
+
+# generated seed databases (bun run seed)
+.seed/
