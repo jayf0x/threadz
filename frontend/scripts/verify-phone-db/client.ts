@@ -2,7 +2,7 @@
 // test` — this exercises the one part of phoneDb.ts/worker.ts that needs a real browser: a real Web
 // Worker, real @subframe7536/sqlite-wasm, real IndexedDB. bun test covers the request/response
 // correlation and tx sequencing logic against a fake worker (phone/broker.test.ts, phone/driver.test.ts);
-// this instead proves the whole stack end to end, same spirit as ../spike-sqlite-wasm's worker.js.
+// this instead proves the whole stack end to end,.
 import { openPhoneDb } from "@/lib/phoneDb";
 
 declare global {

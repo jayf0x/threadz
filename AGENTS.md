@@ -241,10 +241,8 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   floating chrome (popover, dropdown, toast, sheet) is `surface-float` (fixed 96% gradient + blur).
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
 - **Generated metadata/embeddings/"related threads" don't exist right now.** `core/schema.ts`'s `threads` table
-  has no description/tags/embedding columns, and `backend/metadata.ts`'s generation pipeline plus
-  `/api/threads/:id/metadata`/`/related` were dropped rather than adapted when main moved onto `core/`
-  (`backlog.md`) — only pure helpers (`looksLikeGarbage`, `stripImages`, `MIN_WORDS`) still live in
-  `metadata.ts`, unused, for whenever this comes back with a real schema location for it.
+  has no description/tags/embedding columns; the v1 generation pipeline and its endpoints were dropped when main
+  moved onto `core/` (`backlog.md`), with no code kept for it.
 - Tests cover logic with branching and the sync/merge/image rules, plus one HTTP round-trip that cleans up after
   itself. No per-component suites — the few component tests (`EntryRow`, `todoDecoration`, references e2e) each pin
   one wiring regression; a change that touches none of that needs no new test.

@@ -12,7 +12,7 @@ export const StatusPill = () => {
   const s = useSyncStatus();
   const label = s.unreachable ? "Unreachable" : s.keepLive ? "Keep-live" : s.pending ? "Pending" : "Synced";
   const hint = s.unreachable
-    ? "Can't reach main. Open for options."
+    ? "Couldn't sync. Open for options."
     : s.keepLive
       ? "Syncing automatically every 15s."
       : s.pending

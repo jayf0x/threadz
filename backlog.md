@@ -13,11 +13,10 @@ _Nothing._
 
 - **Everything AI-generated.** Descriptions, tags, embeddings and the views for them: tried in v1, no place for it
   yet (ideas for a details view and for tags in `inspiration.md`). D2a (main on `core/`) dropped
-  `backend/metadata.ts`'s generation pipeline and `/api/threads/:id/metadata` + `/api/threads/:id/related`
-  entirely rather than adapt them: `core/schema.ts`'s `threads` table has no description/tags/embedding columns,
+  the v1 generation pipeline (`backend/metadata.ts`, since deleted) and `/api/threads/:id/metadata` +
+  `/api/threads/:id/related` entirely rather than adapt them: `core/schema.ts`'s `threads` table has no description/tags/embedding columns,
   and giving those a v2 home (a `property_set`? a dedicated table?) is a real design decision, not carried
-  over. `looksLikeGarbage`/`stripImages`/`MIN_WORDS` are kept in `metadata.ts` as pure helpers for whenever this
-  comes back.
+  over; nothing of it is kept in the tree.
 - **Related threads / "similar to x".** Was `GET /api/threads/:id/related`, removed in D2a along with the rest of
   metadata generation (see above) — no schema location for an embedding to read. When this comes back: one vector
   per thread failed for a fixable reason (built from `title + description + tags + the first 2000 chars` of the
