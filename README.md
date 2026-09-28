@@ -78,7 +78,9 @@ gh run watch                # optional: follow it
 The workflow (`.github/workflows/pages.yml`) only runs when triggered this way (or from the Actions tab); a push
 never publishes. It runs `bun run pages:build` (`VITE_LOCAL=1 VITE_BASE=/threadz/`, output `frontend/dist`). Run the
 same command locally to inspect the build. `VITE_BASE` (default `/`) is the only thing that moves the app under a
-sub-path; the normal dev/prod build is unchanged.
+sub-path; the normal dev/prod build is unchanged. `pages:build` also copies `index.html` to `404.html`: Pages has no
+rewrite rules, so a hard reload of `/threadz/map` (a path with no file) is served that fallback, the SPA boots and reads
+the URL.
 
 What gets published: the same PWA, minus a backend to sync with. The phone works exactly as it always does — it
 owns its own SQLite database regardless of whether main is reachable — but `VITE_LOCAL=1` with no

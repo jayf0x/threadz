@@ -137,3 +137,17 @@ test("URL params round-trip and malformed ones are dropped", () => {
   expect(isMapFilterEmpty({})).toBe(true);
   expect(isMapFilterEmpty({ hour: 0 })).toBe(false);
 });
+
+test("todo filter also matches /todo lines in the note text", async () => {
+  const d = await open();
+  await thread(d, "t1", 100);
+  await note(d, "n1", "/todo call mom", MON);
+  await note(d, "n2", "~~/todo paid~~", MON + HOUR);
+  await note(d, "n3", "I said /todo nope", MON + 2 * HOUR);
+  await place(d, "m1", "t1", "n1", MON);
+  await place(d, "m2", "t1", "n2", MON + HOUR);
+  await place(d, "m3", "t1", "n3", MON + 2 * HOUR);
+  expect(ids((await mapTracks(d, { todo: "open" })).rows)).toEqual([["m1"]]);
+  expect(ids((await mapTracks(d, { todo: "done" })).rows)).toEqual([["m2"]]);
+  expect(ids((await mapTracks(d, { todo: "any" })).rows)).toEqual([["m1", "m2"]]);
+});

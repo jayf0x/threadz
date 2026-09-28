@@ -8,8 +8,8 @@ import { stripTodoMarker, type Todo } from "@/lib/todos";
 import { useHome } from "./useHome";
 import { useTodosSummary } from "./useTodosSummary";
 
-/** Where a Home card sends the sidebar; `filter` is an insight's `source.filter` (index search: `q`). */
-export type HomeTarget = { lens: "index" | "todos" | "pool"; filter?: Record<string, unknown> };
+/** Where a Home card sends the sidebar: the panel only, no filter (the panels have no inputs for an insight's cutoffs). */
+export type HomeTarget = { lens: "index" | "todos" | "pool" };
 
 const SHOWN_TODOS = 3;
 
@@ -89,8 +89,7 @@ const todoLabel = (t: Todo): string => {
 
 const LENS_TARGET: Record<string, HomeTarget["lens"] | undefined> = { thread: "index", todos: "todos", pool: "pool" };
 
-// The map lives at `/map?<filter>`; its route is wired by whoever owns the map, so until then this
-// is a plain navigation to that URL.
+// Only a map insight carries a filter (`/map?<MapFilter>`); Threadz, Todos and Pool cards just open their panel.
 const followInsight = (i: Insight, onGo: (t: HomeTarget) => void) => {
   const { lens, filter } = i.source;
   if (lens === "map") {
@@ -100,7 +99,7 @@ const followInsight = (i: Insight, onGo: (t: HomeTarget) => void) => {
     dispatchEvent(new PopStateEvent("popstate")); // App re-reads the URL and opens the map
     return;
   }
-  onGo({ lens: LENS_TARGET[lens] ?? "index", filter });
+  onGo({ lens: LENS_TARGET[lens] ?? "index" });
 };
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (

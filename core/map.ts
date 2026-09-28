@@ -1,6 +1,7 @@
 import { orderedMessageIds } from "./merge";
 import { isPinStale, latestContentSql } from "./queries";
 import type { Driver } from "./schema";
+import { parseTodoGroups, parseTodos } from "./todoLines";
 
 // The computed map, "tracks" layout (docs/direction.md "Lenses": Map): every thread is a row, its live messages
 // run left to right, and a note placed in several threads becomes a connector between those rows. A filter keeps
@@ -26,7 +27,7 @@ export type MapFilter = {
   valueB?: string;
   /** Pinned references whose note has since changed. */
   pinned?: "stale";
-  /** Messages carrying a `todos` row (on the message or its note). */
+  /** Messages carrying a `todos` row (on the message or its note) or a `/todo` line, like the Todos lens (C15). */
   todo?: "open" | "done" | "any";
 };
 
@@ -166,6 +167,13 @@ const todoState = async (d: Driver): Promise<Map<string, "open" | "done">> => {
   return new Map(rows.map((r) => [r.target_id, r.done ? "done" : "open"]));
 };
 
+// A `/todo` line (or `/todos` item) in the text: open if any is open, done if all are.
+const lineTodoState = (content: string): "open" | "done" | null => {
+  const dones = [...parseTodos(content).map((t) => t.done), ...parseTodoGroups(content).groups.flatMap((g) => g.items.map((i) => i.done))];
+  if (dones.length === 0) return null;
+  return dones.every(Boolean) ? "done" : "open";
+};
+
 /** Threads as rows, matching messages as cells, shared notes as connectors. Rows: most recently updated first. */
 export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapTracks> => {
   const all = await d.all<Loaded>(
@@ -186,7 +194,8 @@ export const mapTracks = async (d: Driver, filter: MapFilter = {}): Promise<MapT
   const values = wantsValues ? await propertyIndex(d) : null;
   const todos = await todoState(d);
 
-  const todoOf = (m: Loaded) => todos.get(m.message_id) ?? todos.get(m.note_id) ?? null;
+  const todoOf = (m: Loaded) =>
+    todos.get(m.message_id) ?? todos.get(m.note_id) ?? lineTodoState(m.content ?? "");
   const targets = (m: Loaded) => [m.message_id, m.note_id, m.thread_id];
   const has = (keys: Set<string> | undefined, set: string | undefined, value: string | undefined) =>
     set === undefined || !!keys?.has(valueKey(set, value ?? "*"));
