@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { allMessages } from "./data";
+import { imageBearingTexts } from "./data";
 
 // Photos in notes. A note holds only a reference, `![](img:<sha256hex>#<w>x<h>)`; the bytes live
 // here, in their OWN IndexedDB database. Nothing that snapshots, backs up, exports or imports
@@ -97,16 +97,13 @@ export const deleteOrphanImages = async (used: Set<string>, now = Date.now()) =>
 // SQLite): a binned note's images can get GC'd sooner than in v1. Flagged as a gap, not fixed here —
 // out of scope for this pass.
 export const gcDeviceImages = async (now = Date.now()) => {
-  const { messages } = await allMessages();
-  if (!messages.length) return [];
-  return deleteOrphanImages(
-    referencedHashes(messages.flatMap((m) => [m.content, ...(m.edits ?? []).map((v) => v.content)])),
-    now,
-  );
+  const texts = await imageBearingTexts();
+  return texts ? deleteOrphanImages(referencedHashes(texts), now) : [];
 };
 
 // --- storage housekeeping, once per page load ----------------------------------------------
 
+const GC_DELAY_MS = 15_000;
 let housekept = false;
 
 // Ask the browser not to evict our storage (photos not yet on main live only here) and sweep orphans.
@@ -115,7 +112,8 @@ export const housekeeping = () => {
   if (housekept) return;
   housekept = true;
   navigator.storage?.persist?.().catch(() => {});
-  gcDeviceImages().catch(() => {});
+  // The sweep scans every note version: leave it until the thread that mounted the first editor has had the worker.
+  setTimeout(() => gcDeviceImages().catch(() => {}), GC_DELAY_MS);
 };
 
 // --- browser only: compress a picked file ------------------------------------------

@@ -14,7 +14,9 @@ export type MenuItem = {
 
 export type MenuProps = {
   trigger: ReactElement;
-  items: MenuItem[];
+  /** A function is called only while the menu is open: a list that is long (every thread) and repeated per row
+   * (every Pool note) must not be built, and kept, for menus nobody opened. */
+  items: MenuItem[] | (() => MenuItem[]);
   align?: "start" | "end";
   /** Which side of the trigger it opens on; "top" for a trigger in the bottom of the screen. */
   side?: "top" | "bottom" | "left" | "right";
@@ -51,31 +53,34 @@ export const Menu = ({ trigger, items, align = "start", side, className, onClose
             className,
           )}
         >
-          {items.map((item, i) => (
-            <Fragment key={item.label}>
-              {item.destructive && i > 0 && <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />}
-              <DropdownMenu.Item
-                onSelect={() => {
-                  keepFocus.current = item.keepFocus === true;
-                  item.onClick();
-                }}
-                className={cn(
-                  "press-row flex h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-base outline-none md:h-9 md:text-sm",
-                  "data-[highlighted]:bg-accent",
-                  item.destructive ? "text-destructive" : "text-foreground",
-                )}
-              >
-                {item.icon && (
-                  <item.icon
-                    className={cn("size-5 shrink-0 md:size-4", !item.destructive && "text-muted-foreground")}
-                  />
-                )}
-                {item.label}
-              </DropdownMenu.Item>
-            </Fragment>
-          ))}
+          <MenuItems items={items} keepFocus={keepFocus} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );
+};
+
+const MenuItems = ({ items, keepFocus }: { items: MenuProps["items"]; keepFocus: { current: boolean } }) => {
+  const list = typeof items === "function" ? items() : items;
+  return list.map((item, i) => (
+    <Fragment key={item.label}>
+      {item.destructive && i > 0 && <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />}
+      <DropdownMenu.Item
+        onSelect={() => {
+          keepFocus.current = item.keepFocus === true;
+          item.onClick();
+        }}
+        className={cn(
+          "press-row flex h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-base outline-none md:h-9 md:text-sm",
+          "data-[highlighted]:bg-accent",
+          item.destructive ? "text-destructive" : "text-foreground",
+        )}
+      >
+        {item.icon && (
+          <item.icon className={cn("size-5 shrink-0 md:size-4", !item.destructive && "text-muted-foreground")} />
+        )}
+        {item.label}
+      </DropdownMenu.Item>
+    </Fragment>
+  ));
 };

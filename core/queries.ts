@@ -1,4 +1,4 @@
-import { orderedMessageIds } from "./merge";
+import { displayOrder, orderedMessageIds } from "./merge";
 import { BUILTIN } from "./schema";
 import type {
   Driver,
@@ -17,17 +17,34 @@ import type {
 
 // A note's live-or-pinned content: `pin_version_id` null means "follow the latest version" (newest
 // `created_at`, ties broken by id, per "Versions" in docs/direction.md); otherwise it's that exact version.
-const resolveVersion = async (d: Driver, noteId: string, pinVersionId: string | null): Promise<NoteVersionRow> => {
-  if (pinVersionId) {
-    const [v] = await d.all<NoteVersionRow>("SELECT * FROM note_versions WHERE id = ?", [pinVersionId]);
-    if (v) return v;
-  }
-  const [v] = await d.all<NoteVersionRow>(
-    "SELECT * FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
-    [noteId],
-  );
-  if (!v) throw new Error(`note ${noteId} has no versions`);
-  return v;
+// As SQL, so a lens reads every row's version in one statement instead of one worker round trip per row (each is
+// a postMessage hop on the phone). Join it as
+// `LEFT JOIN note_versions v ON v.id = ${versionIdOf(pin, note)}` and select `VERSION_COLS`.
+const versionIdOf = (pin: string, note: string) =>
+  `COALESCE((SELECT id FROM note_versions WHERE id = ${pin}),
+     (SELECT id FROM note_versions WHERE note_id = ${note} ORDER BY created_at DESC, id DESC LIMIT 1))`;
+const VERSION_COLS = `v.id AS v_id, v.note_id AS v_note_id, v.parent_id AS v_parent_id, v.content AS v_content,
+  v.author AS v_author, v.created_at AS v_created_at, v.rev AS v_rev`;
+type VersionCols = {
+  v_id: string | null;
+  v_note_id: string;
+  v_parent_id: string | null;
+  v_content: string;
+  v_author: NoteVersionRow["author"];
+  v_created_at: number;
+  v_rev: number | null;
+};
+const versionOf = (r: VersionCols, noteId: string): NoteVersionRow => {
+  if (r.v_id === null) throw new Error(`note ${noteId} has no versions`);
+  return {
+    id: r.v_id,
+    note_id: r.v_note_id,
+    parent_id: r.v_parent_id,
+    content: r.v_content,
+    author: r.v_author,
+    created_at: r.v_created_at,
+    rev: r.v_rev,
+  };
 };
 
 export type ThreadListRow = { id: string; title: string; created_at: number; updated_at: number };
@@ -45,47 +62,155 @@ export const listThreads = async (d: Driver): Promise<ThreadListRow[]> =>
 
 export type ThreadViewRow = { message: MessageRow; version: NoteVersionRow };
 
-// Thread view (chat and line mode share this query; they only differ in the view). A thread's messages in
-// display order (`orderedMessageIds`), each joined to its note's live-or-pinned version.
-export const threadView = async (d: Driver, threadId: string): Promise<ThreadViewRow[]> => {
-  const ids = await orderedMessageIds(d, threadId);
-  const out: ThreadViewRow[] = [];
-  for (const id of ids) {
-    const [message] = await d.all<MessageRow>("SELECT * FROM messages WHERE id = ?", [id]);
-    if (!message) continue;
-    out.push({ message, version: await resolveVersion(d, message.note_id, message.pin_version_id) });
+type ThreadRowCols = MessageRow & VersionCols & { entity_created_at: number };
+
+const splitMessage = (r: ThreadRowCols): ThreadViewRow => {
+  const { v_id, v_note_id, v_parent_id, v_content, v_author, v_created_at, v_rev, entity_created_at, ...message } = r;
+  return { message, version: versionOf(r, r.note_id) };
+};
+
+// Which messages a load covers: one thread, or every message of every live thread.
+type Scope = { messages: string; params: string[] };
+const ONE = (threadId: string): Scope => ({ messages: "m.thread_id = ?", params: [threadId] });
+const ALL: Scope = {
+  messages: "m.thread_id IN (SELECT t.id FROM threads t JOIN entities te ON te.id = t.id WHERE te.deleted_at IS NULL)",
+  params: [],
+};
+
+// Live messages with their live-or-pinned version (one statement, creation order), then each thread's rows put
+// into display order with `displayOrder`.
+const loadMessages = async (d: Driver, scope: Scope): Promise<Map<string, ThreadRowCols[]>> => {
+  const rows = await d.all<ThreadRowCols>(
+    `SELECT m.*, e.created_at AS entity_created_at, ${VERSION_COLS}
+     FROM messages m
+     JOIN entities e ON e.id = m.id
+     LEFT JOIN note_versions v ON v.id = ${versionIdOf("m.pin_version_id", "m.note_id")}
+     WHERE ${scope.messages} AND m.removed_at IS NULL AND e.deleted_at IS NULL
+     ORDER BY e.created_at, m.id`,
+    scope.params,
+  );
+  const orders = await d.all<{ thread_id: string; message_ids: string }>(
+    `SELECT thread_id, message_ids FROM thread_order ${scope === ALL ? "" : "WHERE thread_id = ?"}`,
+    scope === ALL ? [] : scope.params,
+  );
+  const stored = new Map(orders.map((o) => [o.thread_id, o.message_ids]));
+  const byThread = new Map<string, ThreadRowCols[]>();
+  for (const r of rows) {
+    const list = byThread.get(r.thread_id);
+    if (list) list.push(r);
+    else byThread.set(r.thread_id, [r]);
   }
+  for (const [threadId, list] of byThread) {
+    const byId = new Map(list.map((r) => [r.id, r]));
+    byThread.set(
+      threadId,
+      displayOrder(
+        list.map((r) => r.id),
+        stored.get(threadId),
+      ).flatMap((id) => byId.get(id) ?? []),
+    );
+  }
+  return byThread;
+};
+
+// Thread view (chat and line mode share this query; they only differ in the view). A thread's messages in
+// display order (`displayOrder`), each joined to its note's live-or-pinned version.
+export const threadView = async (d: Driver, threadId: string): Promise<ThreadViewRow[]> =>
+  ((await loadMessages(d, ONE(threadId))).get(threadId) ?? []).map(splitMessage);
+
+export type ThreadEntry = ThreadViewRow & {
+  /** The message entity's `created_at` (when it was placed). */
+  created_at: number;
+  /** The note's other versions, oldest first. */
+  edits: { content: string; created_at: number }[];
+  /** Newest version's `created_at` when the note has any version besides the shown one. */
+  edited_at: number | null;
+  todo: { done: number; updated_at: number } | null;
+};
+
+const entries = async (d: Driver, scope: Scope): Promise<Map<string, ThreadEntry[]>> => {
+  const loaded = await loadMessages(d, scope);
+  const versions = await d.all<{ note_id: string; id: string; content: string; created_at: number }>(
+    `SELECT note_id, id, content, created_at FROM note_versions
+     WHERE note_id IN (SELECT m.note_id FROM messages m WHERE ${scope.messages} AND m.removed_at IS NULL)
+     ORDER BY created_at, id`,
+    scope.params,
+  );
+  const todoRows = await d.all<{ target_id: string; done: number; updated_at: number }>(
+    `SELECT target_id, done, updated_at FROM todos WHERE target_id IN (SELECT m.id FROM messages m WHERE ${scope.messages})`,
+    scope.params,
+  );
+  const byNote = new Map<string, typeof versions>();
+  for (const v of versions) {
+    const list = byNote.get(v.note_id);
+    if (list) list.push(v);
+    else byNote.set(v.note_id, [v]);
+  }
+  const todoOf = new Map(todoRows.map((t) => [t.target_id, { done: t.done, updated_at: t.updated_at }]));
+  const out = new Map<string, ThreadEntry[]>();
+  for (const [threadId, rows] of loaded)
+    out.set(
+      threadId,
+      rows.map((r) => {
+        const view = splitMessage(r);
+        const history = byNote.get(r.note_id) ?? [];
+        const edits = history.filter((v) => v.id !== view.version.id);
+        return {
+          ...view,
+          created_at: r.entity_created_at,
+          edits: edits.map((v) => ({ content: v.content, created_at: v.created_at })),
+          edited_at: edits.length ? (history.at(-1)?.created_at ?? null) : null,
+          todo: todoOf.get(r.id) ?? null,
+        };
+      }),
+    );
   return out;
 };
+
+// `threadView` plus what the thread screen shows per message (placement time, edit history, todo flag): four
+// statements however long the thread is.
+export const threadEntries = async (d: Driver, threadId: string): Promise<ThreadEntry[]> =>
+  (await entries(d, ONE(threadId))).get(threadId) ?? [];
+
+// Every live thread's `threadEntries`, keyed by thread id: four statements for the whole database. For scans
+// that read all of it (reference autocomplete, image GC).
+export const allEntries = (d: Driver): Promise<Map<string, ThreadEntry[]>> => entries(d, ALL);
 
 export type PoolNoteRow = { entity_id: string; created_at: number; version: NoteVersionRow };
 
+type NoteVersionCols = { entity_id: string; created_at: number } & VersionCols;
+
+const NOTE_WITH_VERSION = `SELECT e.id AS entity_id, e.created_at, ${VERSION_COLS}
+  FROM entities e LEFT JOIN note_versions v ON v.id = ${versionIdOf("NULL", "e.id")}`;
+
+const poolNote = (r: NoteVersionCols): PoolNoteRow => ({
+  entity_id: r.entity_id,
+  created_at: r.created_at,
+  version: versionOf(r, r.entity_id),
+});
+
 // Pool: notes with no live message (no un-removed message, on a non-deleted entity, pointing at the note).
-export const pool = async (d: Driver): Promise<PoolNoteRow[]> => {
-  const notes = await d.all<{ id: string; created_at: number }>(
-    `SELECT e.id, e.created_at FROM entities e
-     WHERE e.kind = 'note' AND e.deleted_at IS NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM messages m JOIN entities me ON me.id = m.id
-         WHERE m.note_id = e.id AND m.removed_at IS NULL AND me.deleted_at IS NULL
-       )
-     ORDER BY e.created_at DESC`,
-  );
-  const out: PoolNoteRow[] = [];
-  for (const n of notes) out.push({ entity_id: n.id, created_at: n.created_at, version: await resolveVersion(d, n.id, null) });
-  return out;
-};
+export const pool = async (d: Driver): Promise<PoolNoteRow[]> =>
+  (
+    await d.all<NoteVersionCols>(
+      `${NOTE_WITH_VERSION}
+       WHERE e.kind = 'note' AND e.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM messages m JOIN entities me ON me.id = m.id
+           WHERE m.note_id = e.id AND m.removed_at IS NULL AND me.deleted_at IS NULL
+         )
+       ORDER BY e.created_at DESC`,
+    )
+  ).map(poolNote);
 
 // Every live note, one row each however many messages place it (a note in two threads is still one
 // note): the `[[` autocomplete's note candidates. `pool` above is the unplaced subset.
-export const allNotes = async (d: Driver): Promise<PoolNoteRow[]> => {
-  const notes = await d.all<{ id: string; created_at: number }>(
-    "SELECT id, created_at FROM entities WHERE kind = 'note' AND deleted_at IS NULL ORDER BY created_at DESC",
-  );
-  const out: PoolNoteRow[] = [];
-  for (const n of notes) out.push({ entity_id: n.id, created_at: n.created_at, version: await resolveVersion(d, n.id, null) });
-  return out;
-};
+export const allNotes = async (d: Driver): Promise<PoolNoteRow[]> =>
+  (
+    await d.all<NoteVersionCols>(
+      `${NOTE_WITH_VERSION} WHERE e.kind = 'note' AND e.deleted_at IS NULL ORDER BY e.created_at DESC`,
+    )
+  ).map(poolNote);
 
 export type TodoContext =
   | { kind: "message"; thread_id: string; note_content: string }
@@ -97,28 +222,34 @@ export type TodoRowView = { target_id: string; done: number; updated_at: number;
 // frontend, not core's job). Joined to just enough context to render one: a message's thread and its note's
 // live content.
 export const todos = async (d: Driver): Promise<TodoRowView[]> => {
-  const rows = await d.all<{ target_id: string; done: number; updated_at: number; kind: EntityKind }>(
-    `SELECT t.target_id, t.done, t.updated_at, e.kind FROM todos t
+  const rows = await d.all<
+    {
+      target_id: string;
+      done: number;
+      updated_at: number;
+      kind: EntityKind;
+      thread_id: string | null;
+      note_id: string | null;
+    } & VersionCols
+  >(
+    `SELECT t.target_id, t.done, t.updated_at, e.kind, m.thread_id, m.note_id, ${VERSION_COLS}
+     FROM todos t
      JOIN entities e ON e.id = t.target_id
+     LEFT JOIN messages m ON m.id = t.target_id
+     LEFT JOIN note_versions v ON v.id = ${versionIdOf("m.pin_version_id", "m.note_id")}
      WHERE e.deleted_at IS NULL
      ORDER BY t.updated_at DESC`,
   );
   const out: TodoRowView[] = [];
   for (const r of rows) {
-    if (r.kind === "message") {
-      const [m] = await d.all<MessageRow>("SELECT * FROM messages WHERE id = ?", [r.target_id]);
-      if (!m) continue;
-      const version = await resolveVersion(d, m.note_id, m.pin_version_id);
+    const base = { target_id: r.target_id, done: r.done, updated_at: r.updated_at };
+    if (r.kind !== "message") out.push({ ...base, kind: r.kind, context: { kind: r.kind } });
+    else if (r.thread_id !== null && r.note_id !== null)
       out.push({
-        target_id: r.target_id,
-        done: r.done,
-        updated_at: r.updated_at,
+        ...base,
         kind: r.kind,
-        context: { kind: "message", thread_id: m.thread_id, note_content: version.content },
+        context: { kind: "message", thread_id: r.thread_id, note_content: versionOf(r, r.note_id).content },
       });
-    } else {
-      out.push({ target_id: r.target_id, done: r.done, updated_at: r.updated_at, kind: r.kind, context: { kind: r.kind } });
-    }
   }
   return out;
 };
@@ -136,18 +267,20 @@ export type SearchThreadHit = { kind: "thread"; thread_id: string; title: string
 export type SearchHit = SearchNoteHit | SearchThreadHit;
 
 // Search (lite): a plain LIKE substring search over the latest version content of live notes and over live
-// thread titles. Placeholder ahead of FTS5 wiring (backend/phone specific, out of scope here).
+// thread titles. Placeholder ahead of FTS5 wiring (backend/phone specific, out of scope here). Scans each
+// live note's newest version once (not every historical version), and reads the hits' versions in the same
+// statement.
 export const search = async (d: Driver, query: string): Promise<SearchHit[]> => {
   const like = `%${query}%`;
-  const noteRows = await d.all<{ id: string }>(
-    `SELECT DISTINCT e.id FROM entities e
-     JOIN note_versions v ON v.note_id = e.id
-     WHERE e.kind = 'note' AND e.deleted_at IS NULL AND v.content LIKE ?
-       AND v.created_at = (SELECT MAX(v2.created_at) FROM note_versions v2 WHERE v2.note_id = e.id)`,
+  const noteRows = await d.all<NoteVersionCols>(
+    `${NOTE_WITH_VERSION} WHERE e.kind = 'note' AND e.deleted_at IS NULL AND v.content LIKE ?`,
     [like],
   );
-  const notes: SearchHit[] = [];
-  for (const n of noteRows) notes.push({ kind: "note", entity_id: n.id, version: await resolveVersion(d, n.id, null) });
+  const notes: SearchHit[] = noteRows.map((r) => ({
+    kind: "note",
+    entity_id: r.entity_id,
+    version: versionOf(r, r.entity_id),
+  }));
   const threadRows = await d.all<{ id: string; title: string }>(
     `SELECT t.id, t.title FROM threads t JOIN entities e ON e.id = t.id
      WHERE e.deleted_at IS NULL AND t.title LIKE ?`,
@@ -155,6 +288,27 @@ export const search = async (d: Driver, query: string): Promise<SearchHit[]> => 
   );
   const threads: SearchHit[] = threadRows.map((t) => ({ kind: "thread", thread_id: t.id, title: t.title }));
   return [...notes, ...threads];
+};
+
+// The threads a search reaches, as ids: live threads currently placing a note whose newest version matches,
+// then live threads whose title matches, each once. Two statements however many hits (`search` followed by a
+// lookup per matching note was a worker round trip per hit).
+export const searchThreadIds = async (d: Driver, query: string): Promise<string[]> => {
+  const like = `%${query}%`;
+  const byNote = await d.all<{ id: string }>(
+    `SELECT DISTINCT m.thread_id AS id FROM entities ne
+     JOIN note_versions v ON v.id = (SELECT id FROM note_versions WHERE note_id = ne.id ORDER BY created_at DESC, id DESC LIMIT 1)
+     JOIN messages m ON m.note_id = ne.id AND m.removed_at IS NULL
+     JOIN entities me ON me.id = m.id AND me.deleted_at IS NULL
+     JOIN entities te ON te.id = m.thread_id AND te.deleted_at IS NULL
+     WHERE ne.kind = 'note' AND ne.deleted_at IS NULL AND v.content LIKE ?`,
+    [like],
+  );
+  const byTitle = await d.all<{ id: string }>(
+    "SELECT t.id FROM threads t JOIN entities e ON e.id = t.id WHERE e.deleted_at IS NULL AND t.title LIKE ?",
+    [like],
+  );
+  return [...new Set([...byNote, ...byTitle].map((r) => r.id))];
 };
 
 export type OtherThreadRow = { message_id: string; thread_id: string; thread_title: string };
@@ -340,19 +494,73 @@ export type AttachedNoteRow = { link: LinkRow; message_id: string; note_id: stri
 // `linksFor` per message (N+1). "Live" here means both the link's own entity and the note's entity have no
 // `deleted_at` (delete tombstones both, per "Round 5 C11").
 export const annotationsFor = async (d: Driver, threadId: string): Promise<AttachedNoteRow[]> => {
-  const messageIds = await orderedMessageIds(d, threadId);
-  if (!messageIds.length) return [];
-  const placeholders = messageIds.map(() => "?").join(",");
-  const rows = await d.all<LinkRow>(
-    `SELECT l.* FROM links l
+  const rows = await d.all<LinkRow & VersionCols>(
+    `SELECT l.*, ${VERSION_COLS} FROM links l
      JOIN entities le ON le.id = l.id
      JOIN entities ne ON ne.id = l.from_id
      JOIN property_values pv ON pv.target_id = l.id AND pv.set_id = ? AND pv.removed_at IS NULL
-     WHERE l.to_id IN (${placeholders}) AND le.deleted_at IS NULL AND ne.deleted_at IS NULL`,
-    [BUILTIN.attached, ...messageIds],
+     LEFT JOIN note_versions v ON v.id = ${versionIdOf("l.pin_version_id", "l.from_id")}
+     WHERE l.to_id IN (
+         SELECT m.id FROM messages m JOIN entities me ON me.id = m.id
+         WHERE m.thread_id = ? AND m.removed_at IS NULL AND me.deleted_at IS NULL)
+       AND le.deleted_at IS NULL AND ne.deleted_at IS NULL`,
+    [BUILTIN.attached, threadId],
   );
-  const out: AttachedNoteRow[] = [];
-  for (const link of rows)
-    out.push({ link, message_id: link.to_id, note_id: link.from_id, version: await resolveVersion(d, link.from_id, link.pin_version_id) });
-  return out;
+  return rows.map((r) => {
+    const { v_id, v_note_id, v_parent_id, v_content, v_author, v_created_at, v_rev, ...link } = r;
+    return { link, message_id: link.to_id, note_id: link.from_id, version: versionOf(r, link.from_id) };
+  });
+};
+
+// Pinned references (`pin_version_id`) whose note has since gained a newer version: the "stale" test of
+// `isReferenceStale` as a join condition, for a `note_versions pv` row that is the pinned version.
+export const STALE_PIN_SQL = "pv.id != (SELECT id FROM note_versions WHERE note_id = pv.note_id ORDER BY created_at DESC, id DESC LIMIT 1)";
+
+export type TodoScanRow = {
+  id: string;
+  thread_id: string;
+  content: string;
+  /** The message entity's `created_at`. */
+  created_at: number;
+  /** Newest version's `created_at`, when the note has a version besides the shown one. */
+  edited_at: number | null;
+  todo: { done: number; updated_at: number } | null;
+};
+
+// The messages the Todos lens has to read: every live message in a live thread that carries a `todos` row or
+// whose text could hold a `/todo` command, `/todos` group or `[ ]` checkbox line (a superset of what
+// `lib/todos.ts` parses; the parser stays the judge). One statement for the whole database, where reading
+// every message of every thread was a few worker round trips each. Threads newest-updated first.
+export const todoScan = async (d: Driver): Promise<TodoScanRow[]> => {
+  const rows = await d.all<{
+    id: string;
+    thread_id: string;
+    content: string | null;
+    created_at: number;
+    edited_at: number | null;
+    todo_done: number | null;
+    todo_updated_at: number | null;
+  }>(
+    `SELECT m.id, m.thread_id, v.content, e.created_at, td.done AS todo_done, td.updated_at AS todo_updated_at,
+       CASE WHEN EXISTS (SELECT 1 FROM note_versions x WHERE x.note_id = m.note_id AND x.id != v.id)
+         THEN (SELECT MAX(created_at) FROM note_versions x WHERE x.note_id = m.note_id) END AS edited_at
+     FROM messages m
+     JOIN entities e ON e.id = m.id AND e.deleted_at IS NULL
+     JOIN threads t ON t.id = m.thread_id
+     JOIN entities te ON te.id = t.id AND te.deleted_at IS NULL
+     LEFT JOIN note_versions v ON v.id = ${versionIdOf("m.pin_version_id", "m.note_id")}
+     LEFT JOIN todos td ON td.target_id = m.id
+     WHERE m.removed_at IS NULL
+       AND (td.target_id IS NOT NULL OR v.content LIKE '%todo%' OR v.content LIKE '%[ %' OR v.content LIKE '%[]%'
+            OR v.content LIKE '%[x%' OR v.content LIKE '%[' || char(9) || '%')
+     ORDER BY t.updated_at DESC, t.id, e.created_at, m.id`,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    thread_id: r.thread_id,
+    content: r.content ?? "",
+    created_at: r.created_at,
+    edited_at: r.edited_at,
+    todo: r.todo_done === null ? null : { done: r.todo_done, updated_at: r.todo_updated_at ?? 0 },
+  }));
 };

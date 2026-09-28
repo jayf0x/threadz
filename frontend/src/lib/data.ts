@@ -1,4 +1,5 @@
 import {
+  allEntries,
   allInsights,
   allNotes,
   BUILTIN,
@@ -10,7 +11,7 @@ import {
   otherThreadsForNote as coreOtherThreadsForNote,
   propertySets as corePropertySets,
   propertyValuesFor as corePropertyValuesFor,
-  search as coreSearch,
+  searchThreadIds as coreSearchThreadIds,
   todos as coreTodos,
   type Driver,
   type Insight,
@@ -20,11 +21,14 @@ import {
   mapTracks,
   orderedMessageIds,
   pool,
+  type ThreadEntry,
+  threadEntries,
   threadView,
+  todoScan,
   type ValueType,
 } from "@threadz/core";
 
-import { emitChange } from "./changeSignal";
+import { emitChange, onChange } from "./changeSignal";
 import { openPhoneDb } from "./phoneDb";
 import type { Annotation, Link, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
 
@@ -48,9 +52,30 @@ const driver = async (): Promise<Driver> => (await getPhoneDb()).driver;
 
 const uuid = () => crypto.randomUUID();
 
+// Reads that several panels make of the same state (Home and Todos both scan the todos, the index and Home both list
+// threads, and a panel mounts again each time its tab opens) run once until the next change signal. Every write and
+// every sync that moved rows emits one, and that ends the sharing: a read started after a write never gets an answer
+// to one started before it.
+let generation = 0;
+onChange(() => {
+  generation++;
+});
+const shared = <T>(read: () => Promise<T>): (() => Promise<T>) => {
+  let last: { generation: number; result: Promise<T> } | null = null;
+  return () => {
+    if (last && last.generation === generation) return last.result;
+    const mine = { generation, result: read() };
+    last = mine;
+    mine.result.catch(() => {
+      if (last === mine) last = null;
+    });
+    return mine.result;
+  };
+};
+
 // --- reading -------------------------------------------------------------------------------
 
-export const listThreads = async (): Promise<Thread[]> => {
+export const listThreads = shared(async (): Promise<Thread[]> => {
   const d = await driver();
   const rows = await d.all<{ id: string; title: string; created_at: number; updated_at: number }>(
     `SELECT t.id, t.title, e.created_at, t.updated_at FROM threads t
@@ -59,7 +84,7 @@ export const listThreads = async (): Promise<Thread[]> => {
      ORDER BY t.updated_at DESC`,
   );
   return rows.map((r) => ({ id: r.id, title: r.title, createdAt: r.created_at, updatedAt: r.updated_at }));
-};
+});
 
 export const getThread = async (id: string): Promise<Thread | null> => {
   const d = await driver();
@@ -71,71 +96,78 @@ export const getThread = async (id: string): Promise<Thread | null> => {
   return row ? { id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at } : null;
 };
 
-// A note's other, earlier versions (oldest first) plus whether the newest one counts as "edited"
-// (more than one version ever written). N+1 queries — fine at POC scale; the frozen `threadView`
-// query intentionally returns only the live/pinned version, so history is fetched alongside it here.
-const versionHistory = async (d: Driver, noteId: string, currentId: string) => {
-  const rows = await d.all<{ id: string; content: string; created_at: number }>(
-    "SELECT id, content, created_at FROM note_versions WHERE note_id = ? ORDER BY created_at, id",
-    [noteId],
-  );
-  const edits: Version[] = rows
-    .filter((r) => r.id !== currentId)
-    .map((r) => ({ content: r.content, at: r.created_at }));
-  const editedAt = edits.length ? (rows.at(-1)?.created_at ?? null) : null;
-  return { edits, editedAt };
-};
+// A core `ThreadEntry` in the shape `EntryRow`/`lib/todos.ts`/`lib/versions.ts` already expect (see
+// lib/types.ts's `Message` for why it stays close to v1's shape). `seq` is the message's position in display
+// order, replacing v1's stored column.
+const toMessage = (e: ThreadEntry, seq: number): Message => ({
+  id: e.message.id,
+  threadId: e.message.thread_id,
+  role: e.version.author,
+  content: e.version.content,
+  createdAt: e.created_at,
+  seq,
+  meta: e.todo ? { todo: { done: !!e.todo.done } } : null,
+  editedAt: e.edited_at,
+  edits: e.edits.map((v) => ({ content: v.content, at: v.created_at })),
+  metaEditedAt: e.todo?.updated_at ?? null,
+});
 
-const todoFor = async (d: Driver, targetId: string) => {
-  const [row] = await d.all<{ done: number; updated_at: number }>(
-    "SELECT done, updated_at FROM todos WHERE target_id = ?",
-    [targetId],
-  );
-  return row
-    ? { meta: { todo: { done: !!row.done } }, metaEditedAt: row.updated_at }
-    : { meta: null, metaEditedAt: null };
-};
-
-// A thread's messages, oldest first, in the shape `EntryRow`/`lib/todos.ts`/`lib/versions.ts`
-// already expect (see lib/types.ts's `Message` for why it stays close to v1's shape). `seq` is
-// derived from `orderedMessageIds`'s position, replacing v1's stored column.
+// A thread's messages, oldest first: four statements however long the thread is (`core.threadEntries`).
 export const threadMessages = async (threadId: string): Promise<Message[]> => {
   const d = await driver();
-  const rows = await threadView(d, threadId);
-  const out: Message[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row) continue;
-    const { message, version } = row;
-    const [entity] = await d.all<{ created_at: number }>("SELECT created_at FROM entities WHERE id = ?", [message.id]);
-    const { edits, editedAt } = await versionHistory(d, message.note_id, version.id);
-    const { meta, metaEditedAt } = await todoFor(d, message.id);
-    out.push({
-      id: message.id,
-      threadId: message.thread_id,
-      role: version.author,
-      content: version.content,
-      createdAt: entity?.created_at ?? version.created_at,
-      seq: i + 1,
-      meta,
-      editedAt,
-      edits,
-      metaEditedAt,
-    });
-  }
-  return out;
+  return (await threadEntries(d, threadId)).map((e, i) => toMessage(e, i + 1));
 };
 
 // Every thread's messages, flattened — what a cross-thread scan (References autocomplete's local
-// search, the Todos lens's `/todo` line scan) needs in place of v1's `exportSnapshot`. There is no
-// JSON snapshot any more (direction.md's "Device storage and export": a full device backup is now
-// the phone's own `.sqlite` bytes, via `phoneDb.dump()`/`exportFile()`), so this is a plain live read.
+// search, image GC) needs in place of v1's `exportSnapshot`. There is no JSON snapshot any more
+// (direction.md's "Device storage and export": a full device backup is now the phone's own `.sqlite`
+// bytes, via `phoneDb.dump()`/`exportFile()`), so this is a plain live read: four statements in all.
 export const allMessages = async (): Promise<{ threads: Thread[]; messages: Message[] }> => {
+  const d = await driver();
   const threads = await listThreads();
-  const messages: Message[] = [];
-  for (const t of threads) messages.push(...(await threadMessages(t.id)));
+  const byThread = await allEntries(d);
+  const messages = threads.flatMap((t) => (byThread.get(t.id) ?? []).map((e, i) => toMessage(e, i + 1)));
   return { threads, messages };
 };
+
+// What the image GC keeps images for: every version (kept edits included) of the notes live messages place in
+// live threads, reduced to the ones that mention an image; `null` when the device has no live message at all
+// (nothing to judge by, so nothing to sweep). Two statements, and only the matching rows come back.
+export const imageBearingTexts = async (): Promise<string[] | null> => {
+  const d = await driver();
+  const placed = `SELECT m.note_id FROM messages m
+    JOIN entities me ON me.id = m.id AND me.deleted_at IS NULL
+    JOIN entities te ON te.id = m.thread_id AND te.deleted_at IS NULL
+    WHERE m.removed_at IS NULL`;
+  const [any] = await d.all<{ one: number }>(`SELECT 1 AS one FROM (${placed}) LIMIT 1`);
+  if (!any) return null;
+  const rows = await d.all<{ content: string }>(
+    `SELECT v.content FROM note_versions v WHERE v.content LIKE '%img:%' AND v.note_id IN (${placed})`,
+  );
+  return rows.map((r) => r.content);
+};
+
+// What the Todos lens reads instead of `allMessages`: only the messages that can hold a todo (a flagged
+// message, or text with a `/todo`, `/todos` or checkbox line), without their edit history (`core.todoScan`).
+// `lib/todos.ts`'s parser is still the judge of what counts.
+export const todoMessages = shared(async (): Promise<{ threads: Thread[]; messages: Message[] }> => {
+  const d = await driver();
+  const [threads, rows] = await Promise.all([listThreads(), todoScan(d)]);
+  const messages = rows.map(
+    (r, i): Message => ({
+      id: r.id,
+      threadId: r.thread_id,
+      role: "user",
+      content: r.content,
+      createdAt: r.created_at,
+      seq: i + 1,
+      meta: r.todo ? { todo: { done: !!r.todo.done } } : null,
+      editedAt: r.edited_at,
+      metaEditedAt: r.todo?.updated_at ?? null,
+    }),
+  );
+  return { threads, messages };
+});
 
 // Which of a thread's live messages have a row (the placement itself, or its note's newest version)
 // still waiting for main to stamp a `rev` — replaces v1's per-message `dirty` flag for the "only on
@@ -157,6 +189,20 @@ export const pendingMessageIds = async (threadId: string): Promise<Set<string>> 
 // array across every message — `ThreadView.tsx` builds its own `messageId → note` lookup from this.
 // `id` is the note's own entity id (mirrors `Message.id` being the placement id, content pulled from
 // versions); `edits`/`editedAt` come from that note's version history, same as `Message`'s.
+// A note's other, earlier versions (oldest first) plus whether the newest one counts as "edited" (more than
+// one version ever written). One query per attached note: a thread has few of them.
+const versionHistory = async (d: Driver, noteId: string, currentId: string) => {
+  const rows = await d.all<{ id: string; content: string; created_at: number }>(
+    "SELECT id, content, created_at FROM note_versions WHERE note_id = ? ORDER BY created_at, id",
+    [noteId],
+  );
+  const edits: Version[] = rows
+    .filter((r) => r.id !== currentId)
+    .map((r) => ({ content: r.content, at: r.created_at }));
+  const editedAt = edits.length ? (rows.at(-1)?.created_at ?? null) : null;
+  return { edits, editedAt };
+};
+
 export const annotationsFor = async (threadId: string): Promise<Annotation[]> => {
   const d = await driver();
   const rows = await coreAnnotationsFor(d, threadId);
@@ -191,11 +237,11 @@ export const unsyncedAnnotationIds = async (threadId: string): Promise<Set<strin
 
 export type PoolItem = { entityId: string; createdAt: number; content: string };
 
-export const listPool = async (): Promise<PoolItem[]> => {
+export const listPool = shared(async (): Promise<PoolItem[]> => {
   const d = await driver();
   const rows = await pool(d);
   return rows.map((r) => ({ entityId: r.entity_id, createdAt: r.created_at, content: r.version.content }));
-};
+});
 
 // Every live note once each (placed or not) — the `[[` autocomplete's note candidates.
 export const listAllNotes = async (): Promise<PoolItem[]> => {
@@ -216,50 +262,27 @@ export type BinItem = { id: string; kind: "thread" | "note"; title: string; dele
 // or a snippet of the note's latest content.
 export const listBin = async (): Promise<BinItem[]> => {
   const d = await driver();
-  const rows = await d.all<{ id: string; kind: string; deleted_at: number }>(
-    "SELECT id, kind, deleted_at FROM entities WHERE deleted_at IS NOT NULL AND kind IN ('thread', 'note') ORDER BY deleted_at DESC",
+  const rows = await d.all<{
+    id: string;
+    kind: string;
+    deleted_at: number;
+    title: string | null;
+    content: string | null;
+  }>(
+    `SELECT e.id, e.kind, e.deleted_at, t.title,
+       (SELECT content FROM note_versions v WHERE v.note_id = e.id ORDER BY v.created_at DESC, v.id DESC LIMIT 1) AS content
+     FROM entities e LEFT JOIN threads t ON t.id = e.id
+     WHERE e.deleted_at IS NOT NULL AND e.kind IN ('thread', 'note') ORDER BY e.deleted_at DESC`,
   );
-  const out: BinItem[] = [];
-  for (const r of rows) {
-    if (r.kind === "thread") {
-      const [t] = await d.all<{ title: string }>("SELECT title FROM threads WHERE id = ?", [r.id]);
-      out.push({ id: r.id, kind: "thread", title: t?.title ?? "Untitled thread", deletedAt: r.deleted_at });
-    } else {
-      const [v] = await d.all<{ content: string }>(
-        "SELECT content FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
-        [r.id],
-      );
-      out.push({
-        id: r.id,
-        kind: "note",
-        title: (v?.content ?? "").slice(0, 80) || "Empty note",
-        deletedAt: r.deleted_at,
-      });
-    }
-  }
-  return out;
+  return rows.map((r) =>
+    r.kind === "thread"
+      ? { id: r.id, kind: "thread", title: r.title ?? "Untitled thread", deletedAt: r.deleted_at }
+      : { id: r.id, kind: "note", title: (r.content ?? "").slice(0, 80) || "Empty note", deletedAt: r.deleted_at },
+  );
 };
 
-// Thread ids matching `query`, ranked by `core.search`'s order (title hits and note-content hits
-// alike, notes resolved back to the thread(s) they're currently placed in).
-export const searchThreadIds = async (query: string): Promise<string[]> => {
-  const d = await driver();
-  const hits = await coreSearch(d, query);
-  const ids: string[] = [];
-  for (const h of hits) {
-    if (h.kind === "thread") {
-      ids.push(h.thread_id);
-      continue;
-    }
-    const rows = await d.all<{ thread_id: string }>(
-      `SELECT DISTINCT m.thread_id FROM messages m JOIN entities e ON e.id = m.id
-       WHERE m.note_id = ? AND m.removed_at IS NULL AND e.deleted_at IS NULL`,
-      [h.entity_id],
-    );
-    for (const r of rows) ids.push(r.thread_id);
-  }
-  return [...new Set(ids)];
-};
+// Thread ids matching `query` (`core.searchThreadIds`: notes' threads first, then title hits).
+export const searchThreadIds = async (query: string): Promise<string[]> => coreSearchThreadIds(await driver(), query);
 
 // Property sets on offer for `threadId` (its own scoped sets plus every global one) — the Settings
 // section lists the global ones (filter out `threadId`-scoped and, there, the built-ins too), the
@@ -713,7 +736,7 @@ export type ThreadTodoItem = {
 // Todos lens (features/todos/useTodos.ts) — `core.todos` already returns every kind generically,
 // this just resolves the `thread` ones back to a title + creation time via `listThreads`. Per
 // AGENTS.md "one tab, one job", this is Todos-only: the Threadz index never reads it.
-export const threadTodos = async (): Promise<ThreadTodoItem[]> => {
+export const threadTodos = shared(async (): Promise<ThreadTodoItem[]> => {
   const d = await driver();
   const rows = await coreTodos(d);
   const threads = await listThreads();
@@ -726,7 +749,7 @@ export const threadTodos = async (): Promise<ThreadTodoItem[]> => {
     out.push({ threadId: t.id, threadTitle: t.title, done: !!r.done, createdAt: t.createdAt, closedAt: r.updated_at });
   }
   return out;
-};
+});
 
 // The live-or-pinned version id for a note right now — same resolution core/queries.ts's private
 // `resolveVersion` does, replicated here because that helper isn't part of core's exported surface

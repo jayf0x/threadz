@@ -11,7 +11,10 @@ export type PhoneRequest =
   | { id: number; type: "importBytes"; bytes: Uint8Array }
   | { id: number; type: "close" };
 
-export type PhoneResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
+// `ms` is the time the worker spent on the request (queue wait excluded), for frontend/scripts/perf.
+export type PhoneResponse =
+  | { id: number; ok: true; result: unknown; ms?: number }
+  | { id: number; ok: false; error: string; ms?: number };
 
 // `Omit<PhoneRequest, "id">` alone collapses the union to its common keys (a well-known TS gotcha), which
 // would let a caller send e.g. `{ type: "run", bytes: ... }` and still typecheck. This distributes over

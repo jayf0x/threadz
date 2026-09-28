@@ -108,6 +108,7 @@ const handleRequest = async (msg: PhoneRequest): Promise<unknown> => {
   switch (msg.type) {
     case "open":
       db = await initSQLite(idbStorage(msg.name, { url: wasmAsyncUrl }));
+      await db.run("PRAGMA cache_size = -65536"); // 64 MB of pages: a repeat scan reads memory, not IndexedDB
       await initSchema(driverOf(db));
       return null;
     case "run":
@@ -139,9 +140,10 @@ self.onmessage = (e: MessageEvent<PhoneRequest>) => {
   const msg = e.data;
   queue = queue
     .then(async () => {
+      const start = performance.now();
       const result = await handleRequest(msg);
       const transfer = result instanceof Uint8Array ? [result.buffer] : [];
-      postMessage({ id: msg.id, ok: true, result } satisfies PhoneResponse, transfer);
+      postMessage({ id: msg.id, ok: true, result, ms: performance.now() - start } satisfies PhoneResponse, transfer);
     })
     .catch((err) => {
       postMessage({ id: msg.id, ok: false, error: errorMessage(err) } satisfies PhoneResponse);

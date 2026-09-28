@@ -129,12 +129,21 @@ export const orderedMessageIds = async (d: Driver, threadId: string) => {
      ORDER BY e.created_at, m.id`,
     [threadId],
   );
-  const liveIds = new Set(live.map((m) => m.id));
   const [row] = await d.all<Pick<ThreadOrderRow, "message_ids">>(
     "SELECT message_ids FROM thread_order WHERE thread_id = ?",
     [threadId],
   );
-  const stored = row ? (JSON.parse(row.message_ids) as string[]).filter((id) => liveIds.has(id)) : [];
+  return displayOrder(
+    live.map((m) => m.id),
+    row?.message_ids,
+  );
+};
+
+// The pure half of `orderedMessageIds`, for callers that already hold every thread's live ids (in creation
+// order) and `thread_order` rows and would otherwise pay two queries per thread.
+export const displayOrder = (liveIds: string[], storedJson: string | undefined): string[] => {
+  const live = new Set(liveIds);
+  const stored = storedJson ? (JSON.parse(storedJson) as string[]).filter((id) => live.has(id)) : [];
   const seen = new Set(stored);
-  return [...stored, ...live.map((m) => m.id).filter((id) => !seen.has(id))];
+  return [...stored, ...liveIds.filter((id) => !seen.has(id))];
 };
