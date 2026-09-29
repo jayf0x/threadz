@@ -1,3 +1,4 @@
+import { applyUpdate } from "@/features/updates";
 import { cn } from "@/lib/cn";
 import { openPanel, useSyncStatus } from "@/lib/syncEngine";
 
@@ -32,7 +33,7 @@ export const StatusPill = () => {
   return (
     <button
       type="button"
-      onClick={openPanel}
+      onClick={s.outdated ? () => void applyUpdate() : openPanel}
       title={hint}
       className={cn(
         "press flex h-11 items-center gap-2.5 rounded-full bg-muted px-4 text-sm font-medium text-foreground md:h-9",
@@ -43,7 +44,7 @@ export const StatusPill = () => {
         aria-hidden
         className={cn(
           "size-2.5 shrink-0 border",
-          s.outdated || s.unreachable
+          s.outdated || s.unreachable || s.outdated
             ? "border-foreground bg-foreground"
             : s.keepLive
               ? "rounded-full border-primary bg-primary/50"

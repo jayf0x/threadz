@@ -35,9 +35,8 @@ export default defineConfig({
       ],
     }),
     VitePWA({
-      // autoUpdate, not prompt: nothing in the app ever accepted a "prompt" update, so a new build's
-      // service worker waited forever behind the old one and an open tab kept showing the old UI.
-      registerType: "autoUpdate",
+      // prompt: a waiting build is applied only from the user's tap, and only when idle (features/updates)
+      registerType: "prompt",
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,ico}"],
         // 512px icons are photo-textured (~0.5MB together) and only read when installing — not worth precaching
