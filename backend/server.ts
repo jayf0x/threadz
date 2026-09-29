@@ -115,10 +115,12 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req) => {
         const body = await readBody(req, PushBody);
-        if (countRows(body) > 0) backupDb();
+        const carries = countRows(body) > 0;
+        if (carries) backupDb();
         const since = await currentRev();
-        await applyChanges(driver, body as unknown as Partial<Changes>);
-        const cursor = await stampRevs(driver);
+        // An empty push (a pure pull) must not bump main's rev: every other device would then see a change.
+        if (carries) await applyChanges(driver, body as unknown as Partial<Changes>);
+        const cursor = carries ? await stampRevs(driver) : since;
         const changes = await changesSince(driver, since);
         return json({ changes, cursor });
       }),

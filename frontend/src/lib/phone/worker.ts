@@ -24,6 +24,7 @@ import {
   type Table,
 } from "@threadz/core";
 import { errorMessage } from "@/lib/errors";
+import { prepareImportBytes } from "./importHeader";
 import type { PhoneRequest, PhoneResponse } from "./protocol";
 
 type SQLiteDB = Awaited<ReturnType<typeof initSQLite>>;
@@ -91,7 +92,7 @@ const streamForImport = (bytes: Uint8Array): ReadableStream<Uint8Array> => {
 const importBytes = async (bytes: Uint8Array): Promise<{ imported: number }> => {
   const temp = await initSQLite(idbStorage("phone-import-scratch.sqlite", { url: wasmAsyncUrl }));
   try {
-    await temp.sync(streamForImport(bytes));
+    await temp.sync(streamForImport(prepareImportBytes(bytes)));
     // Assigning per-table into `changes[table]` with `table: Table` (a union key) hits TS's usual
     // write-through-a-union-index restriction, so the target is treated as an untyped bag here — the
     // real per-table shape still comes from `Changes` at every other call site (core/merge.ts, TABLES).

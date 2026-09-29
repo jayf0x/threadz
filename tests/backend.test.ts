@@ -108,6 +108,13 @@ describe("POST /api/push + GET /api/changes (docs/direction.md 'Sync': diffs onl
     expect(after.cursor).toBeGreaterThanOrEqual(res.cursor);
   });
 
+  test("an empty push is a pure pull: main's rev does not move", async () => {
+    const before = await push({});
+    const again = await push({});
+    expect(again.cursor).toBe(before.cursor);
+    expect(again.changes.threads).toEqual([]);
+  });
+
   test("a replayed push is idempotent: no duplicate rows, content unchanged", async () => {
     const threadId = crypto.randomUUID();
     const noteId = crypto.randomUUID();

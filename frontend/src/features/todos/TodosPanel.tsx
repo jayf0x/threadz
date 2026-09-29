@@ -1,6 +1,7 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
 import { Circle, CircleCheck, ListFilter, ListTodo } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconSelect } from "@/components/ui/select";
@@ -40,6 +41,42 @@ export const TodosPanel = ({
   const now = Date.now();
   const visible = todos?.filter((t) => isTodoVisible(t, closedFilter, now)) ?? null;
 
+  // Windowed like ThreadView's list: thousands of rows at the `real` seed, each measured, never guessed.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: visible?.length ?? 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 64,
+    overscan: 10,
+    getItemKey: (index) => visible?.[index]?.id ?? index,
+  });
+
+  const renderTodo = (t: Todo) => {
+    // A thread-level todo's row text already IS the thread title, so its meta drops the
+    // (now redundant) thread name and keeps only the date.
+    const meta = t.kind === "thread" ? <Meta at={t.createdAt} /> : <Meta thread={t.threadTitle} at={t.createdAt} />;
+    if (t.kind === "group")
+      return (
+        <GroupCard
+          title={t.title}
+          meta={meta}
+          items={t.items}
+          onToggleItem={(item) => toggle(t, item)}
+          onOpenThread={() => onOpenThread(t.threadId, t.messageId)}
+        />
+      );
+    const text = t.kind === "line" ? stripTodoMarker(t.text) : t.kind === "thread" ? t.threadTitle : t.messageContent;
+    return (
+      <TodoRow
+        text={text}
+        done={t.done}
+        onToggle={() => toggle(t)}
+        onOpen={() => onOpenThread(t.threadId, t.kind === "thread" ? undefined : t.messageId)}
+        meta={meta}
+      />
+    );
+  };
+
   return (
     <>
       <header className="px-5 pb-3 pt-6">
@@ -50,36 +87,27 @@ export const TodosPanel = ({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-6">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-6">
         {visible?.length === 0 && <Empty icon={ListTodo}>{closedFilter === "never" ? "All done" : "No todos"}</Empty>}
-        <ul>
-          {visible?.map((t) => {
-            // A thread-level todo's row text already IS the thread title, so its meta drops the
-            // (now redundant) thread name and keeps only the date.
-            const meta =
-              t.kind === "thread" ? <Meta at={t.createdAt} /> : <Meta thread={t.threadTitle} at={t.createdAt} />;
-            if (t.kind === "group")
-              return (
-                <GroupCard
-                  key={t.id}
-                  title={t.title}
-                  meta={meta}
-                  items={t.items}
-                  onToggleItem={(item) => toggle(t, item)}
-                  onOpenThread={() => onOpenThread(t.threadId, t.messageId)}
-                />
-              );
-            const text =
-              t.kind === "line" ? stripTodoMarker(t.text) : t.kind === "thread" ? t.threadTitle : t.messageContent;
+        <ul style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+          {virtualizer.getVirtualItems().map((row) => {
+            const t = visible?.[row.index];
+            if (!t) return null;
             return (
-              <TodoRow
-                key={t.id}
-                text={text}
-                done={t.done}
-                onToggle={() => toggle(t)}
-                onOpen={() => onOpenThread(t.threadId, t.kind === "thread" ? undefined : t.messageId)}
-                meta={meta}
-              />
+              <li
+                key={row.key}
+                data-index={row.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${row.start}px)`,
+                }}
+              >
+                {renderTodo(t)}
+              </li>
             );
           })}
         </ul>
@@ -162,7 +190,7 @@ const TodoRow = ({
   onOpen: () => void;
   meta: ReactNode;
 }) => (
-  <li className="flex min-h-14 items-stretch border-b border-rule pl-2">
+  <div className="flex min-h-14 items-stretch border-b border-rule pl-2">
     <CheckButton done={done} onToggle={onToggle} label={done ? "Mark todo open" : "Mark todo done"} />
     <button type="button" onClick={onOpen} className="press-row min-w-0 flex-1 py-2.5 pl-1 pr-5 text-left">
       <span
@@ -175,7 +203,7 @@ const TodoRow = ({
       </span>
       {meta}
     </button>
-  </li>
+  </div>
 );
 
 // A `/todos <title>` group: one card, its own header (tap to jump, like a plain row) and each item
@@ -194,7 +222,7 @@ const GroupCard = ({
   onToggleItem: (item: ParsedTodoItem) => void;
   onOpenThread: () => void;
 }) => (
-  <li className="mx-3 my-2 overflow-hidden rounded-2xl border border-border surface-sheen">
+  <div className="mx-3 my-2 overflow-hidden rounded-2xl border border-border surface-sheen">
     <button type="button" onClick={onOpenThread} className="press-row block w-full min-w-0 px-4 pb-1.5 pt-3 text-left">
       <span className="line-clamp-2 break-words text-[15px] font-medium leading-snug text-foreground">{title}</span>
       {meta}
@@ -218,5 +246,5 @@ const GroupCard = ({
         </li>
       ))}
     </ul>
-  </li>
+  </div>
 );

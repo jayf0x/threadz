@@ -347,6 +347,10 @@ home is a navigation dashboard; link reasons are always optional.
 5. **Performance budgets** at the seeded `real` volume (headless Chromium, iPhone size, 4x CPU throttle): open thread
    <150ms, search <200ms, Todos <200ms, Home/insight <300ms, Map first paint <500ms, keep-live sync with nothing to
    send <100ms.
+6. **`/todos` groups count toward the map's todo filter**, because they count in the Todos lens (C15); one rule for both.
+7. **The `real` seed stays stale-heavy** (~65% of threads untouched for 30+ days): it is the stress case, not a portrait of
+   a person. Insight counts on it read large on purpose.
+8. **Page cache stays 64 MB** until measured on a device (see `backlog.md` "Device-only verification").
 
 (The user delegated 1-3 to the lead: "most scalable yet pragmatic". The defaults were chosen.)
 

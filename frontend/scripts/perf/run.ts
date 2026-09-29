@@ -186,6 +186,15 @@ const shown = "const shown = (e) => e.getClientRects().length > 0;";
 const scenarios = (targets: ReturnType<typeof pickTargets>) => ({
   // Tap a thread row; done when its first message's text is on screen.
   thread: async (page: Page) => {
+    // The index is windowed, so scroll (untimed) until the target row is mounted, as a person would.
+    await page.evaluate(async (title) => {
+      const find = () => [...document.querySelectorAll("button[aria-current]")].find((b) => b.textContent?.includes(title));
+      const list = document.querySelector("button[aria-current]")?.closest(".overflow-y-auto");
+      for (let y = 0; list && !find() && y < list.scrollHeight; y += list.clientHeight / 2) {
+        list.scrollTop = y;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }, targets.thread.title);
     const sample = await measure(
       page,
       `[...document.querySelectorAll('button[aria-current]')].find((b) => b.textContent.includes(${JSON.stringify(targets.thread.title)})).click();`,

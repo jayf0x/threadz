@@ -32,6 +32,7 @@
       "backend/**/*.ts",
       "frontend/src/**/*.{ts,tsx}",
       "frontend/scripts/*.ts",
+      "scripts/**/*.ts",
       "frontend/vite.config.ts",
       "tests/**/*.ts"
     ]

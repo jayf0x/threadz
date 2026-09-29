@@ -21,7 +21,8 @@ const HOUR = 3_600_000;
 const END_MAX = NOW - 6 * HOUR;
 
 const mulberry32 = (seed: number) => () => {
-  let t = (seed += 0x6d2b79f5);
+  seed += 0x6d2b79f5;
+  let t = seed;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -30,31 +31,112 @@ const mulberry32 = (seed: number) => () => {
 // --- vocabulary ----------------------------------------------------------------------------------------
 
 const TOPICS = [
-  "Garden", "Trip planning", "Recipes", "Book notes", "Fitness", "Home renovation", "Side project", "Finances",
-  "Guitar", "Learning Rust", "Photography", "Health", "Reading list", "Ideas", "Car", "Meal prep", "Spanish",
-  "Gift ideas", "Meetings", "Sourdough", "Running", "Budget", "Woodworking", "Podcast", "Career", "Moving",
+  "Garden",
+  "Trip planning",
+  "Recipes",
+  "Book notes",
+  "Fitness",
+  "Home renovation",
+  "Side project",
+  "Finances",
+  "Guitar",
+  "Learning Rust",
+  "Photography",
+  "Health",
+  "Reading list",
+  "Ideas",
+  "Car",
+  "Meal prep",
+  "Spanish",
+  "Gift ideas",
+  "Meetings",
+  "Sourdough",
+  "Running",
+  "Budget",
+  "Woodworking",
+  "Podcast",
+  "Career",
+  "Moving",
 ];
 const ASPECTS = [
-  "plan", "log", "questions", "shopping", "research", "ideas", "notes", "checklist", "review", "goals", "drafts",
-  "quotes", "mistakes", "next steps", "inbox",
+  "plan",
+  "log",
+  "questions",
+  "shopping",
+  "research",
+  "ideas",
+  "notes",
+  "checklist",
+  "review",
+  "goals",
+  "drafts",
+  "quotes",
+  "mistakes",
+  "next steps",
+  "inbox",
 ];
 const SUBJECTS = [
-  "the plan", "this approach", "the schedule", "my routine", "the draft", "that idea", "the budget", "the recipe",
-  "our setup", "the old method", "the second option", "her suggestion", "the tool", "this week", "the deadline",
+  "the plan",
+  "this approach",
+  "the schedule",
+  "my routine",
+  "the draft",
+  "that idea",
+  "the budget",
+  "the recipe",
+  "our setup",
+  "the old method",
+  "the second option",
+  "her suggestion",
+  "the tool",
+  "this week",
+  "the deadline",
 ];
 const VERBS = [
-  "needs a second look", "works better than expected", "keeps slipping", "is worth revisiting", "feels too slow",
-  "should be simplified", "still has gaps", "paid off", "got harder", "clicked today", "is on hold", "needs more data",
+  "needs a second look",
+  "works better than expected",
+  "keeps slipping",
+  "is worth revisiting",
+  "feels too slow",
+  "should be simplified",
+  "still has gaps",
+  "paid off",
+  "got harder",
+  "clicked today",
+  "is on hold",
+  "needs more data",
 ];
 const TAILS = [
-  "before the weekend", "once the rest is settled", "if the weather holds", "unless something changes",
-  "after talking it through", "compared to last month", "for now", "with a small tweak", "in the long run",
-  "and that is fine", "which surprised me", "so I wrote it down",
+  "before the weekend",
+  "once the rest is settled",
+  "if the weather holds",
+  "unless something changes",
+  "after talking it through",
+  "compared to last month",
+  "for now",
+  "with a small tweak",
+  "in the long run",
+  "and that is fine",
+  "which surprised me",
+  "so I wrote it down",
 ];
 const ITEMS = [
-  "call the dentist", "book the train", "buy filament", "email the landlord", "renew passport", "water the plants",
-  "back up the photos", "order flour", "draft the outline", "review the pull request", "cancel the trial",
-  "pick up the parcel", "sketch the layout", "read chapter four", "update the spreadsheet", "fix the shelf",
+  "call the dentist",
+  "book the train",
+  "buy filament",
+  "email the landlord",
+  "renew passport",
+  "water the plants",
+  "back up the photos",
+  "order flour",
+  "draft the outline",
+  "review the pull request",
+  "cancel the trial",
+  "pick up the parcel",
+  "sketch the layout",
+  "read chapter four",
+  "update the spreadsheet",
+  "fix the shelf",
 ];
 const LINKS = ["https://example.com/guide", "https://en.wikipedia.org/wiki/Sourdough", "https://news.example.org/a/42"];
 const STATUSES = ["todo", "doing", "done", "blocked"];
@@ -150,7 +232,10 @@ export const generate = (scale: Scale): Changes => {
   }
   const twCum: number[] = [];
   let twAcc = 0;
-  for (const t of threads) twCum.push((twAcc += t.weight));
+  for (const t of threads) {
+    twAcc += t.weight;
+    twCum.push(twAcc);
+  }
   const pickThread = () => {
     const x = rng() * twAcc;
     let lo = 0;
@@ -273,7 +358,7 @@ export const generate = (scale: Scale): Changes => {
 
   // -- content
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const sentence = () => `${cap(pick(SUBJECTS))} ${pick(VERBS)} ${chance(0.6) ? pick(TAILS) : ""}`.trim() + ".";
+  const sentence = () => `${`${cap(pick(SUBJECTS))} ${pick(VERBS)} ${chance(0.6) ? pick(TAILS) : ""}`.trim()}.`;
   const paragraph = (n = 2 + int(3)) => Array.from({ length: n }, sentence).join(" ");
   const image = () => `![](img:${hex(64)}#${pick(SIZES)})`;
   const todoLine = () => (chance(0.3) ? `~~/todo ${pick(ITEMS)}~~` : `/todo ${pick(ITEMS)}`);
@@ -351,14 +436,7 @@ export const generate = (scale: Scale): Changes => {
   // -- entities and placements
   const deletedNote = new Set<number>();
   const liveMsgs: { id: string; thread: number; noteIdx: number; created: number; removed: boolean }[] = [];
-  const messageRow = (
-    id: string,
-    ti: number,
-    noteIdx: number,
-    created: number,
-    primary: boolean,
-    multi: boolean,
-  ) => {
+  const messageRow = (id: string, ti: number, noteIdx: number, created: number, primary: boolean, multi: boolean) => {
     const n = notes[noteIdx] as NoteSk;
     const t = threads[ti] as ThreadSk;
     let removedAt: number | null = null;
@@ -368,7 +446,14 @@ export const generate = (scale: Scale): Changes => {
       if (primary && !multi && chance(0.4)) deletedNote.add(noteIdx);
     }
     const pin = chance(0.015) && n.vids.length > 1 ? (n.vids[0] as string) : null;
-    c.entities.push({ id, kind: "message", created_at: created, updated_at: removedAt ?? created, deleted_at: removedAt, rev: null });
+    c.entities.push({
+      id,
+      kind: "message",
+      created_at: created,
+      updated_at: removedAt ?? created,
+      deleted_at: removedAt,
+      rev: null,
+    });
     c.messages.push({
       id,
       thread_id: t.id,
@@ -409,7 +494,14 @@ export const generate = (scale: Scale): Changes => {
   for (const t of threads) {
     const created = Math.min(t.start, t.first) - int(30) * 60_000 - 60_000;
     const deletedAt = deletedThread.get(t.id) ?? null;
-    c.entities.push({ id: t.id, kind: "thread", created_at: created, updated_at: deletedAt ?? t.upd, deleted_at: deletedAt, rev: null });
+    c.entities.push({
+      id: t.id,
+      kind: "thread",
+      created_at: created,
+      updated_at: deletedAt ?? t.upd,
+      deleted_at: deletedAt,
+      rev: null,
+    });
     c.threads.push({
       id: t.id,
       title: `${pick(TOPICS)} ${pick(ASPECTS)}`,
@@ -418,7 +510,10 @@ export const generate = (scale: Scale): Changes => {
     });
     if (chance(0.15)) {
       // a manual reorder: chronological with a few swaps
-      const ids = t.msgs.slice().sort((a, b) => a.created - b.created).map((m) => m.id);
+      const ids = t.msgs
+        .slice()
+        .sort((a, b) => a.created - b.created)
+        .map((m) => m.id);
       for (let s = 0; s < 1 + int(3) && ids.length > 1; s++) {
         const i = int(ids.length);
         const j = int(ids.length);
@@ -463,7 +558,8 @@ export const generate = (scale: Scale): Changes => {
       if (to === from) continue;
       toId = to.id;
       at = Math.max(at, to.created);
-      if (chance(0.25)) pin = to.vids.length > 1 && chance(0.6) ? (to.vids[0] as string) : (to.vids[to.vids.length - 1] as string);
+      if (chance(0.25))
+        pin = to.vids.length > 1 && chance(0.6) ? (to.vids[0] as string) : (to.vids[to.vids.length - 1] as string);
     }
     at = Math.min(END_MAX, at + Math.floor(rng() * 3 * DAY_MS) + 1000);
     const id = uuid();
@@ -476,7 +572,14 @@ export const generate = (scale: Scale): Changes => {
     if (!host.msgId) continue;
     const id = uuid();
     linkEntity(id, a.note.created);
-    c.links.push({ id, from_id: a.note.id, to_id: host.msgId, pin_version_id: null, updated_at: a.note.created, rev: null });
+    c.links.push({
+      id,
+      from_id: a.note.id,
+      to_id: host.msgId,
+      pin_version_id: null,
+      updated_at: a.note.created,
+      rev: null,
+    });
     addValue(BUILTIN.attached, id, null, a.note.created);
   }
   for (const n of notes) {
@@ -484,13 +587,26 @@ export const generate = (scale: Scale): Changes => {
     const src = notes[n.copyOf] as NoteSk;
     const id = uuid();
     linkEntity(id, n.created);
-    c.links.push({ id, from_id: n.id, to_id: src.id, pin_version_id: src.vids[0] as string, updated_at: n.created, rev: null });
+    c.links.push({
+      id,
+      from_id: n.id,
+      to_id: src.id,
+      pin_version_id: src.vids[0] as string,
+      updated_at: n.created,
+      rev: null,
+    });
     addValue(BUILTIN.copiedFrom, id, null, n.created);
   }
 
   // -- property sets and values
   const setAt = NOW - SPAN_DAYS * DAY_MS;
-  const sets: { id: string; name: string; type: "none" | "text" | "number" | "date"; rule?: "counter"; slot: number }[] = [
+  const sets: {
+    id: string;
+    name: string;
+    type: "none" | "text" | "number" | "date";
+    rule?: "counter";
+    slot: number;
+  }[] = [
     { id: uuid(), name: "Status", type: "text", slot: 1 },
     { id: uuid(), name: "Area", type: "text", slot: 2 },
     { id: uuid(), name: "Priority", type: "number", slot: 3 },
@@ -553,12 +669,16 @@ export const generate = (scale: Scale): Changes => {
   for (const t of busy) {
     const s = { id: uuid(), name: "Chapter", type: "none" as const, rule: "counter" as const, slot: 1 + int(8) };
     addSet(s, t.id, t.start);
-    for (const m of t.msgs.slice().sort((a, b) => a.created - b.created).slice(0, 12))
+    for (const m of t.msgs
+      .slice()
+      .sort((a, b) => a.created - b.created)
+      .slice(0, 12))
       addValue(s.id, m.id, null, Math.min(END_MAX, m.created + 1000));
   }
   const counted = threads.filter((t) => t.msgs.length >= 4).slice(0, Math.max(2, Math.round(target.threads / 50)));
   for (const t of counted)
-    for (const m of t.msgs.slice().sort((a, b) => a.created - b.created)) addValue(step.id, m.id, null, Math.min(END_MAX, m.created + 1000));
+    for (const m of t.msgs.slice().sort((a, b) => a.created - b.created))
+      addValue(step.id, m.id, null, Math.min(END_MAX, m.created + 1000));
 
   return c;
 };

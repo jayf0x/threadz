@@ -103,6 +103,9 @@ multi-thread notes, attached/copied-from links, counter sets) with two years of 
 fixed "now" (2026-09-28), so recent-window insights only make sense against that date. Same scale, same rows.
 Import it in Settings, or point `THREADZ_DB` at it. Rows have `rev` NULL so an import keeps them pending and the
 next sync pushes them; for main pass `--stamp` (runs `stampRevs`) so a phone can pull them.
+Import also takes a WAL-mode file (one main's backend has opened): the header is read as a rollback-journal database,
+so rows still in an un-checkpointed `-wal` sidecar are not in the import. Checkpoint first
+(`PRAGMA wal_checkpoint(TRUNCATE)`) if in doubt; a file that is not SQLite fails with a clear message.
 
 ## Test
 

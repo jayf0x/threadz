@@ -47,12 +47,12 @@ should compare against the "after" column.
 
 | lens (budget) | before | after | est. worker 4x | worker round trips before -> after |
 |---|---|---|---|---|
-| open thread, tap to first text (<150ms) | 1151ms | 766ms | 875ms | 954 -> 62 |
+| open thread, tap to first text (<150ms) | 1151ms | 321ms | 427ms | 954 -> 56 |
 | search, first request to last reply (<200ms) | 31977ms | 37ms | 147ms | 52,728 -> 2 |
-| Todos tab tap to list (<200ms) | never (>30s) | 232ms | 232ms | 50,310 -> 0 |
-| Home tap to rows (<300ms) | 253ms | 231ms | 231ms | 91 -> 0 |
-| Map first paint (<500ms) | 13,436ms | 227ms | 567ms | 15,597 -> 5 |
-| keep-live sync, nothing to send (<100ms) | never (>30s) | 58ms | 88ms | 53,388 -> 22 |
+| Todos tab tap to list (<200ms) | never (>30s) | 9ms | 9ms | 50,310 -> 0 |
+| Home tap to rows (<300ms) | 253ms | 9ms | 9ms | 91 -> 0 |
+| Map first paint (<500ms) | 13,436ms | 247ms | 585ms | 15,597 -> 5 |
+| keep-live sync, nothing to send (<100ms) | never (>30s) | 44ms | 73ms | 53,388 -> 22 |
 
 At load (cold reload, time since navigation): index list 2.4s -> 1.6s; Todos data never (within 10s) -> 1.6s; Home
 data 11.7s -> 3.7s. JS heap after load 1046 MB -> 135 MB; import of the 96k-row seed 8.6s -> 3.6s.
@@ -68,11 +68,15 @@ map orders); the search scans each note's newest version, not every version; 64 
 lens); concurrent identical reads share one query until the next change signal; the image GC reads only image-bearing
 versions and waits 15s instead of scanning every message at the first editor mount.
 
+Todos list and thread index are now virtualized (`@tanstack/react-virtual`, measured rows like `ThreadView`): DOM after
+load 100k nodes -> 18k, JS heap 135 -> 61 MB, Todos and Home taps are just a tab flip. (The harness scrolls the index,
+untimed, until its target row is mounted.)
+
 Still over budget, and not a query problem:
-- **Open thread (766ms):** data is ready ~50ms after the tap (worker exec 37ms); the rest is main-thread work that
-  scales with the whole page (100k DOM nodes: 5k Todos rows, 2k index rows, all panels mounted). At `small` scale the
-  same tap is 259ms. Virtualize the Todos list (and the index) or unmount hidden panels.
-- **Todos tab tap (232ms):** rendering ~5k rows (3,098 open, 1,981 closed) unvirtualized; the data is already there.
+- **Open thread (321ms, budget 150):** the tap-to-first-request gap is ~70ms of main-thread work, the data is back
+  ~90ms later, and the rest is each row's lazily loaded Milkdown editor mounting (the text only counts once an editor
+  has rendered) plus two worker queries per row (links, property values: N+1 in `EntryRow`). Next: batch those two
+  per-thread (`core/queries.ts`) and render the first rows as plain markdown before the editor mounts.
 - `Menu` built every item element eagerly and PoolPanel gave every Pool note a menu of every thread: 700 MB of
   retained React elements at `real` and a renderer crash at `large` (fixed here: `items` may be a function, called
   only while the menu is open).
@@ -116,6 +120,8 @@ should be at or under these.
   IndexedDB doesn't error.
 - [ ] Safari "maximum call stack size exceeded" (PowerSync, May 2026): open Search, Todos, Home, Map and a thread
   with 100+ messages; none throws. Also try `--scale large` (~140 MB) if the first passes.
+- [ ] Worker SQLite page cache (64 MB, `lib/phone/worker.ts`): right for `real`, too small for `large`; watch for
+  memory-pressure reloads on an older iPhone and shrink or make it adaptive if it happens.
 - [ ] Survives a week: leave the installed PWA closed for 7 days, reopen, and check the data is still there
   (Safari can evict idle storage).
 

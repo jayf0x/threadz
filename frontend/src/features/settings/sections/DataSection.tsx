@@ -2,7 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Download, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getPhoneDb } from "@/lib/data";
+import { getPhoneDb, importDatabaseFile } from "@/lib/data";
 import { Section } from "./SettingsSection";
 
 const EXPORTED_KEY = "threadz.lastExport";
@@ -61,8 +61,7 @@ export const DataSection = () => {
             e.target.value = "";
             if (f)
               run(async () => {
-                const db = await getPhoneDb();
-                const { imported } = await db.importFile(f);
+                const { imported } = await importDatabaseFile(f);
                 setNote(`Imported ${imported} row${imported === 1 ? "" : "s"}.`);
               });
           }}

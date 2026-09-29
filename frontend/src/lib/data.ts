@@ -544,6 +544,13 @@ const placeNewNote = async (d: Driver, threadId: string, content: string, author
   return { noteId, messageId };
 };
 
+// Settings > Import: merge a `.sqlite` file's rows in, then tell every lens to re-read.
+export const importDatabaseFile = async (file: File): Promise<{ imported: number }> => {
+  const result = await (await getPhoneDb()).importFile(file);
+  emitChange();
+  return result;
+};
+
 export const createThread = async (title: string): Promise<Thread> => {
   const d = await driver();
   const id = uuid();

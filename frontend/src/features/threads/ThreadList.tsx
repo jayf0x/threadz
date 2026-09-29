@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDownUp,
   Ellipsis,
@@ -79,6 +80,15 @@ export const ThreadList = ({
   const [createError, setCreateError] = useState<string | null>(null);
   const starting = useRef(false); // "n" held down must not start a second thread before `creating` renders
   const search = useRef<HTMLInputElement>(null);
+  // Windowed, measured rows (the ThreadView pattern): 2k threads at the `real` seed.
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: threads.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 64,
+    overscan: 10,
+    getItemKey: (index) => threads[index]?.id ?? index,
+  });
 
   // A thread exists the moment you ask for one, named by its number, and you land in it — no form.
   const create = useCallback(async () => {
@@ -181,17 +191,41 @@ export const ThreadList = ({
           {failure && <p className="border-y border-destructive px-5 py-2 text-xs text-destructive">{failure}</p>}
 
           {/* `pb-24`: room for the floating New pill so it never hides the last row. */}
-          <ul className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-24">
-            {threads.map((t, i) => (
-              <li key={t.id} className="rise" style={{ "--i": Math.min(i, 14) } as CSSProperties}>
-                <ThreadRow thread={t} active={t.id === selectedId} onClick={() => onOpen(t.id)} onDeleted={onDeleted} />
-              </li>
-            ))}
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto border-t border-rule pb-24">
+            <ul style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+              {rowVirtualizer.getVirtualItems().map((row) => {
+                const t = threads[row.index];
+                if (!t) return null;
+                return (
+                  <li
+                    key={row.key}
+                    data-index={row.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${row.start}px)`,
+                    }}
+                  >
+                    <div className="rise" style={{ "--i": Math.min(row.index, 14) } as CSSProperties}>
+                      <ThreadRow
+                        thread={t}
+                        active={t.id === selectedId}
+                        onClick={() => onOpen(t.id)}
+                        onDeleted={onDeleted}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
             {threads.length === 0 && !syncing && (
-              <li>{query ? <Empty icon={SearchX}>No match</Empty> : <Empty icon={List}>No threads</Empty>}</li>
+              <div>{query ? <Empty icon={SearchX}>No match</Empty> : <Empty icon={List}>No threads</Empty>}</div>
             )}
             {!query && resurfaced && resurfaced.id !== selectedId && (
-              <li className="border-t border-rule">
+              <div className="border-t border-rule">
                 <button
                   type="button"
                   onClick={() => onOpen(resurfaced.id)}
@@ -201,9 +235,9 @@ export const ThreadList = ({
                   <span className="sr-only">You wrote this a while back:</span>
                   <span className="min-w-0 truncate font-serif text-lg leading-snug">{resurfaced.title}</span>
                 </button>
-              </li>
+              </div>
             )}
-          </ul>
+          </div>
           <Button
             aria-label="New thread"
             aria-busy={creating}
