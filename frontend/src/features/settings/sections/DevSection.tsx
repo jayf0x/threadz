@@ -70,9 +70,7 @@ export const DevSection = () => {
       {error && <p className="mt-1 break-words text-xs text-destructive">{error}</p>}
 
       <Sheet open={confirm} onOpenChange={setConfirm} title="Purge database" hideClose>
-        <p className="text-sm">
-          Delete every thread, note and photo on this device only?
-        </p>
+        <p className="text-sm">Delete every thread, note and photo on this device only?</p>
         <div className="mt-4 flex gap-2 pb-2">
           <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>
             Cancel
