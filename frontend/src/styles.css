@@ -96,8 +96,10 @@ body {
   inset: 0;
   width: 100%;
 }
-.overflow-y-auto {
-  overscroll-behavior-y: contain;
+.overflow-y-auto,
+.overflow-auto,
+.overflow-x-auto {
+  overscroll-behavior: none;
 }
 
 /* How opaque the app's panes are over the wallpaper (lib/settings.ts writes it: 92% with no image,
@@ -433,5 +435,17 @@ body {
   .scrim-in,
   .scrim-out {
     animation: none;
+  }
+}
+
+/* Reduce-motion: no transforms or fades for anything animated; state changes still apply instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

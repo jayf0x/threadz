@@ -1,5 +1,5 @@
 import { NotebookPen } from "lucide-react";
-import { domAnimation, LazyMotion } from "motion/react";
+import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { ToastProvider } from "@/components/ui/toast";
@@ -166,27 +166,29 @@ export const App = () => {
   return (
     <ToastProvider>
       <LazyMotion features={domAnimation}>
-        <BackgroundLayer />
-        <Shell
-          selected={selected}
-          closeThread={closeThread}
-          autofocus={!!selected && selected === captureId}
-          openThreadAt={openThreadAt}
-          openMap={openMap}
-          selectedMessageId={selectedMessageId}
-          onSelectMessage={onSelectMessage}
-          pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
-        />
-        {mapSearch !== null && (
-          <div
-            className="fixed left-0 top-0 z-20 w-full bg-background"
-            style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
-          >
-            <MapView search={mapSearch} onBack={closeMap} onOpenThread={openThreadFromMap} />
-          </div>
-        )}
-        <ConnectionDialog />
-        <CommandPalette onOpen={openThreadAt} />
+        <MotionConfig reducedMotion="user">
+          <BackgroundLayer />
+          <Shell
+            selected={selected}
+            closeThread={closeThread}
+            autofocus={!!selected && selected === captureId}
+            openThreadAt={openThreadAt}
+            openMap={openMap}
+            selectedMessageId={selectedMessageId}
+            onSelectMessage={onSelectMessage}
+            pulseMessageId={selected && pulseTarget?.threadId === selected ? pulseTarget.messageId : undefined}
+          />
+          {mapSearch !== null && (
+            <div
+              className="fixed left-0 top-0 z-20 w-full bg-background"
+              style={{ height: "var(--vv-h, 100dvh)", transform: "translateY(var(--vv-top, 0px))" }}
+            >
+              <MapView search={mapSearch} onBack={closeMap} onOpenThread={openThreadFromMap} />
+            </div>
+          )}
+          <ConnectionDialog />
+          <CommandPalette onOpen={openThreadAt} />
+        </MotionConfig>
       </LazyMotion>
     </ToastProvider>
   );
