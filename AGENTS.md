@@ -89,9 +89,9 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   hint/description earns its place only if it says something the label genuinely doesn't (Settings' naming
   toggle's hint, "a title you typed is never replaced," is the bar — a real behavior the label can't carry;
   "leave blank to auto-detect" restating the placeholder is not). **"Main" is backend jargon — never show it to
-  the user.** `StatusPill`/`syncEngine.ts`'s four states (docs/direction.md "B9") show as **Synced** (nothing
+  the user.** `StatusPill`/`syncEngine.ts`'s states (docs/direction.md "B9") show as **Synced** (nothing
   pending, keep-live off), **Keep-live** (the 15s auto-sync loop is on), **Pending** (N changes saved on this
-  device, not yet sent) and **Unreachable** (the last sync attempt failed) — never "main is reachable" or "can't
+  device, not yet sent) **Unreachable** (the last sync attempt failed) and **Update the app** (schema/protocol version mismatch with main; sync refused, tap to reload) — never "main is reachable" or "can't
   reach main." Keep "main" itself for internal code/comments/docs (this file, README, `lib/syncEngine.ts`) — it's
   accurate shorthand for engineers, just not for the person using the app.
 
@@ -230,6 +230,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   `core/map.ts` (`mapTracks`, `MapFilter` ⇄ `/map?` params) are queries; `features/home` and `features/map` are their
   views. Map presets and the last route are device-only (localStorage), never synced. `derived_*` tables are still
   spec-only.
+- **Versions and schema** (`core/migrate.ts`, `core/versions.ts`, `core/retention.ts`): `PRAGMA user_version` + one ordered `STEPS` list run by `migrate()` on main and phone (append a step, bump `SCHEMA_VERSION`, never edit a shipped one); push/pull carry `schema`+`protocol` and a mismatch is a 409 / `outdated`. A note conflict = two head versions (a merge version stores both parents comma-joined in `parent_id`); `features/versions` is its chip + history. `pruneVersions` keeps the newest 20 per note, never heads, pinned, conflicted notes or unsynced (`rev IS NULL`) rows. Updates: `registerType: 'prompt'`, applied only on a tap when no editor holds text (`features/updates`). `RecoveryGate` shows a recovery screen if the phone DB won't open. `HAS_BACKEND` gates status pill, keep-live and Ask in a backend-less `VITE_LOCAL` build.
 - **Sync** (`lib/syncEngine.ts`, `lib/phoneDb.ts`, `lib/phone/{worker,driver,broker,protocol}.ts`): see "Mental
   model" above for the push/pull/keep-live shape. The phone's database lives in IndexedDB via
   `@subframe7536/sqlite-wasm` (`IDBBatchAtomicVFS`, FTS5 + trigram compiled in), opened inside a dedicated Web

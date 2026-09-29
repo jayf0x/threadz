@@ -89,6 +89,16 @@ limit was not read. Safari's "maximum call stack size exceeded" is not reproduci
 spread-into-`push(...)` patterns that could hit it at these sizes are gone from `core`/`lib` (only a 3-element one
 remains in `allInsights`).
 
+## Wave 9 follow-ups
+
+- **Named versions** don't exist yet, so retention can't protect them; add the protection in `core/retention.ts` with the feature.
+- **Attached notes** (`NoteSurface`) have no version history entry or conflict chip; only a message's own note does.
+- **Check `PRAGMA user_version` in the real wa-sqlite worker** (bun tests only cover bun:sqlite): open Settings → Data on a device after update and confirm the app boots with an old database.
+- **Update toast idle check is a DOM heuristic** (any writable `.ProseMirror` with text); replace with a per-editor dirty registry if it misfires.
+- **Recovery screen** Export/Reset and the Data usage line were not exercised in a browser; try each once.
+- **Preview-first paint** covers only single-line paragraphs/headings/inline marks (210ms vs the 150ms budget); widen the subset or defer editors below the first screen.
+- **Tab bar** is a radio group; check on VoiceOver whether "radio button, 2 of 4" reads clearly, else make it `role=tab`.
+
 ## iOS polish (wave 9, researched; see docs/direction.md Round 9)
 
 Device checks that WebKit-at-iPhone-size can't prove:

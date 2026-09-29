@@ -71,7 +71,7 @@ export const DevSection = () => {
 
       <Sheet open={confirm} onOpenChange={setConfirm} title="Purge database" hideClose>
         <p className="text-sm">
-          Delete every thread, note and photo on this device only? Nothing on the server changes.
+          Delete every thread, note and photo on this device only?
         </p>
         <div className="mt-4 flex gap-2 pb-2">
           <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>

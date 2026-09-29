@@ -175,9 +175,9 @@ in every table carries a `rev` (main's write counter — `NULL` means "not on ma
 
 Nothing auto-syncs and nothing auto-detects "main is back" — every sync is something you (or keep-live)
 triggered. A retry is always safe: merging is idempotent, so a push or pull that partially landed and got resent
-just re-applies the same rows. The status pill shows one of four states (`docs/direction.md` "B9"): **Synced**
+just re-applies the same rows. The status pill shows one of five states (`docs/direction.md` "B9"): **Synced**
 (nothing pending), **Keep-live** (the timer is on), **Pending** (N changes saved on this device, not yet sent),
-**Unreachable** (the last attempt failed). Main clamps any client-supplied timestamp to "now" (`clampTs`) rather
+**Unreachable** (the last attempt failed), **Update the app** (schema/protocol mismatch: `POST /api/push` and `GET /api/changes` carry `schema` and `protocol`, main answers 409 `version_mismatch`; tap to reload). Main clamps any client-supplied timestamp to "now" (`clampTs`) rather
 than trusting a device's clock — one phone, one main, so a wrong clock is rare and low-stakes.
 
 **Ask** (Claude) needs main: push → `POST /api/ask` (main assembles the thread via `core.threadView`, asks the
