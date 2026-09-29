@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/toast";
 import { Composer, type ComposerHandle } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
 import { onChange } from "@/lib/changeSignal";
+import { HAS_BACKEND } from "@/lib/config";
 import {
   branchThread,
   copyThread,
@@ -99,7 +100,7 @@ export const ThreadView = ({
   const unreachable = useSyncStatus().unreachable;
   const [localOnly, setLocalOnly] = useState(false);
   const [threadTodo, setThreadTodo] = useState<boolean | null>(null); // null = not a todo at all
-  const askUnavailable = unreachable || localOnly;
+  const askUnavailable = !HAS_BACKEND || unreachable || localOnly;
   const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
   const lineMode = useThreadLineMode(threadId); // device-local, per-thread, not synced (docs/direction.md "Round 6")
   const [thread, setThread] = useState<Thread | null>(null);

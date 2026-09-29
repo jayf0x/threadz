@@ -33,6 +33,7 @@ import {
 } from "@/features/editor";
 import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
+import { HAS_BACKEND } from "@/lib/config";
 import { createLink, linksFor, propertyValuesFor } from "@/lib/data";
 import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
@@ -431,13 +432,17 @@ export const EntryRow = ({
                 { label: "Add property", icon: Tag, onClick: () => setPropertyOpen(true), keepFocus: true },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
                 { label: "Branch from here", icon: GitBranch, onClick: onBranchThread },
-                {
-                  label: "Ask about this message",
-                  icon: Sparkles,
-                  onClick: onAskAboutMessage,
-                  disabled: askDisabled,
-                  keepFocus: true, // the composer takes focus inside this tap
-                },
+                ...(HAS_BACKEND
+                  ? [
+                      {
+                        label: "Ask about this message",
+                        icon: Sparkles,
+                        onClick: onAskAboutMessage,
+                        disabled: askDisabled,
+                        keepFocus: true, // the composer takes focus inside this tap
+                      },
+                    ]
+                  : []),
                 { label: "Remove from thread", icon: Unlink, onClick: onRemoveFromThread },
               ]}
             />

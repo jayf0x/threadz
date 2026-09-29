@@ -9,6 +9,7 @@ import { homeUrl, isMapPath, MapView, mapUrl } from "@/features/map";
 import { CommandPalette } from "@/features/palette";
 import { createOrReuseThread, ThreadList, ThreadView } from "@/features/threads";
 import { cn } from "@/lib/cn";
+import { HAS_BACKEND } from "@/lib/config";
 import { getThread } from "@/lib/data";
 import { deepLinkUrl, parseDeepLink } from "@/lib/deepLink";
 import { shortcutBlocked } from "@/lib/dom";
@@ -186,7 +187,7 @@ export const App = () => {
               <MapView search={mapSearch} onBack={closeMap} onOpenThread={openThreadFromMap} />
             </div>
           )}
-          <ConnectionDialog />
+          {HAS_BACKEND && <ConnectionDialog />}
           <CommandPalette onOpen={openThreadAt} />
         </MotionConfig>
       </LazyMotion>
