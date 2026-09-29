@@ -28,11 +28,48 @@ export const trackViewport = () => {
     root.toggleAttribute("data-keyboard", full - vv.height > KEYBOARD_MIN_PX);
   };
 
+  // iOS 26 can leave `offsetTop` stale after the keyboard closes (no final scroll/resize event), so
+  // re-read on blur, when the page comes back from the background, and on a short delayed tick.
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const settle = () => {
+    sync();
+    for (const ms of [100, 300, 600]) {
+      const t = setTimeout(() => {
+        timers.delete(t);
+        sync();
+      }, ms);
+      timers.add(t);
+    }
+  };
+  const onFocusOut = () => {
+    settle();
+    const t = setTimeout(() => {
+      timers.delete(t);
+      const a = document.activeElement;
+      const editing = a instanceof HTMLElement && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+      if (!editing && vv.offsetTop !== 0) window.scrollTo(0, 0);
+      sync();
+    }, 350);
+    timers.add(t);
+  };
+  const onVisible = () => {
+    if (document.visibilityState === "visible") settle();
+  };
+
   sync();
   vv.addEventListener("resize", sync);
   vv.addEventListener("scroll", sync);
+  window.addEventListener("resize", sync);
+  window.addEventListener("focusout", onFocusOut);
+  window.addEventListener("pageshow", settle);
+  document.addEventListener("visibilitychange", onVisible);
   return () => {
     vv.removeEventListener("resize", sync);
     vv.removeEventListener("scroll", sync);
+    window.removeEventListener("resize", sync);
+    window.removeEventListener("focusout", onFocusOut);
+    window.removeEventListener("pageshow", settle);
+    document.removeEventListener("visibilitychange", onVisible);
+    for (const t of timers) clearTimeout(t);
   };
 };

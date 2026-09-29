@@ -288,7 +288,7 @@ export const ThreadList = ({
       </div>
       {/* Bottom tab bar, the phone convention (and where the thumb already is). `pb-safe` clears the
           home indicator, and drops away while the keyboard is up (see lib/viewport.ts). */}
-      <nav className="pb-safe border-t border-border">
+      <nav aria-label="Sections" className="pb-safe border-t border-border">
         <SidebarSwitcher panel={panel} setPanel={setPanel} />
       </nav>
     </div>

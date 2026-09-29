@@ -125,6 +125,16 @@ should be at or under these.
 - [ ] Survives a week: leave the installed PWA closed for 7 days, reopen, and check the data is still there
   (Safari can evict idle storage).
 
+- **iOS polish (Wave 9, done in code, device-only to confirm):** `lib/viewport.ts` now re-reads `visualViewport` on
+  window `resize`, `focusout`, `pageshow`, `visibilitychange` and a 100/300/600 ms tick, and `scrollTo(0,0)`s ~350 ms
+  after blur when nothing editable is focused and `offsetTop` is non-zero (iOS 26 stale offset). Check on a real iPhone:
+  open keyboard in composer, dismiss by tapping outside, and by swipe-down; the header must not stay shifted; background
+  the PWA with keyboard up and return. No `dvh` remains except as the `var(--vv-h, 100dvh)` fallback. Every scroller is
+  `overscroll-behavior: none`. `prefers-reduced-motion` covered by Motion's `MotionConfig reducedMotion="user"` plus a global
+  CSS block (spinners stop too). WebKit 26 (Playwright) loads at iPhone size, `--vv-h`/`--vv-top` set, no page errors;
+  keyboard/visual-viewport panning cannot be reproduced there. VoiceOver: icon buttons already carry `aria-label`; the
+  tab bar is a radio group inside `<nav aria-label="Sections">` (each radio named by its sr-only label). Device check:
+  VoiceOver reads the tab bar as "radio button, 2 of 4, selected" and that is understandable.
 - **Keyboard and viewport:** the shell follows `visualViewport` (`lib/viewport.ts`); composer pin/unpin around the
   keyboard, reachable top/bottom of a long thread while it animates, no rubber-band on tab panels, safe-area padding.
 - **Ask about this message** (⋯ menu → `Composer.askAbout`): the field is focused one tick after the tap (the menu traps focus until
