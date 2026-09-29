@@ -16,7 +16,7 @@ import {
 } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
 import { getSettings } from "@/lib/settings";
-import { askAboutMessage as askAboutMessageRemote, ask as askModel } from "@/lib/syncEngine";
+import { ask as askModel } from "@/lib/syncEngine";
 import type { Annotation, Message, Thread } from "@/lib/types";
 import { autoTitle, noteText } from "./titles";
 
@@ -181,27 +181,6 @@ export const useThread = (threadId: string | null) => {
     [threadId, load],
   );
 
-  // "Ask about this message" (EntryRow's ⋯ menu): pushes, asks main to answer just this one
-  // message, and pulls the result in as an attached note -- there's no scratch/commit split here
-  // (unlike `ask`), since there's no separate composer step to preview the answer in first.
-  const askAboutMessage = useCallback(
-    async (messageId: string): Promise<boolean> => {
-      setBusy(true);
-      setError(null);
-      try {
-        await askAboutMessageRemote(messageId);
-        await load();
-        return true;
-      } catch (e) {
-        setError(errorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [load],
-  );
-
   const addAnnotation = useCallback(
     async (messageId: string, content: string): Promise<boolean> => {
       const text = content.trim();
@@ -276,7 +255,6 @@ export const useThread = (threadId: string | null) => {
     editAnnotation,
     deleteAnnotation,
     ask,
-    askAboutMessage,
     refresh: load,
   };
 };

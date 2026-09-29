@@ -69,7 +69,7 @@ export const DevSection = () => {
       </p>
       {error && <p className="mt-1 break-words text-xs text-destructive">{error}</p>}
 
-      <Sheet open={confirm} onOpenChange={setConfirm} title="Purge database">
+      <Sheet open={confirm} onOpenChange={setConfirm} title="Purge database" hideClose>
         <p className="text-sm">
           Delete every thread, note and photo on this device only? Nothing on the server changes.
         </p>

@@ -14,7 +14,7 @@ import {
   SquareCheck,
   StickyNote,
   Tag,
-  Waves,
+  Unlink,
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
@@ -73,6 +73,7 @@ export const EntryRow = ({
   onDeleteAnnotation,
   onNavigateReference,
   onAskAboutMessage,
+  askDisabled,
 }: {
   message: Message;
   pending: boolean;
@@ -92,15 +93,16 @@ export const EntryRow = ({
   onEditAnnotation: (id: string, text: string) => Promise<boolean>;
   onDeleteAnnotation: (id: string) => Promise<boolean>;
   onNavigateReference: (threadId: string, messageId?: string) => void;
-  // "Ask about this message" (⋯ menu). Undefined — not just a no-op — while Ask is unavailable
-  // (main unreachable, per docs/direction.md "B10"), so the item is left out of the menu entirely
-  // rather than shown disabled: same "not offered" rule the Composer's Ask toggle already follows.
-  onAskAboutMessage: (() => void) | undefined;
+  // "Ask about this message" (⋯ menu): puts a reference to it in the composer's Ask mode (ThreadView).
+  // Disabled, never hidden, while Ask is unavailable (server unreachable, or a local-only thread).
+  onAskAboutMessage: () => void;
+  askDisabled: boolean;
 }) => {
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [history, setHistory] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [noteEditing, setNoteEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [propertyOpen, setPropertyOpen] = useState(false);
   const [properties, setProperties] = useState<PropertyValue[]>([]);
@@ -222,6 +224,7 @@ export const EntryRow = ({
     title: "Note",
     anchorTo: <span aria-hidden className="pointer-events-none absolute inset-x-3 bottom-0 h-0" />,
     align: "end" as const,
+    hideClose: noteEditing, // the note editor has its own Cancel
   };
 
   // "Add property" opens from a ⋯ menu item, not a dedicated visible button — the overlay is driven
@@ -248,6 +251,7 @@ export const EntryRow = ({
       onDelete={onDeleteAnnotation}
       onClose={() => setNoteOpen(false)}
       onNavigateReference={navigateReference}
+      onEditingChange={setNoteEditing}
     />
   );
 
@@ -427,10 +431,14 @@ export const EntryRow = ({
                 { label: "Add property", icon: Tag, onClick: () => setPropertyOpen(true), keepFocus: true },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
                 { label: "Branch from here", icon: GitBranch, onClick: onBranchThread },
-                ...(onAskAboutMessage
-                  ? [{ label: "Ask about this message", icon: Sparkles, onClick: onAskAboutMessage }]
-                  : []),
-                { label: "Remove from thread", icon: Waves, onClick: onRemoveFromThread },
+                {
+                  label: "Ask about this message",
+                  icon: Sparkles,
+                  onClick: onAskAboutMessage,
+                  disabled: askDisabled,
+                  keepFocus: true, // the composer takes focus inside this tap
+                },
+                { label: "Remove from thread", icon: Unlink, onClick: onRemoveFromThread },
               ]}
             />
           </div>

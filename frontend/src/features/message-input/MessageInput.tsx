@@ -14,6 +14,8 @@ export type MessageInputHandle = {
   getText: () => string;
   /** Clears the draft — call only once whatever read it with `getText` has actually succeeded. */
   clear: () => void;
+  /** Replace the draft with `markdown` now (the composer's "Ask about this message" seeds a reference). */
+  setText: (markdown: string) => void;
   /** Focus the editor (dictation start — see Composer). */
   focus: () => void;
 };
@@ -68,15 +70,13 @@ export const MessageInput = ({
   handleRef,
   autofocus,
 }: MessageInputProps) => {
-  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, clear, focus } = useMessageInput(
-    draftKey,
-    busy,
-    onSubmit,
-  );
+  const { draft, setDraft, editor, attach, imageError, submit, insertAtCaret, getText, setText, clear, focus } =
+    useMessageInput(draftKey, busy, onSubmit);
 
-  useImperativeHandle(handleRef, () => ({ insertAtCaret, getText, clear, focus }), [
+  useImperativeHandle(handleRef, () => ({ insertAtCaret, getText, setText, clear, focus }), [
     insertAtCaret,
     getText,
+    setText,
     clear,
     focus,
   ]);

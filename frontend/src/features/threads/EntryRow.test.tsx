@@ -108,7 +108,8 @@ const baseProps = () => ({
   onEditAnnotation: async () => true,
   onDeleteAnnotation: async () => true,
   onNavigateReference: () => {},
-  onAskAboutMessage: undefined,
+  onAskAboutMessage: () => {},
+  askDisabled: false,
 });
 
 test("clicking the plain message content selects the row", () => {
@@ -162,6 +163,7 @@ test("the ⋯ trigger still opens with onAskAboutMessage wired in, whether or no
       onEdit={async () => true}
       onSelect={() => {}}
       onAskAboutMessage={() => {}}
+      askDisabled={false}
     />,
   );
   fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });

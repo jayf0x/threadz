@@ -10,6 +10,8 @@ export type MenuItem = {
   /** Radix hands focus back to the trigger after an item closes the menu; set this on an item that
    * moves focus itself (Edit, which focuses the editor inside the tap) so it isn't stolen back. */
   keepFocus?: boolean;
+  /** Shown but not selectable. */
+  disabled?: boolean;
 };
 
 export type MenuProps = {
@@ -50,6 +52,9 @@ export const Menu = ({ trigger, items, align = "start", side, className, onClose
           className={cn(
             "pop-in surface-float z-50 min-w-56 max-w-[min(20rem,var(--radix-dropdown-menu-content-available-width))]",
             "rounded-2xl p-1.5 shadow-lg outline-none ring-1 ring-border",
+            // Never taller than the room Radix found (collision handling stays Radix's), and never taller
+            // than the visible viewport (the iOS keyboard shrinks --vv-h); long lists scroll inside it.
+            "max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(var(--vv-h,100dvh)-1.5rem))] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]",
             className,
           )}
         >
@@ -66,13 +71,14 @@ const MenuItems = ({ items, keepFocus }: { items: MenuProps["items"]; keepFocus:
     <Fragment key={item.label}>
       {item.destructive && i > 0 && <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />}
       <DropdownMenu.Item
+        disabled={item.disabled}
         onSelect={() => {
           keepFocus.current = item.keepFocus === true;
           item.onClick();
         }}
         className={cn(
           "press-row flex h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-base outline-none md:h-9 md:text-sm",
-          "data-[highlighted]:bg-accent",
+          "data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
           item.destructive ? "text-destructive" : "text-foreground",
         )}
       >

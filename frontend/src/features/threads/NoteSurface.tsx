@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Check, CloudOff, Pencil, Trash2, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ContentField,
@@ -26,6 +26,7 @@ export const NoteSurface = ({
   onDelete,
   onClose,
   onNavigateReference,
+  onEditingChange,
 }: {
   note: Annotation | undefined;
   unsynced: boolean;
@@ -37,6 +38,8 @@ export const NoteSurface = ({
   onDelete: (id: string) => Promise<boolean>;
   onClose: () => void;
   onNavigateReference: (threadId: string, messageId: string | null) => void;
+  /** The sheet's own close button steps aside while editing (Cancel is right there). */
+  onEditingChange?: (editing: boolean) => void;
 }) => {
   const [editing, setEditing] = useState(!note); // nothing to read yet, or editing what's there
   const [confirming, setConfirming] = useState(false);
@@ -44,6 +47,7 @@ export const NoteSurface = ({
   const [dirty, setDirty] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
   const { attach, error } = useImageAttach(editor);
+  useEffect(() => onEditingChange?.(editing), [editing, onEditingChange]);
   const canSave = !busy && (note ? dirty : !!text.trim());
 
   const change = (next: string) => {

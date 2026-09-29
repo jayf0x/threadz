@@ -26,11 +26,46 @@ export const resetSync = async () => {
 
 const driver = async () => (await getPhoneDb()).driver;
 
-const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(`${getBackendUrl()}${path}`, {
-    ...init,
-    headers: { ...(init?.body ? { "content-type": "application/json" } : {}), ...(init?.headers || {}) },
-  });
+const CHECK_MS = 3_000; // a dead backend is known in this long, not a minute
+const REQUEST_MS = 20_000; // sync payloads; nothing hangs longer than this
+const ASK_MS = 120_000; // Claude takes a while to answer
+
+const fetchWithTimeout = async (url: string, init: RequestInit, ms: number): Promise<Response> => {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export const UNREACHABLE_MESSAGE = "Can't reach the server. Try again.";
+
+// A cheap "is the backend there right now?" — one tiny GET with a short timeout. Sync and Ask call it
+// first so an offline backend fails in seconds instead of hanging on the real request.
+export const checkReachable = async (): Promise<boolean> => {
+  try {
+    return (await fetchWithTimeout(`${getBackendUrl()}/api/health`, { cache: "no-store" }, CHECK_MS)).ok;
+  } catch {
+    return false;
+  }
+};
+
+// Throws (and flips the StatusPill to Unreachable at once) when the backend doesn't answer; a success
+// clears the flag, so pressing Sync or Ask is also how "Unreachable" recovers.
+const ensureReachable = async (): Promise<void> => {
+  if (await checkReachable()) return void set({ unreachable: false });
+  set({ unreachable: true, lastError: UNREACHABLE_MESSAGE });
+  throw new Error(UNREACHABLE_MESSAGE);
+};
+
+const req = async <T>(path: string, init?: RequestInit, ms = REQUEST_MS): Promise<T> => {
+  const res = await fetchWithTimeout(
+    `${getBackendUrl()}${path}`,
+    { ...init, headers: { ...(init?.body ? { "content-type": "application/json" } : {}), ...(init?.headers || {}) } },
+    ms,
+  );
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => null);
     const error = body && typeof body === "object" && "error" in body ? body.error : null;
@@ -66,6 +101,7 @@ const pull = async (): Promise<number> => {
 // One push-then-pull cycle — "sync now", or the button behind keep-live's timer alike.
 // A cycle that moved nothing doesn't signal a change: every mounted lens would re-read its whole query for no reason.
 export const syncNow = async (): Promise<void> => {
+  await ensureReachable();
   const sent = await push();
   const received = await pull();
   if (sent + received > 0) emitChange();
@@ -192,34 +228,19 @@ export const useSyncStatus = () => useSyncExternalStore(subscribe, () => state);
 
 // --- Ask (docs/direction.md "B10") --------------------------------------------------------------
 // push -> POST /api/ask -> main writes the question+answer as notes -> apply the returned changes.
-// Unavailable while `unreachable` — the caller (Composer/ThreadView) just doesn't offer the control;
-// there is no queued-Ask state.
+// Re-checks reachability on press (no loading state when it fails); disabled in the UI while `unreachable`,
+// never queued.
 export const ask = async (threadId: string, question: string): Promise<string> => {
+  await ensureReachable();
   const d = await driver();
   await push();
   const { answer, changes, cursor } = await req<{ answer: string; changes: Partial<Changes>; cursor: number }>(
     "/api/ask",
     { method: "POST", body: JSON.stringify({ threadId, question }) },
+    ASK_MS,
   );
   await applyChanges(d, changes);
   setCursor(cursor);
   emitChange();
   return answer;
-};
-
-// "Ask about this message" (wave 6 phase 2): same push -> POST -> apply shape as `ask` above, but
-// scoped to one message and with no user-typed question -- the message's own content is the context.
-// The answer isn't returned as a scratch string; it lands on the device as a new attached note (main
-// writes it via `attachNoteToMessage`), so the caller has nothing left to do but let the applied
-// changes flow into the usual `annotationsFor` read. Same unreachable/no-queue rule as `ask`.
-export const askAboutMessage = async (messageId: string): Promise<void> => {
-  const d = await driver();
-  await push();
-  const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>("/api/ask/message", {
-    method: "POST",
-    body: JSON.stringify({ messageId }),
-  });
-  await applyChanges(d, changes);
-  setCursor(cursor);
-  emitChange();
 };

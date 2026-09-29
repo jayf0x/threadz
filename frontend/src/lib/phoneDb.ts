@@ -63,7 +63,7 @@ const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 // anchor, revoke it after a beat) — not reused directly since that helper is typed for text content
 // (`File([content], ...)` with `content: string`) and touching it is out of scope for this module.
 const downloadBytes = (bytes: Uint8Array, name: string) => {
-  const blob = new Blob([bytes], { type: "application/x-sqlite3" });
+  const blob = new Blob([bytes], { type: "application/vnd.sqlite3" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);

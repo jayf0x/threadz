@@ -1,6 +1,8 @@
 import { RefreshCw } from "lucide-react";
+import { toast } from "@/components/ui/toast";
 import { StatusPill } from "@/features/connection";
 import { cn } from "@/lib/cn";
+import { errorMessage } from "@/lib/errors";
 import { manualSync, useSyncStatus } from "@/lib/syncEngine";
 import { Section } from "./SettingsSection";
 
@@ -16,7 +18,7 @@ export const SyncSection = () => {
         <StatusPill />
         <button
           type="button"
-          onClick={() => manualSync().catch(() => {})}
+          onClick={() => manualSync().catch((e) => toast({ title: "Sync failed", description: errorMessage(e) }))}
           disabled={s.syncing}
           aria-label="Sync now"
           title="Sync now"

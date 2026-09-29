@@ -202,9 +202,11 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   (`press` pills scale .97, `press-icon` .9, `press-row` tints and never scales; override with `[--press-scale:…]`),
   `Button` is a full-round pill (`bg-primary-sheen` primary), floating chrome is `surface-float`, cards
   `surface-sheen`. A one-off gradient uses `color-mix` on tokens, never a literal colour.
-- **Overlays**: `Menu` (anchored ⋯ actions, `side`, per-item `keepFocus`), `ResponsiveOverlay` (Radix Popover from
+- **Overlays**: `Menu` (anchored ⋯ actions, `side`, per-item `keepFocus`/`disabled`; content is capped to the
+  available height / `--vv-h` and scrolls), `ResponsiveOverlay` (Radix Popover from
   768px, bottom `Sheet` below — same children; its `anchor` is the trigger; `anchorTo` opens the popover against another element) and `Sheet` (Radix Dialog, sits on the
-  visual viewport so it clears the iOS keyboard) live in `components/ui/`; `lib/useMedia.ts` is the media hook.
+  visual viewport so it clears the iOS keyboard) live in `components/ui/`; `lib/useMedia.ts` is the media hook. A `Sheet` (so a phone `ResponsiveOverlay`) has a
+  44px header **Close** X by default; pass `hideClose` only when the content already has its own (note editor, Purge confirm).
   Toasts drop from the top on a phone (bottom-right from `md`). **Peek** (`features/threads/Peek.tsx`) is a
   `ResponsiveOverlay` that can open another `ResponsiveOverlay` from inside itself — nesting is expected, not a
   bug to route around.
@@ -220,7 +222,10 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   SDK / local CLI auth — no API key). Nowhere else. It runs Claude with no tools, no MCP servers and an empty
   working directory: the model sees only the thread text it is sent, never the device's files. Ask itself
   (`lib/syncEngine.ts`'s `ask()`) is push → `POST /api/ask` → main writes the question and the answer as notes →
-  pull; it's disabled while the last sync attempt failed (`unreachable`), never queued for later.
+  pull; it's disabled while the last sync attempt failed (`unreachable`), never queued for later. `syncNow()` and
+  `ask()` first run `checkReachable()` (3 s `GET /api/health`): a dead backend flips `unreachable` at once and no
+  push/pull starts, and every sync fetch has a timeout. "Ask about this message" (⋯ menu) only seeds the
+  composer (`ComposerHandle.askAbout`: Ask mode + a `tz:message/…` link + focus); there is no direct-ask endpoint.
 - **Insight, Home, map:** `core/insights.ts` (pure, deterministic, every result has a `source` lens+filter) and
   `core/map.ts` (`mapTracks`, `MapFilter` ⇄ `/map?` params) are queries; `features/home` and `features/map` are their
   views. Map presets and the last route are device-only (localStorage), never synced. `derived_*` tables are still

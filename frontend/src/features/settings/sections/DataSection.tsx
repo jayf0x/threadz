@@ -54,7 +54,8 @@ export const DataSection = () => {
         <input
           ref={file}
           type="file"
-          accept=".sqlite,application/x-sqlite3"
+          // No `accept`: iOS Safari knows no UTI for .sqlite/.db and greys those files out. The magic-header
+          // check on import ("Not a SQLite database file.") is what rejects a wrong file.
           className="sr-only"
           onChange={(e) => {
             const f = e.target.files?.[0];

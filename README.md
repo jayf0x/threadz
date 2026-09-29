@@ -182,7 +182,10 @@ than trusting a device's clock — one phone, one main, so a wrong clock is rare
 
 **Ask** (Claude) needs main: push → `POST /api/ask` (main assembles the thread via `core.threadView`, asks the
 model, writes the question and the answer as new notes) → pull. It's simply unavailable (control
-disabled/greyed) while the status pill is Unreachable — there's no "queued, will answer later" state.
+disabled/greyed) while the status pill is Unreachable — there's no "queued, will answer later" state. Sync and Ask
+first call `checkReachable()` (`lib/syncEngine.ts`: a 3 s `GET /api/health`); if it fails the pill flips to
+Unreachable at once and nothing else is sent, so an offline backend never hangs the button. Sync requests also
+carry a 20 s timeout (Ask 2 min). Pressing Sync or Ask again is how Unreachable recovers.
 
 **Backups.** Main backs itself up (`VACUUM INTO` a timestamped copy) before applying every push:
 `backups/threadz-<time>.sqlite` next to the database (`THREADZ_BACKUPS` to relocate). Retention is by time,
@@ -335,9 +338,9 @@ slot (1–8, palette tokens) plus an icon/text, dumb — the caller decides what
 - **Thread status and local-only.** A thread can be flagged as a todo from its own header ⋯ menu (shows up in
   the Todos tab, never as filtering on the Threadz index — "one tab, one job"); "Local only" is a built-in
   property set that disables the Ask control for that thread.
-- **Ask about this message.** A message's ⋯ menu can ask Claude to react to just that message; the answer lands
-  as an assistant-authored attached note (the same `attached`-link mechanism as a manually written one), never
-  appended to the thread.
+- **Ask about this message.** A message's ⋯ menu item switches the composer to Ask, drops a `tz:message/…`
+  reference to that message into the field (once) and focuses it; you type the question and send it through the
+  normal Ask flow. Disabled (never hidden) while Ask is unavailable.
 
 ## Insight, Home and the map
 

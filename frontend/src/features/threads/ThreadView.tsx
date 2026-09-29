@@ -19,7 +19,7 @@ import { Empty } from "@/components/ui/empty";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
-import { Composer } from "@/features/composer";
+import { Composer, type ComposerHandle } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
 import { onChange } from "@/lib/changeSignal";
 import {
@@ -38,7 +38,7 @@ import { resolveMessageRange } from "@/lib/references";
 import { useSyncStatus } from "@/lib/syncEngine";
 import { orderMessages, setThreadReversed, useThreadReversed } from "@/lib/threadOrder";
 import { setThreadLineMode, useThreadLineMode } from "@/lib/threadViewMode";
-import type { Thread } from "@/lib/types";
+import type { Message, Thread } from "@/lib/types";
 import { EntryRow } from "./EntryRow";
 import { LineEntry } from "./LineEntry";
 import { useThread } from "./useThread";
@@ -92,7 +92,6 @@ export const ThreadView = ({
     editAnnotation,
     deleteAnnotation,
     ask,
-    askAboutMessage,
   } = useThread(threadId);
   // Ask needs main (docs/direction.md "B10"): disabled/greyed out, never queued, while the last sync
   // attempt failed — or (Round 6) while this thread carries the built-in `local-only` flag. Same
@@ -177,11 +176,10 @@ export const ThreadView = ({
     }
   };
 
-  // "Ask about this message" (EntryRow's ⋯ menu): the answer lands as an attached note, so there's
-  // nothing to render here beyond a failure toast -- `useThread`'s own `load()` picks up the note.
-  const askAbout = async (messageId: string) => {
-    if (!(await askAboutMessage(messageId))) toast({ title: "Ask failed", description: error ?? undefined });
-  };
+  // "Ask about this message" (EntryRow's ⋯ menu): Ask mode + a reference to it in the composer; the
+  // user types the question and sends it through the normal Ask flow.
+  const composer = useRef<ComposerHandle>(null);
+  const askAbout = (message: Message) => composer.current?.askAbout(message);
 
   // "Branch from here" (Round 6): same as Clone, except B keeps following A's edits from this point
   // on — `branchThread` is the same mechanism as `copyThread` with its pins left empty.
@@ -457,7 +455,8 @@ export const ThreadView = ({
                         onEditAnnotation={editAnnotation}
                         onDeleteAnnotation={deleteAnnotation}
                         onNavigateReference={onNavigateReference}
-                        onAskAboutMessage={askUnavailable ? undefined : () => askAbout(m.id)}
+                        onAskAboutMessage={() => askAbout(m)}
+                        askDisabled={askUnavailable}
                       />
                     )}
                   </div>
@@ -505,6 +504,7 @@ export const ThreadView = ({
             className="mt-auto focus-within:sticky focus-within:bottom-0 focus-within:z-10 focus-within:bg-background md:sticky md:bottom-0 md:z-10 md:bg-background"
           >
             <Composer
+              handleRef={composer}
               threadId={threadId}
               messages={messages}
               busy={busy}

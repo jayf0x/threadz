@@ -18,6 +18,8 @@ export type ResponsiveOverlayProps = {
    * small trigger inside a row can open the popover past the whole row rather than on top of its siblings. */
   anchorTo?: ReactElement;
   align?: "start" | "center" | "end";
+  /** Sheet (phone) only: skip the header close button when the children already have their own. */
+  hideClose?: boolean;
 };
 
 // The one surface for "a small form or note tied to something on screen": a Radix Popover from 768px up,
@@ -31,12 +33,20 @@ export const ResponsiveOverlay = ({
   className,
   anchorTo,
   align,
+  hideClose,
 }: ResponsiveOverlayProps) => {
   const wide = useMedia("(min-width: 768px)");
 
   if (!wide)
     return (
-      <Sheet open={open} onOpenChange={onOpenChange} title={title} trigger={anchor} className={className}>
+      <Sheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={title}
+        trigger={anchor}
+        className={className}
+        hideClose={hideClose}
+      >
         {children}
       </Sheet>
     );

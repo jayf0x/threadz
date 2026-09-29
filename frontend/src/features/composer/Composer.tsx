@@ -1,6 +1,6 @@
 import { Check, GitBranchPlus, Loader2, Mic, MoreHorizontal, Plus, RotateCcw, Send, Square, X } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useRef, useState } from "react";
+import { type Ref, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
@@ -8,10 +8,17 @@ import { MessageInput, type MessageInputHandle } from "@/features/message-input"
 import { cn } from "@/lib/cn";
 import { copyThread } from "@/lib/data";
 import { errorMessage } from "@/lib/errors";
+import { holdKeyboard, releaseKeyboard } from "@/lib/keyboard";
+import { buildReferenceHref, messageSnippet } from "@/lib/references";
 import type { Message } from "@/lib/types";
 import type { VoiceState } from "@/lib/voice/engine";
 import { useVoiceCapture } from "./useVoiceCapture";
 import { VoiceMeter } from "./VoiceMeter";
+
+export type ComposerHandle = {
+  /** "Ask about this message": switch to Ask, put a reference to it in the field (once) and focus it. Call inside the tap. */
+  askAbout: (message: Message) => void;
+};
 
 type Mode = "note" | "ask";
 const MODES: { value: Mode; label: string }[] = [
@@ -47,6 +54,7 @@ export const Composer = ({
   onCopied,
   autofocus,
   onNavigateReference,
+  handleRef,
 }: {
   threadId: string;
   messages: Message[]; // to find the last message "Clone from here" copies up to
@@ -60,6 +68,7 @@ export const Composer = ({
   /** A completed reference (`lib/references.ts`) was clicked while composing — App.tsx's
    * `openThreadAt`, threaded through from ThreadView. */
   onNavigateReference: (threadId: string, messageId?: string) => void;
+  handleRef?: Ref<ComposerHandle>;
 }) => {
   const fromVoice = useRef(false); // a ref, not state: editing must not un-flag dictated text
   const [picked, setMode] = useState<Mode>("note");
@@ -68,6 +77,29 @@ export const Composer = ({
   const [copying, setCopying] = useState(false);
   const input = useRef<MessageInputHandle>(null);
   const reduceMotion = useReducedMotion();
+
+  useImperativeHandle(handleRef, () => ({
+    askAbout: (message) => {
+      const field = input.current;
+      if (!field || !canAsk) return;
+      const href = buildReferenceHref(message.threadId, message.id);
+      holdKeyboard(); // iOS raises the keyboard only for a focus() inside the tap
+      setMode("ask");
+      const text = field.getText();
+      if (!text.includes(`(${href})`)) {
+        const label = messageSnippet(message.content).replace(/[[\]]/g, "").slice(0, 40).trim() || "message";
+        // A no-break space after the link: a markdown trailing newline/space is dropped, and typing right after a
+        // link mark would extend the link instead of starting the question.
+        field.setText(`${text ? `${text}\n\n` : ""}[${label}](${href})\u00a0`);
+      }
+      // The menu that fired this traps focus until it has closed, so the real focus lands right after; the
+      // keyboard proxy above bridges that gap on iOS.
+      setTimeout(() => {
+        field.focus();
+        releaseKeyboard();
+      }, 0);
+    },
+  }));
 
   // Finished dictation lands at the editor's caret (after any selection), wherever the user
   // last left it — type "hello", speak "world", type "!" all compose — and never steals focus,

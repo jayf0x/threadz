@@ -127,6 +127,10 @@ should be at or under these.
 
 - **Keyboard and viewport:** the shell follows `visualViewport` (`lib/viewport.ts`); composer pin/unpin around the
   keyboard, reachable top/bottom of a long thread while it animates, no rubber-band on tab panels, safe-area padding.
+- **Ask about this message** (⋯ menu → `Composer.askAbout`): the field is focused one tick after the tap (the menu traps focus until
+  it closes; `holdKeyboard()` bridges it), so check the keyboard rises on iOS. Also: `tz:message/…` in an Ask is just link text; confirm
+  the model gets the message from the thread context it is sent, else resolve `tz:` refs in `POST /api/ask`.
+- **Import picker on iOS:** the file input has no `accept` now; confirm Safari lets you pick a `.sqlite` file.
 - **Keyboard from taps:** Edit (`enterEdit()` + `lib/keyboard.ts` proxy), Add/Edit note in the sheet, the dictation tap.
 - **Placement with the keyboard up:** note sheet, ⋯ menus, `[[` autocomplete, edited-row reveal.
 - **Dictation:** the second start once crashed the iOS PWA (WebKit memory ceiling with whisper WASM + a fresh VAD
