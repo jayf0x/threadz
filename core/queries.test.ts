@@ -12,9 +12,11 @@ import {
   linksFor,
   listLinks,
   otherThreadsForNote,
+  outgoingLinksForThread,
   pool,
   propertySets,
   propertyValuesFor,
+  propertyValuesForThread,
   searchThreadIds,
   threadEntries,
   threadView,
@@ -469,4 +471,38 @@ test("todoScan: flagged messages and todo-looking text only, in live threads", a
   const rows = await todoScan(d);
   expect(rows.map((r) => r.id)).toEqual(["m2", "m3", "m4"]);
   expect(rows.find((r) => r.id === "m4")?.todo).toEqual({ done: 1, updated_at: 50 });
+});
+
+test("thread batches agree with the per-message queries, skip inert/removed rows and other threads", async () => {
+  const d = await open();
+  await thread(d, "t1", "Arya", 1);
+  await thread(d, "t2", "Sansa", 2);
+  await note(d, "n1", "a", 10);
+  await note(d, "n2", "b", 11);
+  await note(d, "n3", "c", 12);
+  await placeMessage(d, "m1", "t1", "n1", 10);
+  await placeMessage(d, "m2", "t1", "n2", 11);
+  await placeMessage(d, "m3", "t2", "n3", 12);
+  await propertySet(d, "ps-a", "A", { colorSlot: 1 });
+  await propertySet(d, "ps-dead", "Dead", { colorSlot: 2 });
+  await d.run("UPDATE entities SET deleted_at = 5 WHERE id = 'ps-dead'");
+  await propertyValue(d, "pv1", "ps-a", "m1", 20);
+  await propertyValue(d, "pv2", "ps-dead", "m1", 21);
+  await propertyValue(d, "pv3", "ps-a", "m3", 22);
+  await link(d, "l1", "m1", "t2", 30);
+  await link(d, "l2", "m1", "t2", 31);
+  await link(d, "l3", "m3", "t1", 32);
+  await propertyValue(d, "pv-l1", "ps-a", "l1", 40);
+  await propertyValue(d, "pv-l1b", "ps-dead", "l1", 41);
+
+  const values = await propertyValuesForThread(d, "t1");
+  expect([...values.keys()]).toEqual(["m1"]);
+  expect(values.get("m1")).toEqual(await propertyValuesFor(d, "m1"));
+
+  const links = await outgoingLinksForThread(d, "t1");
+  expect([...links.keys()]).toEqual(["m1"]);
+  const one = await linksFor(d, "m1");
+  expect(links.get("m1")?.map((l) => [l.link, l.type_value])).toEqual(one.outgoing.map((l) => [l.link, l.type_value]));
+  expect(links.get("m1")?.[0]?.type_set).toEqual({ name: "A", color_slot: 1 });
+  expect(links.get("m1")?.[1]?.type_set).toBeNull();
 });

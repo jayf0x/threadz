@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { m as Motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/Chip";
 import { Menu } from "@/components/ui/menu";
@@ -33,21 +33,22 @@ import {
   useImageAttach,
 } from "@/features/editor";
 import { VersionHistory } from "@/features/versions";
-import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
 import { HAS_BACKEND } from "@/lib/config";
-import { createLink, linksFor, propertyValuesFor } from "@/lib/data";
+import { createLink, type MessageChips } from "@/lib/data";
 import { revealInScroller } from "@/lib/dom";
 import { errorMessage } from "@/lib/errors";
 import { holdKeyboard } from "@/lib/keyboard";
 import { buildReferenceHref, messageSnippet } from "@/lib/references";
 import { useSettings } from "@/lib/settings";
 import { toggleTodoLine } from "@/lib/todos";
-import type { Annotation, Link as LinkRow, Message, PropertyValue } from "@/lib/types";
+import type { Annotation, Message } from "@/lib/types";
 import { AddPropertyPanel } from "./AddPropertyPanel";
 import { GutterMarksRow } from "./GutterMarks";
 import { NoteSurface } from "./NoteSurface";
 import { Peek } from "./Peek";
+import { PlainMarkdown, useEditorSlot } from "./PlainPreview";
+import { parsePlain } from "./plainMarkdown";
 import { ROW_SELECT_IGNORE, shouldSelectRow } from "./rowSelect";
 
 // One entry: the content, and — only while it is the selected message — one actions row under it (date and
@@ -69,6 +70,7 @@ export const EntryRow = ({
   onBranchThread,
   onRemoveFromThread,
   onSetTodo,
+  chips,
   note,
   conflicted,
   unsyncedAnnotations,
@@ -91,6 +93,7 @@ export const EntryRow = ({
   onBranchThread: () => void; // "Branch from here" (Round 6): same as onCopyThread, but the new thread follows this one's edits
   onRemoveFromThread: () => void; // C11: tombstones the placement only — the note surfaces in the Pool if this was its last one
   onSetTodo: (done: boolean | null) => void; // the Todo toggle; null clears the flag
+  chips: MessageChips | undefined; // property-value and typed-link chips, loaded once per thread (ThreadView)
   note: Annotation | undefined; // one per message, DB-enforced
   conflicted: boolean; // the message's note has two heads (core/versions.ts)
   unsyncedAnnotations: Set<string>;
@@ -111,17 +114,26 @@ export const EntryRow = ({
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [propertyOpen, setPropertyOpen] = useState(false);
-  const [properties, setProperties] = useState<PropertyValue[]>([]);
-  const [links, setLinks] = useState<LinkRow[]>([]);
   // A selection just turned into a connection (`onReferenceInsert` below): the link row already
   // exists by the time this opens — this is only the optional "type it" step.
   const [linkTypeOpen, setLinkTypeOpen] = useState(false);
   const [pendingLinkId, setPendingLinkId] = useState<string | null>(null);
   const editor = useRef<MarkdownEditorHandle>(null);
+  const editorHost = useRef<HTMLDivElement>(null);
+  const [editorReady, setEditorReady] = useState(false);
+  const [focusOnMount, setFocusOnMount] = useState(false);
+  // A simple message paints as plain markdown first; its Milkdown editor mounts in an idle slot behind it
+  // (selecting or editing skips the line) and takes over once it has rendered. Anything richer goes straight
+  // to the editor.
+  const preview = useMemo(() => parsePlain(m.content), [m.content]);
+  const editorLive = useEditorSlot(!preview || selected || editing);
+  const showEditor = !preview || editorReady || editing;
   const article = useRef<HTMLElement>(null);
   const reduceMotion = useReducedMotion();
   const { attach, error: imageError } = useImageAttach(editor);
   const { gutterMarks } = useSettings();
+  const properties = chips?.properties ?? [];
+  const links = chips?.links ?? [];
   const mine = m.role === "user";
   const todo = !!m.meta?.todo;
   const navigateReference = (threadId: string, messageId: string | null) =>
@@ -135,7 +147,13 @@ export const EntryRow = ({
 
   // `enterEdit` runs inside the tap on purpose: iOS raises the keyboard only for a focus() in the gesture.
   const startEdit = () => {
-    editor.current?.enterEdit();
+    if (editor.current) editor.current.enterEdit();
+    else {
+      // The editor hasn't mounted yet: it mounts because `editing` flips below and takes the caret on load;
+      // the throwaway input keeps the iOS keyboard up until it does.
+      holdKeyboard();
+      setFocusOnMount(true);
+    }
     setHistory(false);
     setEditing(true);
   };
@@ -154,24 +172,20 @@ export const EntryRow = ({
       vv?.removeEventListener("resize", reveal);
     };
   }, [editing]);
-  // This message's live property-value chips (docs/direction.md "Chips are the one UI primitive for
-  // attached state") — reloaded on any change so a value added from the ⋯ menu below shows straight away.
+  // The editor mounts hidden behind the preview; swap once its ProseMirror root exists.
   useEffect(() => {
-    const load = () => propertyValuesFor(m.id).then(setProperties, () => {});
-    load();
-    return onChange(load);
-  }, [m.id]);
-  // This message's own outgoing connections (docs/direction.md Decision 3) — only the typed ones
-  // render a chip; a bare, untyped link has nothing for `Chip` to show yet.
-  useEffect(() => {
-    const load = () =>
-      linksFor(m.id).then(
-        (r) => setLinks(r.outgoing.filter((l) => l.type)),
-        () => {},
-      );
-    load();
-    return onChange(load);
-  }, [m.id]);
+    const host = editorHost.current;
+    if (!editorLive || editorReady || !host) return;
+    const check = () => {
+      if (!host.querySelector(".ProseMirror")) return false;
+      setEditorReady(true);
+      return true;
+    };
+    if (check()) return;
+    const observer = new MutationObserver(() => check() && observer.disconnect());
+    observer.observe(host, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [editorLive, editorReady]);
 
   // A selection was turned into a `tz:` reference (MarkdownEditor's `onReferenceInsert`, via the
   // floating "Link" trigger a text selection shows): materialize the connection itself as a real
@@ -289,35 +303,53 @@ export const EntryRow = ({
     >
       {!mine && <p className="mb-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Claude</p>}
 
-      {mine ? (
-        <ContentField
-          variant="edit"
-          handleRef={editor}
-          value={m.content}
-          readOnly={!editing}
-          onDirtyChange={setDirty}
-          onSubmit={editing ? save : undefined}
-          onCancel={editing ? cancelEdit : undefined}
-          onImageFile={editing ? (f) => attach([f]) : undefined}
-          onTodoToggle={editing ? undefined : (lineIndex) => onEdit(toggleTodoLine(m.content, lineIndex))}
-          onReferenceClick={navigateReference}
-          onReferenceInsert={editing ? onReferenceInsert : undefined}
-          error={imageError ?? undefined}
-          leading={<ImageButton onFiles={attach} disabled={busy} />}
-          trailing={
-            <>
-              <Button size="icon" variant="ghost" aria-label="Cancel" title="Cancel" onClick={cancelEdit}>
-                <X className="size-5 md:size-4" />
-              </Button>
-              <Button size="icon" aria-label="Save" title="Save" disabled={busy || !dirty} onClick={save}>
-                <Check className="size-5 md:size-4" />
-              </Button>
-            </>
-          }
-        />
-      ) : (
-        <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" onReferenceClick={navigateReference} />
-      )}
+      {preview &&
+        !showEditor &&
+        (mine ? (
+          <div className="-mx-[17px] -my-[13px] rounded-3xl border border-transparent">
+            <PlainMarkdown blocks={preview} padding="12px 16px" />
+          </div>
+        ) : (
+          <PlainMarkdown blocks={preview} padding="0" />
+        ))}
+      <div ref={editorHost} hidden={!showEditor}>
+        {editorLive &&
+          (mine ? (
+            <ContentField
+              variant="edit"
+              handleRef={editor}
+              value={m.content}
+              readOnly={!editing}
+              autofocus={focusOnMount}
+              onDirtyChange={setDirty}
+              onSubmit={editing ? save : undefined}
+              onCancel={editing ? cancelEdit : undefined}
+              onImageFile={editing ? (f) => attach([f]) : undefined}
+              onTodoToggle={editing ? undefined : (lineIndex) => onEdit(toggleTodoLine(m.content, lineIndex))}
+              onReferenceClick={navigateReference}
+              onReferenceInsert={editing ? onReferenceInsert : undefined}
+              error={imageError ?? undefined}
+              leading={<ImageButton onFiles={attach} disabled={busy} />}
+              trailing={
+                <>
+                  <Button size="icon" variant="ghost" aria-label="Cancel" title="Cancel" onClick={cancelEdit}>
+                    <X className="size-5 md:size-4" />
+                  </Button>
+                  <Button size="icon" aria-label="Save" title="Save" disabled={busy || !dirty} onClick={save}>
+                    <Check className="size-5 md:size-4" />
+                  </Button>
+                </>
+              }
+            />
+          ) : (
+            <MarkdownEditor
+              readOnly
+              value={m.content}
+              className="[--md-padding:0]"
+              onReferenceClick={navigateReference}
+            />
+          ))}
+      </div>
 
       {!editing && (
         <VersionHistory messageId={m.id} open={versionsOpen} onOpenChange={setVersionsOpen} conflicted={conflicted} />

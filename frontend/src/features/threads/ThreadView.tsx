@@ -29,6 +29,8 @@ import {
   copyThread,
   getThread,
   isThreadLocalOnly,
+  type MessageChips,
+  messageChipsForThread,
   removeMessage,
   removePropertyValue,
   setPropertyValue,
@@ -105,6 +107,7 @@ export const ThreadView = ({
   const askUnavailable = !HAS_BACKEND || unreachable || localOnly;
   const reversed = useThreadReversed(threadId); // device-local, per-thread: newest at top instead of bottom
   const lineMode = useThreadLineMode(threadId); // device-local, per-thread, not synced (docs/direction.md "Round 6")
+  const [chips, setChips] = useState<Map<string, MessageChips>>(new Map());
   const [thread, setThread] = useState<Thread | null>(null);
   const [vanished, setVanished] = useState(false); // was in the mirror, then a list refresh dropped it
   const [scratch, setScratch] = useState<string | null>(null);
@@ -208,6 +211,13 @@ export const ThreadView = ({
       isThreadLocalOnly(threadId).then(setLocalOnly, () => {});
       todoStatus(threadId).then(setThreadTodo, () => {});
     };
+    load();
+    return onChange(load);
+  }, [threadId]);
+
+  // Every row's chips (property values, typed links) for the whole thread: two queries, not two per row.
+  useEffect(() => {
+    const load = () => messageChipsForThread(threadId).then(setChips, () => {});
     load();
     return onChange(load);
   }, [threadId]);
@@ -452,6 +462,7 @@ export const ThreadView = ({
                         onBranchThread={() => branchThreadFrom(m.id)}
                         onRemoveFromThread={() => removeFromThread(m.id)}
                         onSetTodo={(done) => setMessageTodo(m.id, done)}
+                        chips={chips.get(m.id)}
                         note={noteByMessage.get(m.id)}
                         conflicted={conflictedIds.has(m.id)}
                         unsyncedAnnotations={unsyncedAnnotations}

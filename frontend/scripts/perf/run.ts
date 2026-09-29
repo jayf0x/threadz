@@ -366,7 +366,7 @@ const main = async () => {
         }
         await page.locator('label[title="Settings"]').click();
         const t0 = performance.now();
-        await page.locator('input[accept^=".sqlite"]').setInputFiles(PHONE_FILE);
+        await page.locator("section", { hasText: "Import / export" }).locator('input[type="file"]').setInputFiles(PHONE_FILE);
         const note = page.locator("section", { hasText: "Import / export" }).locator("p").last();
         let outcome = "";
         while (!/^Imported|rror|nable|ailed/.test(outcome)) {
