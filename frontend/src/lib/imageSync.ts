@@ -1,4 +1,4 @@
-import { getBackendUrl } from "./config";
+import { getBackendUrl, HAS_BACKEND } from "./config";
 import { attachImage, dirtyImages, getImage, markImageClean, putImage } from "./images";
 
 // Where images meet main (docs/direction.md "Images", unchanged by the v2 rebuild — still their own
@@ -60,7 +60,7 @@ export const matchesHash = async (hash: string, blob: Blob): Promise<boolean | n
 export const resolveImage = async (hash: string) => {
   let blob = await getImage(hash);
   if (!blob) {
-    const fetched = await fetchImageRemote(hash).catch(() => undefined);
+    const fetched = HAS_BACKEND ? await fetchImageRemote(hash).catch(() => undefined) : undefined;
     const ok = fetched && (await matchesHash(hash, fetched));
     if (fetched && ok) await putImage(hash, fetched, 0);
     if (ok !== false) blob = fetched;

@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { StatusPill } from "@/features/connection";
 import { cn } from "@/lib/cn";
+import { HAS_BACKEND } from "@/lib/config";
 import { errorMessage } from "@/lib/errors";
 import { manualSync, useSyncStatus } from "@/lib/syncEngine";
 import { Section } from "./SettingsSection";
@@ -11,6 +12,7 @@ import { Section } from "./SettingsSection";
  * real actions (sync now, keep-live, export); this is deliberately just a status line, not a copy of it. */
 export const SyncSection = () => {
   const s = useSyncStatus();
+  if (!HAS_BACKEND) return null;
 
   return (
     <Section title="Sync">
