@@ -2,7 +2,9 @@ import {
   allEntries,
   allInsights,
   allNotes,
+  applyChanges,
   BUILTIN,
+  type Changes,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
   isReferenceStale as coreIsReferenceStale,
@@ -14,13 +16,17 @@ import {
   searchThreadIds as coreSearchThreadIds,
   todos as coreTodos,
   type Driver,
+  generateSeed,
   type Insight,
+  initSchema,
   type LinkWithType,
   type MapFilter,
   mapFilterOptions,
   mapTracks,
   orderedMessageIds,
   pool,
+  SCALES,
+  TABLE_NAMES,
   type ThreadEntry,
   threadEntries,
   threadView,
@@ -29,6 +35,7 @@ import {
 } from "@threadz/core";
 
 import { emitChange, onChange } from "./changeSignal";
+import { clearImages } from "./images";
 import { openPhoneDb } from "./phoneDb";
 import type { Annotation, Link, Message, PropertySet, PropertyValue, Thread, Version } from "./types";
 
@@ -1083,4 +1090,51 @@ export const createLink = async (fromId: string, toId: string): Promise<{ id: st
   });
   emitChange();
   return { id };
+};
+
+// --- Settings > Dev: sample data and purge (local QA on an empty device) ----------------------
+
+const CHUNK_ROWS = 300;
+
+// Adds one more sample batch (core/seed.ts's `small` scale, dated relative to now). A fresh seed and id salt per
+// call mean pressing again adds more rows and never reuses an id. Rows land pending (rev NULL), a transaction per
+// CHUNK_ROWS rows in table (foreign-key) order, so a big batch never holds one huge statement list or freezes the UI.
+export const addSampleData = async (onProgress?: (done: number, total: number) => void): Promise<number> => {
+  const d = await driver();
+  const salt = 1 + Math.floor(Math.random() * 0xfffffffe);
+  const all = generateSeed({ counts: SCALES.small, seed: salt, now: Date.now(), salt });
+  const total = TABLE_NAMES.reduce((n, t) => n + all[t].length, 0);
+  let done = 0;
+  for (const table of TABLE_NAMES)
+    for (let i = 0; i < all[table].length; i += CHUNK_ROWS) {
+      const rows = all[table].slice(i, i + CHUNK_ROWS);
+      await applyChanges(d, { [table]: rows } as Partial<Changes>);
+      done += rows.length;
+      onProgress?.(done, total);
+    }
+  emitChange();
+  return total;
+};
+
+// Deletes every synced row on this device (children before parents) and puts the built-in property sets back,
+// exactly as opening the database does. Device settings live in localStorage and are untouched. The caller resets
+// the sync cursor (syncEngine.resetSync) so the next pull starts from rev 0.
+export const purgeDatabase = async (): Promise<void> => {
+  const d = await driver();
+  await d.tx(async () => {
+    for (const table of [...TABLE_NAMES].reverse()) await d.run(`DELETE FROM ${table}`);
+    await d.run("DELETE FROM core_state");
+  });
+  await initSchema(d);
+  await clearImages();
+  emitChange();
+};
+
+export const liveCounts = async (): Promise<{ threads: number; notes: number }> => {
+  const d = await driver();
+  const [r] = await d.all<{ threads: number; notes: number }>(
+    `SELECT COUNT(*) FILTER (WHERE kind = 'thread') AS threads, COUNT(*) FILTER (WHERE kind = 'note') AS notes
+     FROM entities WHERE deleted_at IS NULL`,
+  );
+  return { threads: r?.threads ?? 0, notes: r?.notes ?? 0 };
 };

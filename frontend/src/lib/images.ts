@@ -52,6 +52,9 @@ export const putImage = async (hash: string, blob: Blob, dirty: 0 | 1) => {
 
 export const getImage = async (hash: string) => (await (await getDB()).get("images", hash))?.blob;
 
+// Settings > Dev purge: the whole store, dirty images included (nothing left refers to them).
+export const clearImages = async () => (await getDB()).clear("images");
+
 export const dirtyImages = async () => (await getDB()).getAllFromIndex("images", "dirty", 1);
 
 // Main acknowledged this image.

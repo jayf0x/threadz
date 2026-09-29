@@ -18,6 +18,12 @@ const setCursor = (rev: number) => {
   } catch {}
 };
 
+// After a purge: forget what main has sent so the next pull starts from rev 0, and recount pending.
+export const resetSync = async () => {
+  setCursor(0);
+  await refreshPending();
+};
+
 const driver = async () => (await getPhoneDb()).driver;
 
 const req = async <T>(path: string, init?: RequestInit): Promise<T> => {

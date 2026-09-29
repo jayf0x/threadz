@@ -239,6 +239,7 @@ Threads tab's **+ New** pill is labelled for that reason: beside the tab bar a b
   (`styles.css`) over `--pane-alpha`, which `lib/settings.ts` derives from the slider (92% without an image,
   falling as opacity rises; default 80%). Big persistent panes get that alpha only, no blur (cheap); small
   floating chrome (popover, dropdown, toast, sheet) is `surface-float` (fixed 96% gradient + blur).
+- **Dev section** (Settings, `DevSection.tsx`): "Add 50 threads" (`data.addSampleData`, `core/seed.ts`'s `generateSeed` with a per-press seed/salt, chunked `applyChanges`, rows pending) and a confirmed "Purge" (`data.purgeDatabase` + `syncEngine.resetSync`: all synced tables emptied, built-ins re-seeded, cursor 0, images cleared; device settings kept). QA tools for an empty device.
 - Request bodies are validated with Zod schemas in `backend/schemas.ts`; a bad body is a 400, never a 500.
 - **Generated metadata/embeddings/"related threads" don't exist right now.** `core/schema.ts`'s `threads` table
   has no description/tags/embedding columns; the v1 generation pipeline and its endpoints were dropped when main

@@ -2,6 +2,7 @@ import { AppearanceSection } from "./sections/AppearanceSection";
 import { BackendSection } from "./sections/BackendSection";
 import { BackgroundSection } from "./sections/BackgroundSection";
 import { DataSection } from "./sections/DataSection";
+import { DevSection } from "./sections/DevSection";
 import { DictationSection } from "./sections/DictationSection";
 import { LockZoomSection } from "./sections/LockZoomSection";
 import { NamingSection } from "./sections/NamingSection";
@@ -27,6 +28,7 @@ export const SettingsPanel = () => (
       <BackgroundSection />
       <DictationSection />
       <DataSection />
+      <DevSection />
     </div>
   </>
 );

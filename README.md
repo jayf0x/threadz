@@ -107,6 +107,8 @@ Import also takes a WAL-mode file (one main's backend has opened): the header is
 so rows still in an un-checkpointed `-wal` sidecar are not in the import. Checkpoint first
 (`PRAGMA wal_checkpoint(TRUNCATE)`) if in doubt; a file that is not SQLite fails with a clear message.
 
+The same generator (`core/seed.ts`) backs Settings > Dev: **Add 50 threads** writes a fresh `small` batch (new seed and id salt per press, so it only ever adds) as pending rows, in chunks; **Purge** empties every synced table on this device only, resets the sync cursor to 0 and clears the image store.
+
 ## Test
 
 ```bash
