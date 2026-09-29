@@ -1,5 +1,6 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { imageBearingTexts } from "./data";
+import { requestPersistence } from "./storage";
 
 // Photos in notes. A note holds only a reference, `![](img:<sha256hex>#<w>x<h>)`; the bytes live
 // here, in their OWN IndexedDB database. Nothing that snapshots, backs up, exports or imports
@@ -114,7 +115,7 @@ let housekept = false;
 export const housekeeping = () => {
   if (housekept) return;
   housekept = true;
-  navigator.storage?.persist?.().catch(() => {});
+  void requestPersistence();
   // The sweep scans every note version: leave it until the thread that mounted the first editor has had the worker.
   setTimeout(() => gcDeviceImages().catch(() => {}), GC_DELAY_MS);
 };

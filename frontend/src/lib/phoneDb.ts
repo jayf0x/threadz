@@ -24,7 +24,17 @@ export type PhoneDb = {
   close: () => Promise<void>;
 };
 
-const DEFAULT_NAME = "threadz-phone.sqlite";
+export const DEFAULT_NAME = "threadz-phone.sqlite";
+
+/** `open` failed. `rawDump` is the file's bytes when they were still readable. */
+export class PhoneOpenError extends Error {
+  constructor(
+    message: string,
+    public rawDump?: Uint8Array,
+  ) {
+    super(message);
+  }
+}
 
 export const openPhoneDb = async (name = DEFAULT_NAME): Promise<PhoneDb> => {
   const worker = new Worker(new URL("./phone/worker.ts", import.meta.url), { type: "module" });
@@ -35,7 +45,18 @@ export const openPhoneDb = async (name = DEFAULT_NAME): Promise<PhoneDb> => {
     broker.rejectAll(new Error(e.message || "Phone db worker crashed"));
   };
 
-  await broker.send({ type: "open", name });
+  try {
+    await broker.send({ type: "open", name });
+  } catch (e) {
+    // Surface the reason, plus whatever bytes are still readable (the file opened but the schema step
+    // failed, e.g. "newer than this app"); a failure before the file opened has none, so no export offered.
+    const rawDump = await broker
+      .send({ type: "dump" })
+      .then((b) => b as Uint8Array)
+      .catch(() => undefined);
+    worker.terminate();
+    throw new PhoneOpenError(e instanceof Error ? e.message : String(e), rawDump);
+  }
 
   const driver: Driver = createPhoneDriver(broker);
 
@@ -62,7 +83,7 @@ const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 // Same browser-download idiom as handoff.ts's `download` (create an object URL, click a throwaway
 // anchor, revoke it after a beat) — not reused directly since that helper is typed for text content
 // (`File([content], ...)` with `content: string`) and touching it is out of scope for this module.
-const downloadBytes = (bytes: Uint8Array, name: string) => {
+export const downloadBytes = (bytes: Uint8Array, name: string) => {
   const blob = new Blob([bytes], { type: "application/vnd.sqlite3" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
   a.click();

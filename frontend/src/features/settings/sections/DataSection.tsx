@@ -1,8 +1,9 @@
 import { formatDistanceToNow } from "date-fns";
 import { Download, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getPhoneDb, importDatabaseFile } from "@/lib/data";
+import { formatBytes, type StorageStatus, storageStatus } from "@/lib/storage";
 import { Section } from "./SettingsSection";
 
 const EXPORTED_KEY = "threadz.lastExport";
@@ -18,6 +19,11 @@ export const DataSection = () => {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [exportedAt, setExportedAt] = useState(lastExport);
+  const [storage, setStorage] = useState<StorageStatus | null>(null);
+
+  useEffect(() => {
+    storageStatus().then(setStorage);
+  }, []);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -69,8 +75,16 @@ export const DataSection = () => {
         />
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Photos aren't included — an export holds notes and their photo references, not the pictures.
+        Photos aren't exported; without the backend they exist only on this device.
       </p>
+      {storage && (
+        <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+          {storage.usage !== null && storage.quota !== null
+            ? `${formatBytes(storage.usage)} of ${formatBytes(storage.quota)}`
+            : "Usage unknown"}
+          {storage.persisted !== null && (storage.persisted ? " · Protected from eviction" : " · Can be evicted")}
+        </p>
+      )}
       <p className="mt-1 text-xs tabular-nums text-muted-foreground">
         {note ?? `Last export: ${exportedAt ? `${formatDistanceToNow(exportedAt)} ago` : "never"}.`}
       </p>
