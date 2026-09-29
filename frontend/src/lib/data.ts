@@ -24,10 +24,14 @@ import {
   mapFilterOptions,
   mapTracks,
   orderedMessageIds,
+  outgoingLinksForThread,
+  type PropertyValueView,
   pool,
+  propertyValuesForThread,
   SCALES,
   TABLE_NAMES,
   type ThreadEntry,
+  type ThreadLinkView,
   threadEntries,
   threadView,
   todoScan,
@@ -328,17 +332,42 @@ export const listPropertySets = async (threadId?: string): Promise<PropertySet[]
 // tombstoned) and removed values — see `core.propertyValuesFor`.
 export const propertyValuesFor = async (targetId: string): Promise<PropertyValue[]> => {
   const d = await driver();
-  const rows = await corePropertyValuesFor(d, targetId);
-  return rows.map((r) => ({
-    id: r.value.id,
-    setId: r.set.id,
-    setName: r.set.name,
-    valueType: r.set.value_type,
-    colorSlot: r.set.color_slot,
-    targetId: r.value.target_id,
-    value: r.value.value,
-    createdAt: r.value.created_at,
-  }));
+  return (await corePropertyValuesFor(d, targetId)).map(toPropertyValue);
+};
+
+const toPropertyValue = (r: PropertyValueView): PropertyValue => ({
+  id: r.value.id,
+  setId: r.set.id,
+  setName: r.set.name,
+  valueType: r.set.value_type,
+  colorSlot: r.set.color_slot,
+  targetId: r.value.target_id,
+  value: r.value.value,
+  createdAt: r.value.created_at,
+});
+
+// What every message row of one thread needs for its chips — property values and typed outgoing links,
+// keyed by message id — in two worker round trips for the whole thread instead of two per row.
+export type MessageChips = { properties: PropertyValue[]; links: Link[] };
+
+export const messageChipsForThread = async (threadId: string): Promise<Map<string, MessageChips>> => {
+  const d = await driver();
+  const [values, links] = await Promise.all([
+    propertyValuesForThread(d, threadId),
+    outgoingLinksForThread(d, threadId),
+  ]);
+  const out = new Map<string, MessageChips>();
+  const entry = (id: string) => {
+    const e = out.get(id) ?? { properties: [], links: [] };
+    out.set(id, e);
+    return e;
+  };
+  for (const [id, rows] of values) entry(id).properties = rows.map(toPropertyValue);
+  for (const [id, rows] of links) {
+    const typed = rows.filter((r) => r.type_value).map(toLink);
+    if (typed.length) entry(id).links = typed;
+  }
+  return out;
 };
 
 // Resolve one `LinkWithType` row (core/queries.ts) to the view shape `Link` above — joins the type
@@ -369,6 +398,23 @@ const resolveLink = async (d: Driver, row: LinkWithType): Promise<Link> => {
     type,
   };
 };
+
+const toLink = (row: ThreadLinkView): Link => ({
+  id: row.link.id,
+  fromId: row.link.from_id,
+  toId: row.link.to_id,
+  pinVersionId: row.link.pin_version_id,
+  updatedAt: row.link.updated_at,
+  type:
+    row.type_value && row.type_set
+      ? {
+          setId: row.type_value.set_id,
+          setName: row.type_set.name,
+          colorSlot: row.type_set.color_slot,
+          value: row.type_value.value,
+        }
+      : null,
+});
 
 // A "connection" (docs/direction.md Decision 3) an entity is either end of — the selection-to-link
 // flow (`features/editor/SelectionMenu.tsx`) reads a message's outgoing links to render type chips;

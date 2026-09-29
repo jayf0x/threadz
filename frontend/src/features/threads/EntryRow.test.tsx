@@ -83,7 +83,7 @@ const message = (over: Partial<Message> = {}): Message => ({
   id: "m1",
   threadId: "t1",
   role: "user",
-  content: "hello world",
+  content: "- hello world", // a list: only the editor renders it, so the row mounts the (mocked) editor at once
   createdAt: Date.parse("2026-01-01T00:00:00Z"),
   seq: 1,
   meta: null,
@@ -102,6 +102,7 @@ const baseProps = () => ({
   onBranchThread: () => {},
   onRemoveFromThread: () => {},
   onSetTodo: () => {},
+  chips: undefined,
   note: undefined,
   unsyncedAnnotations: new Set<string>(),
   onAddAnnotation: async () => true,
@@ -363,4 +364,17 @@ test("Cancel discards through the editor and leaves without saving", () => {
   fireEvent.click(getByLabelText("Cancel"));
   expect(editor.exited).toBe(1);
   expect(edits).toEqual([]);
+});
+
+test("a plain message paints as a preview before its editor mounts", () => {
+  const { container, queryByTestId } = render(
+    <EntryRow
+      message={message({ content: "just words" })}
+      {...baseProps()}
+      onEdit={async () => true}
+      onSelect={() => {}}
+    />,
+  );
+  expect(container.querySelector(".ProseMirror")?.textContent).toBe("just words");
+  expect(queryByTestId("md-content")).toBeNull();
 });

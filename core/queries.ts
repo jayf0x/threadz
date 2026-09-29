@@ -369,6 +369,63 @@ export const linksFor = async (d: Driver, entityId: string): Promise<{ outgoing:
   return { outgoing, incoming };
 };
 
+export type ThreadLinkView = LinkWithType & { type_set: { name: string; color_slot: number | null } | null };
+
+// Outgoing links of every live message in a thread in one statement, keyed by message id — `linksFor(...).outgoing`
+// per message without the N+1, each already resolved to its type value (same "earliest live value" pick as
+// `linksFor`) and that value's set name/colour, so a chip needs no second lookup.
+export const outgoingLinksForThread = async (d: Driver, threadId: string): Promise<Map<string, ThreadLinkView[]>> => {
+  const rows = await d.all<
+    LinkRow & {
+      tv_id: string | null;
+      tv_set_id: string;
+      tv_value: string | null;
+      tv_created_at: number;
+      tv_updated_at: number;
+      tv_rev: number | null;
+      set_name: string | null;
+      set_color_slot: number | null;
+    }
+  >(
+    `SELECT l.*, tv.id AS tv_id, tv.set_id AS tv_set_id, tv.value AS tv_value, tv.created_at AS tv_created_at,
+            tv.updated_at AS tv_updated_at, tv.rev AS tv_rev, ps.name AS set_name, ps.color_slot AS set_color_slot
+     FROM messages m
+     JOIN links l ON l.from_id = m.id
+     JOIN entities le ON le.id = l.id AND le.deleted_at IS NULL
+     LEFT JOIN property_values tv ON tv.id = (
+       SELECT id FROM property_values WHERE target_id = l.id AND removed_at IS NULL ORDER BY created_at, id LIMIT 1)
+     LEFT JOIN property_sets ps ON ps.id = tv.set_id
+     WHERE m.thread_id = ? AND m.removed_at IS NULL
+     ORDER BY l.updated_at, l.id`,
+    [threadId],
+  );
+  const out = new Map<string, ThreadLinkView[]>();
+  for (const r of rows) {
+    const link: LinkRow = { id: r.id, from_id: r.from_id, to_id: r.to_id, pin_version_id: r.pin_version_id, updated_at: r.updated_at, rev: r.rev };
+    const type_value: PropertyValueRow | null = r.tv_id
+      ? {
+          id: r.tv_id,
+          set_id: r.tv_set_id,
+          target_id: r.id,
+          value: r.tv_value,
+          created_at: r.tv_created_at,
+          updated_at: r.tv_updated_at,
+          removed_at: null,
+          rev: r.tv_rev,
+        }
+      : null;
+    const view: ThreadLinkView = {
+      link,
+      type_value,
+      type_set: type_value && r.set_name !== null ? { name: r.set_name, color_slot: r.set_color_slot } : null,
+    };
+    const list = out.get(r.from_id);
+    if (list) list.push(view);
+    else out.set(r.from_id, [view]);
+  }
+  return out;
+};
+
 export type PropertyValueView = {
   value: PropertyValueRow;
   set: { id: string; name: string; value_type: ValueType; color_slot: number | null };
@@ -378,42 +435,50 @@ export type PropertyValueView = {
 // itself tombstoned (docs/direction.md "Round 5 C11": "property values under a deleted set become inert —
 // no chip renders, not deleted themselves"). A set is a `property_set`-kind entity, so "deleted" means its
 // own `entities.deleted_at`, not `property_values.removed_at` (that's the value's own tombstone).
-export const propertyValuesFor = async (d: Driver, entityId: string): Promise<PropertyValueView[]> => {
-  const rows = await d.all<{
-    id: string;
-    set_id: string;
-    target_id: string;
-    value: string | null;
-    created_at: number;
-    updated_at: number;
-    removed_at: number | null;
-    rev: number | null;
-    set_name: string;
-    value_type: ValueType;
-    color_slot: number | null;
-  }>(
-    `SELECT pv.*, ps.name AS set_name, ps.value_type AS value_type, ps.color_slot AS color_slot
+export const propertyValuesFor = async (d: Driver, entityId: string): Promise<PropertyValueView[]> =>
+  (await d.all<PropertyValueCols>(`${PROPERTY_VALUE_SELECT} WHERE pv.target_id = ? ${PROPERTY_VALUE_LIVE} ORDER BY pv.created_at`, [entityId])).map(
+    propertyValueView,
+  );
+
+// `propertyValuesFor` for every live message of a thread in one statement, keyed by message id (a message
+// with none has no entry). The thread view's per-row chips read this instead of one query per row (N+1).
+export const propertyValuesForThread = async (d: Driver, threadId: string): Promise<Map<string, PropertyValueView[]>> => {
+  const rows = await d.all<PropertyValueCols>(
+    `${PROPERTY_VALUE_SELECT}
+     JOIN messages m ON m.id = pv.target_id AND m.thread_id = ? AND m.removed_at IS NULL
+     WHERE 1 ${PROPERTY_VALUE_LIVE} ORDER BY pv.created_at`,
+    [threadId],
+  );
+  const out = new Map<string, PropertyValueView[]>();
+  for (const r of rows) {
+    const list = out.get(r.target_id);
+    if (list) list.push(propertyValueView(r));
+    else out.set(r.target_id, [propertyValueView(r)]);
+  }
+  return out;
+};
+
+type PropertyValueCols = PropertyValueRow & { set_name: string; value_type: ValueType; color_slot: number | null };
+
+const PROPERTY_VALUE_SELECT = `SELECT pv.*, ps.name AS set_name, ps.value_type AS value_type, ps.color_slot AS color_slot
      FROM property_values pv
      JOIN property_sets ps ON ps.id = pv.set_id
-     JOIN entities se ON se.id = ps.id
-     WHERE pv.target_id = ? AND pv.removed_at IS NULL AND se.deleted_at IS NULL
-     ORDER BY pv.created_at`,
-    [entityId],
-  );
-  return rows.map((r) => ({
-    value: {
-      id: r.id,
-      set_id: r.set_id,
-      target_id: r.target_id,
-      value: r.value,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      removed_at: r.removed_at,
-      rev: r.rev,
-    },
-    set: { id: r.set_id, name: r.set_name, value_type: r.value_type, color_slot: r.color_slot },
-  }));
-};
+     JOIN entities se ON se.id = ps.id`;
+const PROPERTY_VALUE_LIVE = "AND pv.removed_at IS NULL AND se.deleted_at IS NULL";
+
+const propertyValueView = (r: PropertyValueCols): PropertyValueView => ({
+  value: {
+    id: r.id,
+    set_id: r.set_id,
+    target_id: r.target_id,
+    value: r.value,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    removed_at: r.removed_at,
+    rev: r.rev,
+  },
+  set: { id: r.set_id, name: r.set_name, value_type: r.value_type, color_slot: r.color_slot },
+});
 
 // Property sets available to use: every live global set (`scope_thread_id IS NULL`), plus — when a thread
 // is given — that thread's own scoped sets too (docs/direction.md "C13": "scope: global vs one thread").

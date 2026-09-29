@@ -47,7 +47,7 @@ should compare against the "after" column.
 
 | lens (budget) | before | after | est. worker 4x | worker round trips before -> after |
 |---|---|---|---|---|
-| open thread, tap to first text (<150ms) | 1151ms | 321ms | 427ms | 954 -> 56 |
+| open thread, tap to first text (<150ms) | 1151ms | 210ms | 246ms | 954 -> 13 |
 | search, first request to last reply (<200ms) | 31977ms | 37ms | 147ms | 52,728 -> 2 |
 | Todos tab tap to list (<200ms) | never (>30s) | 9ms | 9ms | 50,310 -> 0 |
 | Home tap to rows (<300ms) | 253ms | 9ms | 9ms | 91 -> 0 |
@@ -73,10 +73,17 @@ load 100k nodes -> 18k, JS heap 135 -> 61 MB, Todos and Home taps are just a tab
 untimed, until its target row is mounted.)
 
 Still over budget, and not a query problem:
-- **Open thread (321ms, budget 150):** the tap-to-first-request gap is ~70ms of main-thread work, the data is back
-  ~90ms later, and the rest is each row's lazily loaded Milkdown editor mounting (the text only counts once an editor
-  has rendered) plus two worker queries per row (links, property values: N+1 in `EntryRow`). Next: batch those two
-  per-thread (`core/queries.ts`) and render the first rows as plain markdown before the editor mounts.
+- **Open thread (210ms, budget 150):** batching the per-row queries (`core.propertyValuesForThread`,
+  `outgoingLinksForThread`, fed to `EntryRow` as `chips` by `ThreadView`) took the worker round trips 56 -> 13 but
+  moved the time little (337ms with the batching alone, same session and machine). What moved it is painting simple
+  messages (single-line paragraphs, `#`..`###` headings, bold/italic/code; `plainMarkdown.ts`) as plain markdown in
+  the editor's own wrapper classes, with the Milkdown editor mounting behind it one idle slot at a time and swapping
+  in once its `.ProseMirror` exists (`PlainPreview.tsx`, `EntryRow`); a selected or editing row mounts its editor at
+  once. Row heights were identical before and after the swap in the headless check. Lists, `/todo` lines, links,
+  images and multi-line paragraphs are outside the subset and still wait for their editor, and that is most of the
+  seed's messages; 210ms is the ~70ms tap-to-request main-thread work, the data ~90ms later, and the first
+  row's render. Next: widen the subset (lists, `/todo` lines) or defer the editors of rows below the first screen.
+  The harness's Settings import selector was stale (`input[accept^=".sqlite"]`; the input has no `accept`) and is fixed.
 - `Menu` built every item element eagerly and PoolPanel gave every Pool note a menu of every thread: 700 MB of
   retained React elements at `real` and a renderer crash at `large` (fixed here: `items` may be a function, called
   only while the menu is open).
