@@ -31,6 +31,25 @@ this rebuild is built from), `README.md` (API, sync, storage, photos, load-beari
   (or one built from `lib/data.ts` on top of it) plus the component that renders its rows. Extend
   `core/queries.ts` before reaching for a bespoke SQL string in a feature file.
 
+## Working in waves (lead agent)
+
+Wave prompts carry only scope, Step 0 questions and the phase table; everything below applies to every wave.
+
+- All coding goes to the `core-builder` subagent (`.claude/agents/core-builder.md`, latest Sonnet, medium effort;
+  its file carries the principles and rules, so sub-agent prompts don't repeat them). The lead orchestrates, reviews
+  and integrates; it doesn't write feature code itself.
+- Step 0: ask the user every open decision in one AskUserQuestion batch, recommended default first. Record the
+  answers in docs/direction.md as "Round N".
+- Phases:
+  - Build anything others depend on first, alone, then freeze its API.
+  - Then run the rest in parallel, one sub-agent per area, each with `isolation: "worktree"`.
+- A sub-agent prompt holds only: its scope, the files it owns, the API it may call, and anything extra it must do
+  before it's done. The rest is in its agent file.
+- After each merge: run `bun run check` and `bun run --cwd frontend build`, then commit with the git-meow skill.
+  Update README.md, AGENTS.md, docs/direction.md and backlog.md as pieces land.
+- At the end: push; unlock any locked worktree, then run `bun run clean:worktrees`; leave the working tree clean.
+- Final report: what's built, device-only checks added to backlog.md, and any spec questions still open.
+
 ## Commands (bun only, never npm/yarn/pnpm)
 
 | | |
