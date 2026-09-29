@@ -2,7 +2,7 @@ import { applyChanges, type Changes, countChanges, pendingChanges, TABLE_NAMES }
 import { useSyncExternalStore } from "react";
 import { emitChange, onChange } from "./changeSignal";
 import { getBackendUrl } from "./config";
-import { getPhoneDb } from "./data";
+import { getPhoneDb, pruneOldVersions } from "./data";
 import { errorMessage } from "./errors";
 
 // v2 sync (docs/direction.md "Sync" + "B7" keep-live + "B10" Ask): the phone always reads/writes
@@ -105,7 +105,11 @@ export const syncNow = async (): Promise<void> => {
   const sent = await push();
   const received = await pull();
   if (sent + received > 0) emitChange();
+  idle(() => void pruneOldVersions().catch(() => {})); // retention (core/retention.ts), never on the sync's critical path
 };
+
+const idle = (fn: () => void) =>
+  typeof requestIdleCallback === "function" ? requestIdleCallback(fn) : setTimeout(fn, 1000);
 
 // --- status ------------------------------------------------------------------------------------
 // direction.md "B9": synced / N pending / keep-live on / main unreachable.

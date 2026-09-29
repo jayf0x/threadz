@@ -2,7 +2,7 @@ import { afterEach, expect, jest, mock, test } from "bun:test";
 
 // The engine reads the backend URL from device settings and the phone db from a Worker; neither is under test.
 mock.module("./config", () => ({ getBackendUrl: () => "http://backend.test" }));
-mock.module("./data", () => ({ getPhoneDb: async () => ({ driver: {} }) }));
+mock.module("./data", () => ({ getPhoneDb: async () => ({ driver: {} }), pruneOldVersions: async () => {} }));
 const { checkReachable, syncNow, UNREACHABLE_MESSAGE } = await import("./syncEngine");
 
 const realFetch = globalThis.fetch;

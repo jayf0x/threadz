@@ -5,6 +5,7 @@ import {
   Copy,
   GitBranch,
   GitBranchPlus,
+  History,
   Link,
   Mic,
   MoreHorizontal,
@@ -31,6 +32,7 @@ import {
   type MarkdownEditorHandle,
   useImageAttach,
 } from "@/features/editor";
+import { VersionHistory } from "@/features/versions";
 import { onChange } from "@/lib/changeSignal";
 import { cn } from "@/lib/cn";
 import { createLink, linksFor, propertyValuesFor } from "@/lib/data";
@@ -67,6 +69,7 @@ export const EntryRow = ({
   onRemoveFromThread,
   onSetTodo,
   note,
+  conflicted,
   unsyncedAnnotations,
   onAddAnnotation,
   onEditAnnotation,
@@ -88,6 +91,7 @@ export const EntryRow = ({
   onRemoveFromThread: () => void; // C11: tombstones the placement only — the note surfaces in the Pool if this was its last one
   onSetTodo: (done: boolean | null) => void; // the Todo toggle; null clears the flag
   note: Annotation | undefined; // one per message, DB-enforced
+  conflicted: boolean; // the message's note has two heads (core/versions.ts)
   unsyncedAnnotations: Set<string>;
   onAddAnnotation: (text: string) => Promise<boolean>;
   onEditAnnotation: (id: string, text: string) => Promise<boolean>;
@@ -102,6 +106,7 @@ export const EntryRow = ({
   const [dirty, setDirty] = useState(false);
   const [history, setHistory] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [propertyOpen, setPropertyOpen] = useState(false);
@@ -313,6 +318,10 @@ export const EntryRow = ({
         <MarkdownEditor readOnly value={m.content} className="[--md-padding:0]" onReferenceClick={navigateReference} />
       )}
 
+      {!editing && (
+        <VersionHistory messageId={m.id} open={versionsOpen} onOpenChange={setVersionsOpen} conflicted={conflicted} />
+      )}
+
       {note && !editing && (
         <div className="-mb-1.5 mt-0.5">
           <ResponsiveOverlay {...overlay}>{noteBody}</ResponsiveOverlay>
@@ -429,6 +438,7 @@ export const EntryRow = ({
                 { label: "Copy", icon: Copy, onClick: copyText },
                 { label: "Copy link", icon: Link, onClick: copyLink },
                 { label: "Add property", icon: Tag, onClick: () => setPropertyOpen(true), keepFocus: true },
+                { label: "Version history", icon: History, onClick: () => setVersionsOpen(true), keepFocus: true },
                 { label: "Clone from here", icon: GitBranchPlus, onClick: onCopyThread },
                 { label: "Branch from here", icon: GitBranch, onClick: onBranchThread },
                 {

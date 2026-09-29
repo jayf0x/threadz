@@ -1,4 +1,12 @@
-import { applyChanges, type Changes, changesSince, stampRevs, TABLE_NAMES, threadView } from "@threadz/core";
+import {
+  applyChanges,
+  type Changes,
+  changesSince,
+  pruneVersions,
+  stampRevs,
+  TABLE_NAMES,
+  threadView,
+} from "@threadz/core";
 import type { BunRequest } from "bun";
 import type { z } from "zod";
 import { appendNoteMessage, backupDb, currentRev, driver, ensureSchema, getThread, now } from "./db";
@@ -74,6 +82,10 @@ const presence = () => {
 // How many rows a push body actually carries, across every table.
 const countRows = (c: PushBody) => TABLE_NAMES.reduce((n, t) => n + (c[t]?.length ?? 0), 0);
 
+void ensureSchema()
+  .then(() => pruneVersions(driver))
+  .catch(() => {});
+
 const server = Bun.serve({
   port: PORT,
   hostname: "0.0.0.0", // reachable from the phone over the LAN
@@ -112,6 +124,7 @@ const server = Bun.serve({
         if (carries) await applyChanges(driver, body as unknown as Partial<Changes>);
         const cursor = carries ? await stampRevs(driver) : since;
         const changes = await changesSince(driver, since);
+        if (carries) await pruneVersions(driver).catch(() => {}); // after the reply's rows are read (core/retention.ts)
         return json({ changes, cursor });
       }),
     },
