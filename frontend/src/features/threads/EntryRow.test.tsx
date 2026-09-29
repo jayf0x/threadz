@@ -103,6 +103,7 @@ const baseProps = () => ({
   onRemoveFromThread: () => {},
   onSetTodo: () => {},
   note: undefined,
+  conflicted: false,
   unsyncedAnnotations: new Set<string>(),
   onAddAnnotation: async () => true,
   onEditAnnotation: async () => true,

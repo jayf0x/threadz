@@ -5,6 +5,7 @@ import {
   applyChanges,
   BUILTIN,
   type Changes,
+  conflictedNotes,
   annotationsFor as coreAnnotationsFor,
   counterValue as coreCounterValue,
   isReferenceStale as coreIsReferenceStale,
@@ -20,11 +21,14 @@ import {
   type Insight,
   initSchema,
   type LinkWithType,
+  listVersions,
   type MapFilter,
   mapFilterOptions,
   mapTracks,
+  nextParent,
   orderedMessageIds,
   pool,
+  pruneVersions,
   SCALES,
   TABLE_NAMES,
   type ThreadEntry,
@@ -643,8 +647,8 @@ export const editMessage = async (messageId: string, content: string): Promise<v
   await d.tx(async () => {
     const versionId = uuid();
     await d.run(
-      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, ?, ?, NULL)",
-      [versionId, row.note_id, content, row.author, at],
+      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+      [versionId, row.note_id, await nextParent(d, row.note_id), content, row.author, at],
     );
     if (row.pin_version_id)
       await d.run("UPDATE messages SET pin_version_id = ?, updated_at = ? WHERE id = ?", [versionId, at, messageId]);
@@ -652,6 +656,51 @@ export const editMessage = async (messageId: string, content: string): Promise<v
     await touchThread(d, row.thread_id, at);
   });
   emitChange();
+};
+
+// Version history (core/versions.ts). "Keep this version" is just another edit: a new version holding the
+// chosen content, on top of every current head, so it also settles a conflict.
+export const noteIdOfMessage = async (messageId: string): Promise<string | null> =>
+  (await (await driver()).all<{ note_id: string }>("SELECT note_id FROM messages WHERE id = ?", [messageId]))[0]
+    ?.note_id ?? null;
+
+export const noteVersions = async (noteId: string) => listVersions(await driver(), noteId);
+
+export const conflictedMessageIds = async (threadId: string): Promise<Set<string>> => {
+  const d = await driver();
+  const rows = await d.all<{ id: string; note_id: string }>(
+    "SELECT id, note_id FROM messages WHERE thread_id = ? AND removed_at IS NULL",
+    [threadId],
+  );
+  const bad = await conflictedNotes(d, [...new Set(rows.map((r) => r.note_id))]);
+  return new Set(rows.filter((r) => bad.has(r.note_id)).map((r) => r.id));
+};
+
+export const keepVersion = async (noteId: string, versionId: string): Promise<void> => {
+  const d = await driver();
+  const at = now();
+  const [v] = await d.all<{ content: string; author: string }>(
+    "SELECT content, author FROM note_versions WHERE id = ? AND note_id = ?",
+    [versionId, noteId],
+  );
+  if (!v) throw new Error("version not found");
+  await d.tx(async () => {
+    await d.run(
+      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+      [uuid(), noteId, await nextParent(d, noteId), v.content, v.author, at],
+    );
+    for (const m of await d.all<{ id: string; thread_id: string }>(
+      "SELECT id, thread_id FROM messages WHERE note_id = ? AND removed_at IS NULL",
+      [noteId],
+    ))
+      await touchThread(d, m.thread_id, at);
+  });
+  emitChange();
+};
+
+// Retention after a sync (core/retention.ts); a no-op on most runs.
+export const pruneOldVersions = async (): Promise<void> => {
+  if ((await pruneVersions(await driver())) > 0) emitChange();
 };
 
 // Remove a message from a thread (docs/direction.md "C11"): a tombstone on the *message* row
@@ -939,8 +988,8 @@ export const editAnnotation = async (noteId: string, content: string): Promise<v
   if (!row) throw new Error(`note ${noteId} not found`);
   await d.tx(async () => {
     await d.run(
-      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, NULL, ?, ?, ?, NULL)",
-      [uuid(), noteId, content, row.author, at],
+      "INSERT INTO note_versions (id, note_id, parent_id, content, author, created_at, rev) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+      [uuid(), noteId, await nextParent(d, noteId), content, row.author, at],
     );
     const link = await attachedLinkFrom(d, noteId);
     if (link) {

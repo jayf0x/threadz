@@ -21,6 +21,7 @@ import { Menu } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
 import { Composer, type ComposerHandle } from "@/features/composer";
 import { MarkdownEditor } from "@/features/editor";
+import { useConflictedMessages } from "@/features/versions";
 import { onChange } from "@/lib/changeSignal";
 import { HAS_BACKEND } from "@/lib/config";
 import {
@@ -94,6 +95,7 @@ export const ThreadView = ({
     deleteAnnotation,
     ask,
   } = useThread(threadId);
+  const conflictedIds = useConflictedMessages(threadId);
   // Ask needs main (docs/direction.md "B10"): disabled/greyed out, never queued, while the last sync
   // attempt failed — or (Round 6) while this thread carries the built-in `local-only` flag. Same
   // treatment either way: Composer just doesn't offer the control (`canAsk`).
@@ -451,6 +453,7 @@ export const ThreadView = ({
                         onRemoveFromThread={() => removeFromThread(m.id)}
                         onSetTodo={(done) => setMessageTodo(m.id, done)}
                         note={noteByMessage.get(m.id)}
+                        conflicted={conflictedIds.has(m.id)}
                         unsyncedAnnotations={unsyncedAnnotations}
                         onAddAnnotation={(text) => addAnnotation(m.id, text)}
                         onEditAnnotation={editAnnotation}
