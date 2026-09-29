@@ -210,11 +210,11 @@ const BUILTIN_SETS: [id: string, name: string, type: ValueType][] = [
   [BUILTIN.localOnly, "Local only", "none"],
 ];
 
-export const initSchema = (d: Driver) =>
-  d.tx(async () => {
-    for (const stmt of SCHEMA.split(";").map((s) => s.trim())) if (stmt) await d.run(stmt);
-    for (const [id, name, type] of BUILTIN_SETS) {
-      await d.run("INSERT OR IGNORE INTO entities VALUES (?, 'property_set', 0, 0, NULL, 0)", [id]);
-      await d.run("INSERT OR IGNORE INTO property_sets VALUES (?, ?, ?, NULL, NULL, NULL, 0, 0)", [id, name, type]);
-    }
-  });
+// Migration 1 (core/migrate.ts): the whole schema, idempotent. No transaction of its own -- the runner supplies it.
+export const applySchema = async (d: Driver) => {
+  for (const stmt of SCHEMA.split(";").map((s) => s.trim())) if (stmt) await d.run(stmt);
+  for (const [id, name, type] of BUILTIN_SETS) {
+    await d.run("INSERT OR IGNORE INTO entities VALUES (?, 'property_set', 0, 0, NULL, 0)", [id]);
+    await d.run("INSERT OR IGNORE INTO property_sets VALUES (?, ?, ?, NULL, NULL, NULL, 0, 0)", [id, name, type]);
+  }
+};

@@ -10,14 +10,24 @@ import { openPanel, useSyncStatus } from "@/lib/syncEngine";
 //   ■ Unreachable — filled ink square: the last sync attempt failed
 export const StatusPill = () => {
   const s = useSyncStatus();
-  const label = s.unreachable ? "Unreachable" : s.keepLive ? "Keep-live" : s.pending ? "Pending" : "Synced";
-  const hint = s.unreachable
-    ? "Couldn't sync. Open for options."
-    : s.keepLive
-      ? "Syncing automatically every 15s."
-      : s.pending
-        ? "Saved on this device. Open to sync."
-        : "Everything is synced.";
+  const label = s.outdated
+    ? "Update the app"
+    : s.unreachable
+      ? "Unreachable"
+      : s.keepLive
+        ? "Keep-live"
+        : s.pending
+          ? "Pending"
+          : "Synced";
+  const hint = s.outdated
+    ? "This app and the server are on different versions."
+    : s.unreachable
+      ? "Couldn't sync. Open for options."
+      : s.keepLive
+        ? "Syncing automatically every 15s."
+        : s.pending
+          ? "Saved on this device. Open to sync."
+          : "Everything is synced.";
 
   return (
     <button
@@ -33,7 +43,7 @@ export const StatusPill = () => {
         aria-hidden
         className={cn(
           "size-2.5 shrink-0 border",
-          s.unreachable
+          s.outdated || s.unreachable
             ? "border-foreground bg-foreground"
             : s.keepLive
               ? "rounded-full border-primary bg-primary/50"

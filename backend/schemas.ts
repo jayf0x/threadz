@@ -13,7 +13,11 @@ import { z } from "zod";
 const Row = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
 const RowArray = z.array(Row).optional();
 
-export const PushBody = z.object({
+// Every push and pull states the schema + protocol it speaks (core/migrate.ts); main refuses a mismatch.
+export const VersionStamp = z.object({ schema: z.number().optional(), protocol: z.number().optional() });
+export type VersionStamp = z.infer<typeof VersionStamp>;
+
+export const PushBody = VersionStamp.extend({
   entities: RowArray,
   note_versions: RowArray,
   threads: RowArray,

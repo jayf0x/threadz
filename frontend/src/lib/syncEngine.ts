@@ -1,4 +1,12 @@
-import { applyChanges, type Changes, countChanges, pendingChanges, TABLE_NAMES } from "@threadz/core";
+import {
+  applyChanges,
+  type Changes,
+  countChanges,
+  PROTOCOL_VERSION,
+  pendingChanges,
+  SCHEMA_VERSION,
+  TABLE_NAMES,
+} from "@threadz/core";
 import { useSyncExternalStore } from "react";
 import { emitChange, onChange } from "./changeSignal";
 import { getBackendUrl } from "./config";
@@ -60,6 +68,18 @@ const ensureReachable = async (): Promise<void> => {
   throw new Error(UNREACHABLE_MESSAGE);
 };
 
+export const OUTDATED_MESSAGE = "Update the app.";
+
+const VERSIONS = { schema: SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+const versionQuery = `schema=${SCHEMA_VERSION}&protocol=${PROTOCOL_VERSION}`;
+
+// Main and this device must speak the same schema + protocol (core/migrate.ts). Main refuses a mismatch with a
+// typed 409, and we refuse a response stamped with versions that aren't ours; either way the state is `outdated`.
+const outdated = (): Error => {
+  set({ outdated: true, lastError: OUTDATED_MESSAGE });
+  return new Error(OUTDATED_MESSAGE);
+};
+
 const req = async <T>(path: string, init?: RequestInit, ms = REQUEST_MS): Promise<T> => {
   const res = await fetchWithTimeout(
     `${getBackendUrl()}${path}`,
@@ -69,9 +89,12 @@ const req = async <T>(path: string, init?: RequestInit, ms = REQUEST_MS): Promis
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => null);
     const error = body && typeof body === "object" && "error" in body ? body.error : null;
+    if (res.status === 409 && error === "version_mismatch") throw outdated();
     throw new Error(typeof error === "string" && error ? error : `${res.status} ${res.statusText}`);
   }
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T & Partial<typeof VERSIONS>;
+  if (data.schema !== SCHEMA_VERSION || data.protocol !== PROTOCOL_VERSION) throw outdated();
+  return data;
 };
 
 // Push: this device's pending rows (no `rev` yet). Main returns them stamped, so applying the
@@ -81,7 +104,7 @@ const push = async (): Promise<number> => {
   const body = await pendingChanges(d);
   const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>("/api/push", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, ...VERSIONS }),
   });
   await applyChanges(d, changes);
   setCursor(cursor);
@@ -92,7 +115,9 @@ const push = async (): Promise<number> => {
 const pull = async (): Promise<number> => {
   const d = await driver();
   const since = getCursor();
-  const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>(`/api/changes?since=${since}`);
+  const { changes, cursor } = await req<{ changes: Partial<Changes>; cursor: number }>(
+    `/api/changes?since=${since}&${versionQuery}`,
+  );
   await applyChanges(d, changes);
   setCursor(cursor);
   return TABLE_NAMES.reduce((n, t) => n + (changes[t]?.length ?? 0), 0);
@@ -115,6 +140,7 @@ export type SyncStatus = {
   syncing: boolean;
   keepLive: boolean;
   unreachable: boolean; // last sync attempt failed — Ask is disabled while this is true (B10)
+  outdated: boolean; // main and this device disagree on schema/protocol version; syncing is refused until the app is updated
   lastError: string | null;
   panel: boolean; // connection dialog open
 };
@@ -124,6 +150,7 @@ let state: SyncStatus = {
   syncing: false,
   keepLive: false,
   unreachable: false,
+  outdated: false,
   lastError: null,
   panel: false,
 };
@@ -151,7 +178,7 @@ export const manualSync = async (): Promise<void> => {
   try {
     await syncNow();
     failures = 0;
-    set({ unreachable: false });
+    set({ unreachable: false, outdated: false });
   } catch (e) {
     set({ lastError: errorMessage(e) });
     throw e;
@@ -172,8 +199,9 @@ const tick = async () => {
   try {
     await syncNow();
     failures = 0;
-    set({ unreachable: false, lastError: null });
+    set({ unreachable: false, outdated: false, lastError: null });
   } catch (e) {
+    if (state.outdated) stopKeepLive(); // retrying can't fix a version mismatch
     failures++;
     set({ lastError: errorMessage(e) });
     if (failures >= MAX_FAILURES) {
