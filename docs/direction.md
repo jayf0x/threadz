@@ -372,6 +372,31 @@ far more activity than a person (~1,700 notes in 30 days, 65% of threads stale),
 (1,292 stale threads, 398 old todos) and the 5-note minimum is never the limiting factor. The constants stay; the
 device run with real data is the real tuning test. If cards feel noisy there, raise `STALE_THREAD_DAYS` first.
 
+## Round 9 (2026-09-29): wave 9 local-mode decisions
+
+1. **iOS issues:** the user has no first-hand list; the lead researched known iOS 26 standalone-PWA problems instead
+   (below). Each becomes a WebKit repro or a device-checklist line in `backlog.md`.
+2. **Photos stay out of exports** (today's rule): no zip, no "Export with photos". Photos without main exist only on
+   the device; Settings → Data says so in one line.
+3. **Conflicts:** a chip on a message whose note has two versions sharing a parent opens the version history; "Keep this
+   version" writes a new version on top of both.
+4. **Retention (C12):** build the cleanup, one rule in `core/`, run on main and on the phone. Protected: pinned, named
+   and conflict versions; everything else beyond the newest 20 per note is pruned.
+5. **Version mismatch** (schema or protocol) refuses to sync: status "Update the app" plus a reload button.
+   (Assumed default; the user did not object.)
+
+### Researched iOS/PWA issues (sources: WebKit/Apple forums, dev.to, PWA-POLICE/pwa-bugs, vite-pwa issue #554)
+
+| # | Issue | Plan |
+|---|---|---|
+| a | iOS 26: `visualViewport.offsetTop`/height don't reset after the keyboard closes, leaving fixed chrome shifted | re-read `visualViewport` on `focusout`, `resize` and a short delayed tick; `window.scrollTo(0,0)` after blur |
+| b | iOS 26 standalone: `100dvh`/`100%` short by the top safe inset | shell already sizes from `--vv-h`; verify no `dvh` remains |
+| c | Fixed bottom bars drift after long-running/backgrounded PWA | re-measure on `visibilitychange` and `pageshow` |
+| d | Rubber-band on overflow-hidden roots and nested scrollers; scroll chaining | `overscroll-behavior: none` on every scroller; keep `body` fixed |
+| e | Update prompt unreliable on iOS (vite-pwa #554); SW only checks on navigation | `registration.update()` on `visibilitychange`; prompt via `onNeedRefresh`, reload only when idle |
+| f | Animations ignore Reduce Motion (Motion and CSS keyframes) | `MotionConfig reducedMotion="user"` + a `prefers-reduced-motion` block in `styles.css` |
+| g | Liquid Glass scroll-edge fade behind the status bar has no web opt-out | device check only |
+
 ## What to resolve, and how
 
 Ordered by what blocks what. Each item says what's unknown, how to settle it, and what it blocks. Nothing below the

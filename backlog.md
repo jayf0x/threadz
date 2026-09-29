@@ -27,15 +27,6 @@ _Nothing._
 - **Vision captioning** for image-only notes (they get metadata from the title alone).
 - **WebGPU whisper decode** where available (much cheaper per utterance; not on iOS).
 
-## Wave 7 follow-ups
-
-- **`/threadz/map` hard reload 404s** on the static Pages build (no `404.html` fallback); in-app navigation is fine.
-- **Map todo filter ignores derived `/todo` lines** (only `todos` rows on the message or its note match).
-- **Index header is tight at 375px** (search + Pool + Map + Home title); fold Pool and Map into one menu if it
-  reads crowded on a real phone.
-- **Insight `thread`/`todos`/`pool` cards ignore their filter** (those panels have no filter inputs); only `map`
-  cards apply theirs.
-
 ## Performance (real seed, headless 4x throttle)
 
 `bun run seed --scale real` (2k threads, 10k notes, 50k versions), imported through Settings > Import into a fresh
@@ -90,6 +81,17 @@ at most one per column). SQLite here allows 500,000 variables on main (`MAX_VARI
 limit was not read. Safari's "maximum call stack size exceeded" is not reproducible in Chromium (larger stack); the
 spread-into-`push(...)` patterns that could hit it at these sizes are gone from `core`/`lib` (only a 3-element one
 remains in `allInsights`).
+
+## iOS polish (wave 9, researched; see docs/direction.md Round 9)
+
+Device checks that WebKit-at-iPhone-size can't prove:
+- [ ] iOS 26: open the keyboard, close it, scroll soon after: header/tab bar/composer return to the edges (issue a).
+- [ ] Background the installed PWA for a few minutes, reopen: bottom tab bar still sits on the home indicator (c).
+- [ ] No rubber-band on tab panels; a thread at its top/bottom doesn't drag the page (d).
+- [ ] Ship an update, open the installed PWA: "Update available" appears without a full close/reopen (e).
+- [ ] Settings → Accessibility → Reduce Motion on: no entrance/scale animations remain (f).
+- [ ] Liquid Glass fade under the status bar doesn't hide the header's top row (g).
+- [ ] VoiceOver: tab bar, composer actions, chips, menus all announce a name and state.
 
 ## Device-only verification
 
