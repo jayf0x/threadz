@@ -1,6 +1,7 @@
 export * from "./insights";
 export * from "./map";
 export * from "./merge";
+export * from "./migrate";
 export * from "./queries";
 export * from "./schema";
 export * from "./seed";

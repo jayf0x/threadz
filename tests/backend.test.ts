@@ -2,7 +2,7 @@ import "../frontend/node_modules/fake-indexeddb/auto"; // workspace dep lives un
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { existsSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { threadView } from "@threadz/core";
+import { PROTOCOL_VERSION, SCHEMA_VERSION, threadView } from "@threadz/core";
 
 // v2 (docs/direction.md "Data model" + "Sync"): main is core/'s shared schema, reached only through
 // /api/changes, /api/push, /api/ask and /api/images/:hash. The old threads/messages/annotations
@@ -47,14 +47,17 @@ afterAll(() => {
   rmSync(IMAGES_DIR, { recursive: true, force: true });
 });
 
+const VERSIONS = { schema: SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+const STAMP = `schema=${SCHEMA_VERSION}&protocol=${PROTOCOL_VERSION}`;
+
 const push = (body: unknown) =>
   fetch(`${BASE}/api/push`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...VERSIONS, ...(body as object) }),
   }).then((r) => r.json());
 
-const pull = (since: number) => fetch(`${BASE}/api/changes?since=${since}`).then((r) => r.json());
+const pull = (since: number) => fetch(`${BASE}/api/changes?since=${since}&${STAMP}`).then((r) => r.json());
 
 // One thread + one message, built as the four-row shape core/core.test.ts's own test helper uses
 // (entity(note) + note_versions + entity(message) + messages), pushed exactly as a device would.
@@ -150,10 +153,36 @@ describe("POST /api/push + GET /api/changes (docs/direction.md 'Sync': diffs onl
   });
 
   test("since defaults to 0 and rejects a negative/non-numeric value with a 400, never a 500", async () => {
-    const all = await fetch(`${BASE}/api/changes`).then((r) => r.json());
+    const all = await fetch(`${BASE}/api/changes?${STAMP}`).then((r) => r.json());
     expect(Array.isArray(all.changes.entities)).toBe(true);
-    expect((await fetch(`${BASE}/api/changes?since=-1`)).status).toBe(400);
-    expect((await fetch(`${BASE}/api/changes?since=nope`)).status).toBe(400);
+    expect((await fetch(`${BASE}/api/changes?since=-1&${STAMP}`)).status).toBe(400);
+    expect((await fetch(`${BASE}/api/changes?since=nope&${STAMP}`)).status).toBe(400);
+  });
+
+  test("a schema/protocol mismatch (or no stamp) is a typed 409 on push and pull, and responses carry main's versions", async () => {
+    const ok = await pull(0);
+    expect(ok.schema).toBe(SCHEMA_VERSION);
+    expect(ok.protocol).toBe(PROTOCOL_VERSION);
+
+    const post = (body: object) =>
+      fetch(`${BASE}/api/push`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    for (const res of [
+      await post({ schema: SCHEMA_VERSION + 1, protocol: PROTOCOL_VERSION }),
+      await post({ schema: SCHEMA_VERSION, protocol: PROTOCOL_VERSION + 1 }),
+      await post({}),
+      await fetch(`${BASE}/api/changes?since=0&schema=${SCHEMA_VERSION + 1}&protocol=${PROTOCOL_VERSION}`),
+      await fetch(`${BASE}/api/changes?since=0`),
+    ]) {
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toBe("version_mismatch");
+      expect(body.schema).toBe(SCHEMA_VERSION);
+      expect(body.protocol).toBe(PROTOCOL_VERSION);
+    }
   });
 
   test("a malformed push body (invalid JSON, or the wrong shape) is a 400, not a 500", async () => {

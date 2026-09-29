@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
-import { BUILTIN, initSchema } from "./schema";
+import { initSchema } from "./migrate";
+import { BUILTIN } from "./schema";
 import {
   allEntries,
   annotationsFor,

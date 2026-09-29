@@ -12,7 +12,7 @@ import {
   todosOld,
   writingRhythm,
 } from "./insights";
-import { initSchema } from "./schema";
+import { initSchema } from "./migrate";
 
 const NOW = 100 * DAY_MS;
 

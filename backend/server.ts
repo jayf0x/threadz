@@ -1,10 +1,19 @@
-import { applyChanges, type Changes, changesSince, stampRevs, TABLE_NAMES, threadView } from "@threadz/core";
+import {
+  applyChanges,
+  type Changes,
+  changesSince,
+  PROTOCOL_VERSION,
+  SCHEMA_VERSION,
+  stampRevs,
+  TABLE_NAMES,
+  threadView,
+} from "@threadz/core";
 import type { BunRequest } from "bun";
 import type { z } from "zod";
 import { appendNoteMessage, backupDb, currentRev, driver, ensureSchema, getThread, now } from "./db";
 import { collectOrphanImages, imageFile, saveImage } from "./images";
 import { askModel, type ChatMessage, CLAUDE_MODEL, HttpError } from "./model";
-import { AskBody, PushBody } from "./schemas";
+import { AskBody, PushBody, type VersionStamp } from "./schemas";
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -71,6 +80,15 @@ const presence = () => {
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache", ...CORS } });
 };
 
+const VERSIONS = { schema: SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+
+// A request from a device on a different schema/protocol is refused with a typed 409; a missing stamp counts as a
+// mismatch (a build from before versioning). The body carries main's versions so the device can say why.
+const versionMismatch = (got: VersionStamp): Response | null =>
+  got.schema === SCHEMA_VERSION && got.protocol === PROTOCOL_VERSION
+    ? null
+    : json({ error: "version_mismatch", ...VERSIONS, got: { schema: got.schema, protocol: got.protocol } }, 409);
+
 // How many rows a push body actually carries, across every table.
 const countRows = (c: PushBody) => TABLE_NAMES.reduce((n, t) => n + (c[t]?.length ?? 0), 0);
 
@@ -88,10 +106,13 @@ const server = Bun.serve({
       GET: wrap(async (req) => {
         const url = new URL(req.url);
         const raw = url.searchParams.get("since");
+        const num = (k: string) => (url.searchParams.has(k) ? Number(url.searchParams.get(k)) : undefined);
+        const mismatch = versionMismatch({ schema: num("schema"), protocol: num("protocol") });
+        if (mismatch) return mismatch;
         const since = raw == null ? 0 : Number(raw);
         if (!Number.isFinite(since) || since < 0) throw new HttpError(400, "since must be a non-negative number");
         const changes = await changesSince(driver, since);
-        return json({ changes, cursor: await currentRev() });
+        return json({ changes, cursor: await currentRev(), ...VERSIONS });
       }),
     },
 
@@ -105,6 +126,8 @@ const server = Bun.serve({
       OPTIONS: () => new Response(null, { headers: CORS }),
       POST: wrap(async (req) => {
         const body = await readBody(req, PushBody);
+        const mismatch = versionMismatch(body);
+        if (mismatch) return mismatch;
         const carries = countRows(body) > 0;
         if (carries) backupDb();
         const since = await currentRev();
@@ -112,7 +135,7 @@ const server = Bun.serve({
         if (carries) await applyChanges(driver, body as unknown as Partial<Changes>);
         const cursor = carries ? await stampRevs(driver) : since;
         const changes = await changesSince(driver, since);
-        return json({ changes, cursor });
+        return json({ changes, cursor, ...VERSIONS });
       }),
     },
 
@@ -160,7 +183,7 @@ const server = Bun.serve({
         await appendNoteMessage(driver, body.threadId, answer, "assistant", askedAt + 1);
         const cursor = await stampRevs(driver);
         const changes = await changesSince(driver, since);
-        return json({ answer, changes, cursor });
+        return json({ answer, changes, cursor, ...VERSIONS });
       }),
     },
   },

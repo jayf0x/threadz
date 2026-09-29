@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { bunDriver } from "./bun";
 import { isMapFilterEmpty, mapFilterToSearch, mapTracks, parseMapFilter } from "./map";
-import { initSchema } from "./schema";
+import { initSchema } from "./migrate";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
